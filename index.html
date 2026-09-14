@@ -732,7 +732,7 @@
               <div class="toolbar" style="margin-bottom:10px" data-page-node-id="HhPMbGlrMofqBdGmpYl8YF">
                 <div class="input-w" data-page-node-id="0XlYgAXnBhph0L26g28BNO"><input type="search" id="fPathK" placeholder="搜索名称 / 路径（模糊匹配）" style="width:230px" data-page-node-id="wxwRngOStaVVrFXxC5piAR"><i data-page-node-id="t72SuZeGBE8uEGAFi3JrzQ">搜索</i></div>
                 <select id="fPathRes" data-page-node-id="UAX4r7aJa8Mz90jtkIV8OC"><option value="" data-page-node-id="blVDZXNAERWnIKNBbuHLDH">全部资源</option></select>
-                <select id="fPathMethod" data-page-node-id="s34rDeK6EBBcReW3RpVfIh"><option value="" data-page-node-id="p9F4z9KtEtlCAm9GfCIUnD">全部方法</option><option data-page-node-id="UkjuJNI3dXSKWmHpfHP4w1">GET</option><option data-page-node-id="BiNr7JG8ffNLWRbbFxdW2l">POST</option><option data-page-node-id="n8AHoZ96vzfTV5L07Bt2kw">PUT</option><option data-page-node-id="DvuZ9Wd6NT0NcvFpqA1DsR">PATCH</option><option data-page-node-id="LPYkB4FBE5K7jCAzm9huV0">DELETE</option></select>
+                <div class="chips" id="fPathMethod" data-page-node-id="s34rDeK6EBBcReW3RpVfIh"><span class="chip on" data-act="fPathMTog" data-m="">全部方法</span></div>
                 <select id="fPathRisk" data-page-node-id="QbvzD9FaZgzyfZPlqvSA1Q"><option value="" data-page-node-id="8jfxrXtN6XPFamkiDKdzU5">全部风险</option><option data-page-node-id="f1znOxGAnbYceEVhMa3Ad9">低</option><option data-page-node-id="CabSRGXVoE8dLml6cGd4b1">中</option><option data-page-node-id="EiGMi7WvJIPjDQTDiQJuxF">高</option></select>
                 <select id="fPathLc" data-page-node-id="ehFNgsWCcK5RuMWP8Jldqg"><option value="" data-page-node-id="iceLftboGBUXH9DKbXV34k">全部生命周期</option><option data-page-node-id="Rr7RI1EndJ8mtwFBrCPJIC">已激活</option><option data-page-node-id="vvDn3EV1Ni506jcN760zF0">已下线</option></select>
               </div>
@@ -2619,11 +2619,12 @@ function delRes(resId){
   const a=curAsset(), r=(a.res||[]).find(x=>x.id===resId); if(!r) return;
   if(a.open!=="未开通"){toast("资产无端访问为「"+a.open+"」：请先撤销开通再删除资源，避免线上路径悬空"); return;}
   openDlg("删除资源","删除为高危操作，需追加认证后执行；将同时删除该资源登记的 "+(r.paths||[]).length+" 条细粒度资源清单。",`
-    <div class="note red">删除对象：<b>${r.name}</b>（${r.kind}）—— 该资源承载路径访问要求（演示预置）时将拒绝删除。</div>
+    <div class="note red">删除对象：<b>${r.name}</b>（${r.kind}）—— 存在<b>已激活</b>路径承载访问要求时拒绝删除：请先把这些路径<b>下线</b>（下线可逆，随时可重新激活）。</div>
     <div class="fld"><label>账号密码（SM2 加密提交）</label><input type="password" placeholder="输入当前管理员口令"></div>`);
   $("#dlg1Ok").onclick=()=>{
-    const ref=(r.paths||[]).filter(q=>q.req).length;
-    if(ref){toast("该资源有 "+ref+" 条路径承载访问要求（演示预置），删除被拒（演示）"); return;}
+    /* 引用检查按「已激活」计：已下线条目不参与授权、其访问要求为暂停态，不构成删除阻碍（下线可逆、删除不可逆） */
+    const ref=(r.paths||[]).filter(q=>q.req&&q.lc!=="已下线").length;
+    if(ref){toast("该资源有 "+ref+" 条已激活路径承载访问要求，删除被拒：请先把这些路径下线（下线可逆，随时可重新激活）后再删除（演示）"); return;}
     a.res=a.res.filter(x=>x.id!==resId); closeDlg();
     if(isBackRes(r)){                 // 后端资源删除 → 同步资产级镜像（删空则清镜像，回到空态引导重新登记）
       if(!(a.res||[]).some(isBackRes)){ a.addr=""; a.addrProto=undefined; a.client=undefined; a._migB=1; }
@@ -2641,6 +2642,21 @@ function flatResPaths(a){
   (a.res||[]).forEach(res=>(res.paths||[]).forEach(p=>out.push(Object.assign({resId:res.id,resName:res.name,resKind:res.kind,resMain:res.main},p))));
   return out;
 }
+/* 方法筛选取值域 = 本资产清单的**实际方法集**（去重；HTTP 方法按标准序，其余按字典序）。
+   不写死 HTTP 五法：清单里可有 gRPC 流类型（如「gRPC 一元调用」）与 WS 帧（如「WS 帧（双向）」），
+   固定候选会让这些条目**既筛不到、又被任一 HTTP 方法勾选静默排除**——取值域必须与可命中值域相交。 */
+const M_ORD=["GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"];
+function methodOpts(a){
+  const set=[];
+  flatResPaths(a).forEach(r=>{ if(r.m && set.indexOf(r.m)<0) set.push(r.m); });
+  return set.sort((x,y)=>{
+    const ix=M_ORD.indexOf(x), iy=M_ORD.indexOf(y);
+    if(ix>=0 && iy>=0) return ix-iy;
+    if(ix>=0) return -1;
+    if(iy>=0) return 1;
+    return x<y?-1:(x>y?1:0);
+  });
+}
 function pathReqTag(req){
   if(!req) return '<span class="tag t-gray">默认拒绝</span>';
   if(req.includes("public")) return '<span class="tag t-ok">显式公开</span>';
@@ -2653,9 +2669,16 @@ function renderPaths(a){
   const resArr=a.res||[];
   resSel.innerHTML='<option value="">全部资源</option>'+resArr.map(r=>`<option value="${r.id}">${r.name}（${r.kind}）</option>`).join("");
   if(resArr.some(r=>r.id===cur)) resSel.value=cur;
-  const resId=resSel.value, m=$("#fPathMethod").value, rk=$("#fPathRisk").value, lc=$("#fPathLc").value;
+  /* 方法筛选：取值域按**本资产清单实际方法**重建（多选 chips；不勾任一 = 不限）。
+     资产切换或清单变更后，仅保留仍存在的选中值——避免留下永远筛不到条目的幽灵勾选。 */
+  const mOpts=methodOpts(a);
+  const mSel=(a._mSel||[]).filter(mm=>mOpts.indexOf(mm)>=0);
+  a._mSel=mSel;
+  const mChip=(mm,on)=>`<span class="chip${on?" on":""}" data-act="fPathMTog" data-m="${xesc(mm)}">${xesc(mm||"全部方法")}</span>`;
+  $("#fPathMethod").innerHTML=mChip("",mSel.length===0)+mOpts.map(mm=>mChip(mm,mSel.indexOf(mm)>=0)).join("");
+  const resId=resSel.value, rk=$("#fPathRisk").value, lc=$("#fPathLc").value;
   const kw=($("#fPathK").value||"").trim().toLowerCase();
-  const list=flat.filter(r=>(!resId||r.resId===resId)&&(!m||r.m===m)&&(!rk||r.risk===rk)&&(!lc||r.lc===lc)
+  const list=flat.filter(r=>(!resId||r.resId===resId)&&(!mSel.length||mSel.indexOf(r.m)>=0)&&(!rk||r.risk===rk)&&(!lc||r.lc===lc)
     &&(!kw||(r.name||"").toLowerCase().includes(kw)||r.p.toLowerCase().includes(kw)));
   const KC=RES_KC;
   const total=list.length;
@@ -2670,13 +2693,13 @@ function renderPaths(a){
     <td class="col-num">${r.p}</td><td>${r.v}</td>
     <td><span class="tag ${RISK_CLS[r.risk]}">${r.risk}</span></td><td>${r.owner}</td>
     <td>${lcTag(r.lc)}</td>
-    <td>${r.lc==="已下线"?`<button class="btn link" onclick="reactivatePath('${r.resId}','${r.m}','${r.p.replace(/'/g,"\\'")}')">重新激活</button>`:`<button class="btn link danger" onclick="archivePath('${r.resId}','${r.m}','${r.p.replace(/'/g,"\\'")}')">下线</button>`}
+    <td>${r.lc==="已下线"?`<button class="btn link" onclick="reactivatePath('${r.resId}','${r.m}','${r.p.replace(/'/g,"\\'")}')" title="重新激活：恢复为「已激活」，该条目下线期间的访问要求原样恢复">重新激活</button>`:`<button class="btn link danger" onclick="archivePath('${r.resId}','${r.m}','${r.p.replace(/'/g,"\\'")}')" title="下线（可逆）：生命周期转「已下线」，该条目的访问要求按未配置处理（default deny）；承载访问要求时须先完成二次认证，重新激活后原要求恢复">下线</button>`}
     <button class="btn link" onclick="openApiEdit('${r.resId}',${JSON.stringify(r).replace(/"/g,'&quot;')})">编辑</button></td></tr>`).join("") :
     `<tr><td colspan="9"><div class="empty"><div class="big">未登记细粒度资源</div><span class="muted">先「+ 添加资源」再手工登记或 OpenAPI 导入；访问要求由策略引擎 default deny 统一裁决</span></div></td></tr>`);
   $("#pathPager").innerHTML=pathPager(total, a._pathPage);
   window._detailAid=a.id;
 }
-["fPathK","fPathRes","fPathMethod","fPathRisk","fPathLc"].forEach(id=>{const el=document.getElementById(id); if(el){el.addEventListener("input",()=>{const a=byId(window._detailAid||CUR); if(a) a._pathPage=1; renderPaths(byId(window._detailAid||CUR));}); el.addEventListener("change",()=>{const a=byId(window._detailAid||CUR); if(a) a._pathPage=1; renderPaths(byId(window._detailAid||CUR));});}});
+["fPathK","fPathRes","fPathRisk","fPathLc"].forEach(id=>{const el=document.getElementById(id); if(el){el.addEventListener("input",()=>{const a=byId(window._detailAid||CUR); if(a) a._pathPage=1; renderPaths(byId(window._detailAid||CUR));}); el.addEventListener("change",()=>{const a=byId(window._detailAid||CUR); if(a) a._pathPage=1; renderPaths(byId(window._detailAid||CUR));});}});
 $("#btnAddApi").onclick=()=>openApiEdit("",null);
 /* 登记 / 编辑弹窗内：按路径实时派生匹配语义 chips（参数化 / 前缀 / ** 多段通配 / * 通配 / 精确，可组合叠加） */
 function apiMtAuto(){
@@ -2696,17 +2719,27 @@ function opUser(){
   }catch(e){}
   return "张伟";
 }
+/* 登记面方法候选（HTTP 方法全集）。条目身份 =「资源 × 方法 × 路径」的分量，**一条一个方法**——
+   多选只用于「一次展开多条独立条目」（见保存分支），不是单条记录多值。gRPC 流类型 / WS 帧
+   另由作用对象级承载（设计稿 §10.1 列组表），本弹窗按 HTTP 方法登记。 */
+const API_METHODS=["GET","POST","PUT","PATCH","DELETE"];
+/* 当前勾选的方法（chips 的 .on）；编辑态恒为单项 */
+function apiMSelected(){
+  const box=$("#apiM"); return box?[...box.querySelectorAll(".chip.on")].map(c=>c.dataset.m):[];
+}
 function openApiEdit(resId,r){
   const a=ctxAsset();
   if(!(a.res||[]).length){toast("当前资产暂无资源：请先到「地址与访问」添加资源"); return;}
   const resOptions=(a.res||[]).map(x=>`<option value="${x.id}" ${x.id===resId?"selected":""}>${x.name}（${x.kind}）</option>`).join("");
   const sel=(v,opts)=>opts.map(o=>`<option ${o===v?"selected":""}>${o}</option>`).join("");
   openDlg(r?"编辑细粒度资源":"登记细粒度资源",
-    r?"唯一键（资源×方法×路径）变更与新增均查重；生命周期置「已下线」即停用。匹配语义随路径自动派生，改路径即自动更新，无需手工选择。":"登记后同路径不同方法是不同条目；唯一键（资源×方法×路径）重复将被拒绝。提供业务可读清单名称；匹配语义由系统按路径特征自动判定（{参数} / ** / * 均可识别并可组合）。访问要求由策略引擎 default deny 统一裁决。",`
+    r?"唯一键（资源×方法×路径）变更与新增均查重；生命周期置「已下线」即停用。匹配语义随路径自动派生，改路径即自动更新，无需手工选择。":"登记后同路径不同方法是不同条目；唯一键（资源×方法×路径）重复将被拒绝。方法可多选——保存时按方法展开为多条独立条目，任一条键冲突即整体拒绝、不产生半截数据。提供业务可读清单名称；匹配语义由系统按路径特征自动判定（{参数} / ** / * 均可识别并可组合）。访问要求由策略引擎 default deny 统一裁决。",`
     <div class="dlg-scroll">
     <div class="form-grid c3">
       <div class="fld full"><label>所属资源 <span class="req">*</span></label><select id="apiResSel">${resOptions}</select></div>
-      <div class="fld"><label>HTTP 方法 <span class="req">*</span></label><select id="apiM">${sel(r?r.m:"GET",["GET","POST","PUT","PATCH","DELETE"])}</select></div>
+      <div class="fld full"><label>HTTP 方法 <span class="req">*</span></label>
+        <div class="chips" id="apiM" data-single="${r?1:0}">${API_METHODS.concat(r&&API_METHODS.indexOf(r.m)<0?[r.m]:[]).map(mm=>`<span class="chip${(r?r.m===mm:mm==="GET")?" on":""}" data-act="apiMChip" data-m="${xesc(mm)}">${xesc(mm)}</span>`).join("")}</div>
+        <div class="help">${r?"条目身份为「资源 × 方法 × 路径」，方法即本条目的身份分量——修改即改写这一条。":"可多选：每个方法保存为一条独立条目（唯一键 = 资源 × 方法 × 路径），与 OpenAPI 导入同口径；与既有条目同路径同方法时整体拒绝、不部分写入。"}</div></div>
       <div class="fld"><label>API 版本</label><input type="text" id="apiV" value="${r?r.v:"v1"}"></div>
       <div class="fld"><label>风险等级</label><select id="apiRisk">${sel(r?r.risk:"中",["低","中","高"])}</select></div>
       <div class="fld full"><label>清单名称 <span class="req">*</span></label><input type="text" id="apiName" value="${r?r.name||"":""}" placeholder="业务可读名称，如：查询客户资料 / 批量转账"></div>
@@ -2720,11 +2753,11 @@ function openApiEdit(resId,r){
     </div>`,"lg");
   apiMtAuto();
   $("#dlg1Ok").onclick=()=>{
-    const name=$("#apiName").value.trim(), m=$("#apiM").value, p=$("#apiP").value.trim();
+    const name=$("#apiName").value.trim(), ms=apiMSelected(), p=$("#apiP").value.trim();
     if(!name){toast("清单名称为必填（业务可读名称）"); return;}
+    if(!ms.length){toast(r?"请选择 HTTP 方法":"请至少选择一种 HTTP 方法"); return;}
     if(!p){toast("规范化路径为必填"); return;}
     if(!p.startsWith("/")){toast("规范化路径需以 / 开头"); return;}
-    const rec={name,m,mt:mtOf(p),p,v:$("#apiV").value.trim()||"v1",risk:$("#apiRisk").value,owner:opUser(),lc:$("#apiLc").value};
     const toRes=a.res.find(x=>x.id===$("#apiResSel").value);
     let self=null, fromRes=null;
     if(r){
@@ -2734,29 +2767,49 @@ function openApiEdit(resId,r){
       if(i>=0) self=arr[i];
       if(!self){toast("原条目不存在（可能已变更），请刷新后重试"); return;}
     }
-    const dup=((toRes.paths)||[]).some(q=>q!==self&&q.m===m&&q.p===p);
-    if(dup){toast("唯一键冲突：该资源已存在 "+m+" "+p+" 的条目"); return;}
+    const base={mt:mtOf(p),p,v:$("#apiV").value.trim()||"v1",risk:$("#apiRisk").value,owner:opUser(),lc:$("#apiLc").value};
     if(r){
-      Object.assign(self,rec);
+      /* 编辑：方法单选——条目身份（资源 × 方法 × 路径）是标量，改方法即改写这一条 */
+      const m=ms[0];
+      const dup=((toRes.paths)||[]).some(q=>q!==self&&q.m===m&&q.p===p);
+      if(dup){toast("唯一键冲突：该资源已存在 "+m+" "+p+" 的条目"); return;}
+      Object.assign(self,{name,m},base);
       if(fromRes!==toRes){fromRes.paths=fromRes.paths.filter(q=>q!==self); toRes.paths=toRes.paths||[]; toRes.paths.push(self);}
-    } else { toRes.paths=toRes.paths||[]; toRes.paths.push(rec); }
-    closeDlg(); toast(r?"细粒度资源条目已保存（匹配语义按路径自动更新；变更入审计）（演示）":"已登记细粒度资源：匹配语义自动派生，唯一键入清单；访问要求由策略引擎 default deny 统一裁决（演示）"); assetRerender();
+      closeDlg(); toast("细粒度资源条目已保存（匹配语义按路径自动更新；变更入审计）（演示）"); assetRerender(); return;
+    }
+    /* 新增：多选**展开**——每个方法一条独立条目（唯一键仍是「资源 × 方法 × 路径」的标量身份）。
+       逐条过唯一键，任一条冲突即整体不写入（与 OpenAPI 导入同一事务口径）。 */
+    toRes.paths=toRes.paths||[];
+    const dupM=ms.filter(mm=>toRes.paths.some(q=>q.m===mm&&q.p===p));
+    if(dupM.length){toast("唯一键冲突：该资源已存在 "+dupM.join(" / ")+" "+p+" 的条目，未写入任何条目"); return;}
+    ms.forEach(mm=>toRes.paths.push(Object.assign({name,m:mm},base)));
+    closeDlg();
+    toast(ms.length>1?("已登记 "+ms.length+" 条细粒度资源（"+ms.join(" / ")+"），各为独立条目；匹配语义自动派生，唯一键入清单（演示）"):"已登记细粒度资源：匹配语义自动派生，唯一键入清单；访问要求由策略引擎 default deny 统一裁决（演示）");
+    assetRerender();
   };
 }
 function archivePath(resId,m,p){
   const a=ctxAsset();
   const res=(a.res||[]).find(x=>x.id===resId); const it=(res&&res.paths||[]).find(q=>q.m===m&&q.p===p);
   if(!it) return;
-  if(it.req){toast("该条目承载访问要求（演示预置），被引用的路径禁止下线"); return;}
-  it.lc="已下线"; assetRerender();
-  toast("已下线 "+m+" "+p+"：生命周期=已下线，策略判定按停用处理（演示）");
+  const doArchive=()=>{ it.lc="已下线"; assetRerender();
+    toast("已下线 "+m+" "+p+"：生命周期=已下线，策略判定按停用处理（演示）"); };
+  /* 承载访问要求的条目：下线即暂停一条生效中的访问要求 → 二次认证 + 影响面明示（既不静默执行，也不硬拒）。
+     下线可逆：req 字段保留（属「暂停」而非「解除引用」），重新激活后该访问要求原样恢复。 */
+  if(it.req){
+    ask2FA("下线细粒度路径「"+m+" "+p+"」", doArchive, null,
+      "该条目<b>承载访问要求</b>（"+xesc(it.req)+"）：下线后该条目的访问要求<b>按未配置处理（default deny）</b>——请求不达上游，细粒度页对应行不再出现。"
+      + "生命周期取<b>已激活 / 已下线</b>两态：下线<b>随时可「重新激活」</b>，重新激活后本条目的访问要求<b>原样恢复</b>，无需重配。");
+    return;
+  }
+  doArchive();
 }
 function reactivatePath(resId,m,p){
   const a=ctxAsset();
   const res=(a.res||[]).find(x=>x.id===resId); const it=(res&&res.paths||[]).find(q=>q.m===m&&q.p===p);
   if(!it) return;
   it.lc="已激活"; assetRerender();
-  toast("已重新激活 "+m+" "+p+"：生命周期=已激活；下线时已解除引用，访问要求按未配置处理（default deny）（演示）");
+  toast("已重新激活 "+m+" "+p+"：生命周期=已激活；下线期间的访问要求已按原要求恢复（下线为暂停、未解除引用）（演示）");
 }
 /* OpenAPI 导入（三种文档来源：粘贴 / 上传文件 / 文档地址）。事务性导入：任一来源的文档统一走同一解析器
    （支持 OpenAPI 2.0 / 3.0 JSON），解析失败或任一条目触发唯一键冲突（资源 × 方法 × 路径）则整体回滚，不产生半截数据。
@@ -3277,7 +3330,7 @@ function efRenderPaths(){
       <td><span class="tag ${RISK_CLS[r.risk]}">${r.risk}</span></td>
       <td>${r.owner||"—"}</td>
       <td>${lcTag(r.lc)}</td>
-      <td>${r.lc==="已下线"?`<button class="btn link" onclick="reactivatePath('${r.resId}','${r.m}','${r.p.replace(/'/g,"\\'")}')">重新激活</button>`:`<button class="btn link danger" onclick="archivePath('${r.resId}','${r.m}','${r.p.replace(/'/g,"\\'")}')">下线</button>`}
+      <td>${r.lc==="已下线"?`<button class="btn link" onclick="reactivatePath('${r.resId}','${r.m}','${r.p.replace(/'/g,"\\'")}')" title="重新激活：恢复为「已激活」，该条目下线期间的访问要求原样恢复">重新激活</button>`:`<button class="btn link danger" onclick="archivePath('${r.resId}','${r.m}','${r.p.replace(/'/g,"\\'")}')" title="下线（可逆）：生命周期转「已下线」，该条目的访问要求按未配置处理（default deny）；承载访问要求时须先完成二次认证，重新激活后原要求恢复">下线</button>`}
       <button class="btn link" onclick="openApiEdit('${r.resId}',${JSON.stringify(r).replace(/"/g,'&quot;')})">编辑</button></td></tr>`).join("")}</tbody></table>`
     : `<div class="empty"><div class="big">尚未登记细粒度资源</div><span class="muted">通过「OpenAPI 导入」或「+ 登记细粒度资源」逐步建立清单；访问要求由策略引擎 default deny 统一裁决</span></div>`;
 }
@@ -3466,12 +3519,13 @@ function delAsset(id){
   const a=byId(id); if(!a) return;
   if(a.open==="开通中"||a.open==="撤销中"){toast("当前状态为「"+a.open+"」，编排互斥：待流程完成后重试"); return;}
   const openNote=a.open==="已开通"?"该资产无端访问<b>已开通</b>：确认删除将同步撤销开通（先发高优安全关闭 → 停止签发授权码 → 清理资产访问状态 → 断开长连接 → 软删除）后再删除资产。":"无端访问未开通，直接删除登记。";
-  openDlg("删除资产","删除为高危操作，需追加认证后执行。删除前校验：无端访问已撤销、细粒度资源未被策略引用。",
+  openDlg("删除资产","删除为高危操作，需追加认证后执行。删除前校验：无端访问已撤销、无已激活路径承载访问要求（如有，请先把这些路径下线——下线可逆、删除不可逆）。",
     `<div class="note red">删除对象：<b>${a.name}</b>（${a.type} · L${a.lv}）—— ${openNote}</div>
      <div class="fld"><label>账号密码（SM2 加密提交）</label><input type="password" placeholder="输入当前管理员口令"></div>`);
   $("#dlg1Ok").onclick=()=>{
-    const refs=flatResPaths(a).filter(q=>q.req).length;
-    if(refs){toast("资产 "+a.name+" 有 "+refs+" 条路径承载访问要求（演示预置），删除被拒（演示）"); return;}
+    /* 同上：只计「已激活」路径的访问要求（已下线为暂停态，不阻塞删除） */
+    const refs=flatResPaths(a).filter(q=>q.req&&q.lc!=="已下线").length;
+    if(refs){toast("资产 "+a.name+" 有 "+refs+" 条已激活路径承载访问要求，删除被拒：请先把这些路径下线（下线可逆，随时可重新激活）后再删除（演示）"); return;}
     const i=ASSETS.findIndex(x=>x.id===id); if(i<0) return;
     ASSETS.splice(i,1); closeDlg();
     toast("已删除资产「"+a.name+"」（追加认证通过，操作入审计）（演示）");
@@ -6394,6 +6448,30 @@ document.addEventListener("click", (e) => {
       if (!a) break;
       openDetail(a.id);
       showTab("detTabs", "t3");
+      break;
+    }
+    /* 资产详情细粒度清单「方法」筛选：多选 chips（取值域按本资产清单实际方法派生）。
+       「全部方法」= 清空选择；其余 chip 逐个 toggle；翻页回第 1 页。 */
+    case "fPathMTog": {
+      const a = byId(window._detailAid || CUR);
+      if (!a) break;
+      const mv = el.dataset.m || "";
+      if (!mv) a._mSel = [];
+      else {
+        const s = (a._mSel || []).slice();
+        const i = s.indexOf(mv);
+        if (i >= 0) s.splice(i, 1); else s.push(mv);
+        a._mSel = s;
+      }
+      a._pathPage = 1; renderPaths(a);
+      break;
+    }
+    /* 登记弹窗「HTTP 方法」chips：新增可多选（保存时展开为多条），编辑单选（条目身份为标量） */
+    case "apiMChip": {
+      const box = $("#apiM");
+      if (!box) break;
+      if (box.dataset.single === "1") box.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === el));
+      else el.classList.toggle("on");
       break;
     }
     /* 列表空态的去处：一键清空筛选，避免管理员逐个下拉去回忆自己改过哪一项 */
