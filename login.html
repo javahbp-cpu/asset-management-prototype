@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="jZzFDYvrQnKJnCgzPGFH9F">
+<head data-page-node-id="ZjPO2c6J1zrT1HFgpW7znd">
+<meta charset="UTF-8" data-page-node-id="Ui80ztktmy3WHm80CVrICS">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="RtRN2UrsPQjgti3i4CHBQH">
+<title>登录 · 白泽零信任运维管理平台</title>
+<link rel="stylesheet" href="assets/proto.css" data-page-node-id="ProtoCssLink00001">
+<script data-page-node-id="PreLogin0000000001">
+(function(){try{
+  if(!localStorage.getItem("baize.assetmgmt.session.v1"))return;
+  var OK=["index.html","asset-detail.html","asset-edit.html","cred-hosting.html","access-policy.html","fine-grained.html","access-requirement.html","web-security-policy.html","rate-limit-policy.html","request-constraint.html","rule-library.html"];
+  var b=new URLSearchParams(location.search).get("back")||"";
+  var f=b.split("?")[0].split("#")[0];
+  location.replace(OK.indexOf(f)>=0?b:"index.html");
+}catch(e){}})();
+</script>
+</head>
+<body data-page-node-id="sVU6yFYEAn2BNpRlHG1qQN" data-page="pg-login" class="has-demo">
+
+
+<div class="demo-bar" data-page-node-id="LoginDemoBar000001">
+  <span class="dl" data-page-node-id="LoginDemoBarLbl001"><i></i>演示变体</span>
+  <div class="seg" role="tablist" data-page-node-id="LoginDemoBarSeg001">
+    <button type="button" data-login-sw="p1" class="on">默认登录</button>
+    <button type="button" data-login-sw="p2">账号或密码错误</button>
+    <button type="button" data-login-sw="p3">尝试过于频繁</button>
+    <button type="button" data-login-sw="p4">未登录被拦截</button>
+  </div>
+  <span class="dh" data-page-node-id="LoginDemoBarHint01">演示账号：<b>admin_dev</b> / <b>Aa111111</b></span>
+</div>
+
+<div class="login-page" data-page-node-id="LoginPage000000001">
+  <div class="ambient left" aria-hidden="true" data-page-node-id="LoginAmbientLeft01"></div>
+  <div class="ambient right" aria-hidden="true" data-page-node-id="LoginAmbientRight1"></div>
+
+  <header class="login-header" data-page-node-id="LoginHeader00000001">
+    <span class="brand" data-page-node-id="LoginBrand000000001">
+      <span class="logo-mark" data-page-node-id="BaizeLogoMark00001">白泽</span><strong data-page-node-id="LoginBrandStrong0001">白泽</strong><span class="logo-div" data-page-node-id="BaizeLogoDiv000001"></span><span class="logo-sub" data-page-node-id="BaizeLogoSub000001">零信任 · 运维管理平台</span>
+    </span>
+    <span class="header-note" data-page-node-id="LoginHeaderNote0001">控制面 · 内网访问</span>
+  </header>
+
+  <section class="login-shell" data-page-node-id="LoginShell000000001">
+    <div class="form-panel" data-page-node-id="LoginFormPanel00001">
+
+      <div class="redirect-hint" id="lgBackHint" hidden data-page-node-id="LoginBackHint000001">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M13 5h4.5A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19H13M4 12h9m0 0-3.2-3.2M13 12l-3.2 3.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div>登录后将继续前往 <b id="lgBackName" data-page-node-id="LoginBackName000001">资产列表</b><br><span style="opacity:.8">该页需要登录态，已为你保留原始访问目标。</span></div>
+      </div>
+
+      <div id="lgAlert" hidden data-page-node-id="LoginAlert000000001"></div>
+
+      <div class="form-header" data-page-node-id="LoginFormHeader0001">
+        <span class="secure-status" data-page-node-id="LoginSecureStatus01"><i aria-hidden="true"></i>安全连接</span>
+        <h2 data-page-node-id="LoginFormTitle00001">登录到白泽控制面</h2>
+        <p data-page-node-id="LoginFormSub0000001">使用运维管理平台账号继续访问</p>
+      </div>
+
+      <form id="lgForm" onsubmit="return false" autocomplete="on" data-page-node-id="LoginForm000000001">
+        <div class="field req" data-page-node-id="LoginFieldUser0001">
+          <label for="lgUser" data-page-node-id="LoginLabelUser001">用户名</label>
+          <div class="input-w" data-page-node-id="LoginWrapUser00001">
+            <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8.4" r="3.6" stroke="currentColor" stroke-width="1.7"/><path d="M4.6 19.6c.7-3.5 3.9-5.5 7.4-5.5s6.7 2 7.4 5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+            <input class="input" id="lgUser" name="username" type="text" placeholder="请输入用户名" autocomplete="username" spellcheck="false" data-page-node-id="LoginInputUser001">
+          </div>
+        </div>
+
+        <div class="field req" data-page-node-id="LoginFieldPass0001">
+          <label for="lgPass" data-page-node-id="LoginLabelPass001">密码</label>
+          <div class="input-w" data-page-node-id="LoginWrapPass00001">
+            <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="4.5" y="10" width="15" height="10" rx="2.4" stroke="currentColor" stroke-width="1.7"/><path d="M8.2 10V7.8a3.8 3.8 0 0 1 7.6 0V10" stroke="currentColor" stroke-width="1.7"/><path d="M12 14v2.4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></span>
+            <input class="input" id="lgPass" name="password" type="password" placeholder="请输入密码" autocomplete="current-password" data-page-node-id="LoginInputPass001">
+            <button class="suffix" type="button" id="lgEye" aria-label="显示密码" data-page-node-id="LoginEyeBtn000001"><svg viewBox="0 0 24 24" fill="none"><path d="M2.6 12S6.1 5.9 12 5.9 21.4 12 21.4 12 17.9 18.1 12 18.1 2.6 12 2.6 12Z" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7"/></svg></button>
+          </div>
+        </div>
+
+        <div class="field req" data-page-node-id="LoginFieldHumanChk01">
+          <label data-page-node-id="LoginLabelHumanChk01">安全验证</label>
+          <div class="hv-track" id="hvTrack" data-page-node-id="LoginHvTrack000001">
+            <i class="hv-fill" id="hvFill" aria-hidden="true"></i>
+            <span class="hv-tip" id="hvTip">按住滑块，拖动到最右</span>
+            <span class="hv-knob" id="hvKnob" role="slider" tabindex="0" aria-label="拖动以完成安全验证" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" data-page-node-id="LoginHvKnob000001">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M9 6.5 14.5 12 9 17.5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </div>
+          <div class="hv-state" data-page-node-id="LoginHvState00001">
+            <span class="tag" id="hvState" data-page-node-id="LoginHvStateTag001">待确认</span>
+            <span class="muted" id="hvHint" data-page-node-id="LoginHvHint000001">按住滑块，向右拖动到最右端即通过</span>
+          </div>
+          <div class="captcha-note" data-page-node-id="LoginHvNote000001"><b>演示口径</b>：本页按评审要求<b>常驻强制</b>人机校验，形态取无端侧「<b>交互</b>」档（<b>行为式拖动确认</b>）。一期人机校验仅承载「不发起 / 静默」两档、<b>按需加载</b>，静默档<b>无感优先、不依赖图形验证码</b>（「不依赖」≠「不使用」）；<b>交互 / 强化</b>两档的完整承载在<b>二期 F1.2</b>。此常驻形态为演示简化，非一期默认行为。</div>
+        </div>
+
+        <div class="form-error" id="lgErr" hidden data-page-node-id="LoginFormError0001">
+          <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 7.6v5.2M12 16.2v.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+          <span id="lgErrText" data-page-node-id="LoginErrText00001">请输入用户名与密码</span>
+        </div>
+
+        <button class="btn primary login-button" type="button" id="lgSubmit" data-page-node-id="LoginSubmitBtn0001">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M10 17.5 4.5 12 10 6.5M4.8 12h14.7" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          登录
+        </button>
+      </form>
+
+      <div class="form-footer" data-page-node-id="LoginFormFooter0001">
+        账号密码以 <b>SM2</b> 加密提交；密码不写入浏览器存储。
+      </div>
+    </div>
+  </section>
+
+  <footer class="page-footer" data-page-node-id="LoginPageFooter0001">
+    <span data-page-node-id="LoginFootLeft00001">白泽零信任安全平台 · 控制面（演示数据 · 交互示意）</span>
+    <span class="hint" id="footHint" data-page-node-id="1tl2DDBVliGV5HiQeFShkB"></span>
+  </footer>
+</div>
+
+<!-- ================= 弹窗区 ================= -->
+<div class="dlg-bg" id="dlg1" data-page-node-id="2sfHbfSXMtDaZYa6JThbCI">
+  <div class="dlg" data-page-node-id="95Feska6HmuAv1YbBbuP99">
+    <h4 id="dlg1Title" data-page-node-id="Zb9nrbG3yOZffKOyBXyvvO">标题</h4>
+    <div class="msg" id="dlg1Msg" data-page-node-id="fut4Px6U0KfCUbhHzYTPsH"></div>
+    <div id="dlg1Body" data-page-node-id="D4kRbAEXmnjoO5jp6giuHO"></div>
+    <div class="ops" data-page-node-id="ZwiAhnIlXIhFMdIb5ZKXME">
+      <button class="btn" id="dlg1No" data-page-node-id="wzSHznH29RGEkLVUQe7uTz">取消</button>
+      <button class="btn primary" id="dlg1Ok" data-page-node-id="GlMhdT85nhpOs2ziQP5jUo">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" data-page-node-id="L6dfBqdzJsZRzMPy9iSoeN"></div>
+
+<!-- 通用确认弹窗（二次确认 / 危险操作 · 安全策略模块） -->
+<div class="dlg-bg" id="dlgCfm" data-page-node-id="6adJ0CvQ4tiWvmWJFu5XyS">
+  <div class="dlg lg" style="width:720px" data-page-node-id="mk1Z3QfcPYWSvctOS9EGaO">
+    <h4 id="cfmTitle" data-page-node-id="C2oB0pUuNVyTE1PVzw8TA9">确认</h4>
+    <div class="msg" id="cfmMsg" data-page-node-id="d3tiUFpH7q23YxVCfYzFgF"></div>
+    <div id="cfmBody" data-page-node-id="JTEfRtdmcspj3zQg6dv69S"></div>
+    <div class="ops" style="margin-top:16px" data-page-node-id="hLIrUwQRr7maqlZzzb3apM">
+      <button class="btn" data-act="cfmNo" data-page-node-id="cmCuIuCWBtL5A54DmBQinV">取消</button>
+      <button class="btn primary" id="cfmYes" data-act="cfmYes" data-page-node-id="X1owFvtMPjB672V9dtbby2">确认</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+<script>
+
+(function loginPage(){
+  var q = new URLSearchParams(location.search);
+  var back = q.get("back") || "";
+  /* back 白名单（防开放重定向）：非白名单一律回退 index.html（白名单见 build.js 的 BACK_OK）。 */
+  var BACK_OK = ["index.html","asset-detail.html","asset-edit.html","cred-hosting.html","access-policy.html","fine-grained.html","access-requirement.html","web-security-policy.html","rate-limit-policy.html","request-constraint.html","rule-library.html"];
+  var safeBack = (function(){ var f = back.split("?")[0].split("#")[0]; return BACK_OK.indexOf(f) >= 0 ? back : "index.html"; })();
+  /* 已登录态：登录页立即回跳（与 <head> 的 PRELOGIN 双保险——localStorage 不可用时 PRELOGIN 静默放过，
+     这里再用内存兜底的 getSession() 判一次；否则已登录用户会看到登录页，误以为掉登录态）。 */
+  if (typeof getSession === "function" && getSession()) { location.replace(safeBack); return; }
+  var $ = function(s){ return document.querySelector(s); };
+  var NAME = { "index.html":"资产列表", "asset-detail.html":"资产详情", "asset-edit.html":"登记 / 编辑资产",
+               "cred-hosting.html":"凭据托管", "access-policy.html":"资产访问控制策略",
+               "fine-grained.html":"资产细粒度访问策略", "access-requirement.html":"设置访问要求",
+               "web-security-policy.html":"Web 防护（WAF）", "rate-limit-policy.html":"集群级限流",
+               "request-constraint.html":"请求约束", "rule-library.html":"规则库管理" };
+  function setAlert(kind, title, msg){
+    var box = $("#lgAlert");
+    if (!kind) { box.hidden = true; box.innerHTML = ""; return; }
+    box.innerHTML = '<div class="alert ' + kind + '">' +
+      '<svg class="ai" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 7.6v5.2M12 16.2v.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>' +
+      '<div><b>' + title + '</b><br>' + msg + '</div></div>';
+    box.hidden = false;
+  }
+  var SCEN = {
+    p1: function(){ setAlert(null); },
+    p2: function(){ setAlert("err", "账号或密码不正确", "请检查后重试。多次失败后，该账号的登录会被暂时限制。"); hvReset(); },
+    p3: function(){ setAlert("err", "尝试过于频繁", "为保护账号安全，该账号的登录已被暂时限制，请稍后再试。"); hvReset(); },
+    p4: function(){ setAlert("info", "需要先登录", "你访问的页面需要登录态，登录后将回到原页面。"); }
+  };
+  var sws = document.querySelectorAll("[data-login-sw]");
+  Array.prototype.forEach.call(sws, function(b){
+    b.onclick = function(){
+      Array.prototype.forEach.call(sws, function(x){ x.classList.toggle("on", x === b); });
+      (SCEN[b.dataset.loginSw] || SCEN.p1)();
+    };
+  });
+  /* 被门禁拦截而来：展示原目标（仅白名单内的回跳才提示，否则会显示外站名字误导用户） */
+  if (back && safeBack === back) {
+    $("#lgBackHint").hidden = false;
+    var f = back.split("?")[0];
+    $("#lgBackName").textContent = NAME[f] || f;
+  }
+  /* 口令显隐 */
+  $("#lgEye").onclick = function(){
+    var p = $("#lgPass"), show = p.type === "password";
+    p.type = show ? "text" : "password";
+    this.setAttribute("aria-label", show ? "隐藏密码" : "显示密码");
+  };
+
+  /* ── 人机校验：行为式拖动确认（无端侧「交互」档）；常驻强制（偏离声明见页面内 .captcha-note）──
+     组件与无端侧 01-login.html 同源：轨道 + 滑块 + 填充条，拖到最右端即通过（键盘 Enter / 空格亦可）。
+     原型**强制**：未通过不放行。一期为「按需加载、默认无感」，本页常驻为演示简化。 */
+  var hvDone = false, hvReset = function(){};
+  (function bindHv(){
+    var track = $("#hvTrack"), knob = $("#hvKnob"), fill = $("#hvFill"), tip = $("#hvTip"),
+        state = $("#hvState"), hint = $("#hvHint");
+    if (!track || !knob) return;
+    var PAD = 3, dragging = false, grab = 0, max = 0, x = 0;
+    function maxX(){ return Math.max(0, track.clientWidth - knob.offsetWidth - PAD * 2); }
+    function setX(v){
+      x = v;
+      knob.style.transform = "translateX(" + v + "px)";
+      fill.style.width = (PAD + v + knob.offsetWidth) + "px";
+      tip.style.opacity = v > 6 ? "0" : "1";
+    }
+    function pass(){
+      if (hvDone) return;
+      hvDone = true; setX(maxX());
+      knob.setAttribute("aria-valuenow", "1");
+      if (state){ state.className = "tag t-ok"; state.textContent = "验证通过"; }
+      if (hint) hint.textContent = "可以继续登录";
+      knob.style.cursor = "default";
+      knob.style.background = "linear-gradient(180deg,#22a06b,#15803d)";
+      knob.style.boxShadow = "0 2px 6px rgba(34,160,107,.32)";
+      track.classList.remove("bad");
+      /* 通过后清掉「因人机校验而报」的错误提示（避免过期错误滞留）。
+         只清与滑块相关的提示，不动「请输入用户名 / 密码」这类字段级错误 —— 后者与滑块无关。 */
+      var e0 = $("#lgErr");
+      if (e0 && !e0.hidden && $("#lgErrText").textContent.indexOf("滑块") >= 0) { e0.hidden = true; }
+    }
+    hvReset = function(){
+      hvDone = false; setX(0);
+      knob.setAttribute("aria-valuenow", "0");
+      if (state){ state.className = "tag"; state.textContent = "待确认"; }
+      if (hint) hint.textContent = "按住滑块，向右拖动到最右端即通过";
+      knob.style.cursor = "grab";
+      knob.style.background = "linear-gradient(180deg,#3b82f6,#2563eb)";
+      knob.style.boxShadow = "0 2px 6px rgba(37,99,235,.35)";
+      track.classList.remove("bad");
+    };
+    knob.addEventListener("pointerdown", function(e){
+      if (hvDone) return;
+      dragging = true; max = maxX();
+      track.classList.remove("bad");   /* 重新交互即清掉上一次的红框（错误态不滞留） */
+      grab = e.clientX - track.getBoundingClientRect().left - PAD - x;
+      if (knob.setPointerCapture){ try { knob.setPointerCapture(e.pointerId); } catch (err) {} }
+      e.preventDefault();
+    });
+    knob.addEventListener("pointermove", function(e){
+      if (!dragging) return;
+      var nx = e.clientX - track.getBoundingClientRect().left - PAD - grab;
+      setX(Math.min(max, Math.max(0, nx)));
+    });
+    function release(){
+      if (!dragging) return;
+      dragging = false;
+      if (x >= max - 2) pass(); else setX(0);
+    }
+    knob.addEventListener("pointerup", release);
+    knob.addEventListener("pointercancel", release);
+    knob.addEventListener("keydown", function(e){
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pass(); }
+    });
+    setX(0);
+  })();
+
+  function submit(){
+    /* ⚠ 「登录中」期间必须**显式守卫**：回车提交走的是表单 keydown 分支，
+       不会经过 button.disabled（disabled 只挡鼠标点击）⇒ 不加这一句连按回车会双写登录态 + 双 location.replace。 */
+    if ($("#lgSubmit").disabled) return;
+    var u = $("#lgUser").value.trim(), p = $("#lgPass").value;
+    var err = $("#lgErr");
+    if (!u || !p) {
+      $("#lgErrText").textContent = (!u && !p) ? "请输入用户名与密码" : (!u ? "请输入用户名" : "请输入密码");
+      err.hidden = false;
+      $("#lgUser").classList.toggle("bad", !u);
+      $("#lgPass").classList.toggle("bad", !p);
+      return;
+    }
+    /* 常驻强制人机校验（无端侧「交互」档 · 行为式拖动确认）：未通过不放行。
+       口径见页面内 .captcha-note——一期为「按需加载、默认无感」，此处为演示简化。 */
+    if (!hvDone) {
+      $("#lgErrText").textContent = "请先完成滑块安全验证";
+      err.hidden = false; $("#hvTrack").classList.add("bad"); $("#hvKnob").focus();
+      return;
+    }
+    $("#hvTrack").classList.remove("bad");
+    err.hidden = true;
+    $("#lgUser").classList.remove("bad"); $("#lgPass").classList.remove("bad");
+    var btn = $("#lgSubmit");
+    btn.disabled = true; btn.textContent = "登录中…";
+    /* 按平台既有口径：口令先经 SM2 加密再提交（与原型内「删除资产」二次认证弹窗同一说法）。
+       真实协议见《零信任无端接入网关-登录认证与SM2-challenge协议-技术设计》；本原型不实现加密与校验。 */
+    window._lgPayload = { user: u, pass: p, passCipher: "SM2(" + p.length + " 字符)" };
+    setTimeout(function(){
+      setSession({ user: u, name: "安全管理员 张伟", at: new Date().toISOString(), sm2: true });
+      location.replace(safeBack);
+    }, 320);
+  }
+  $("#lgSubmit").onclick = submit;
+  $("#lgForm").addEventListener("keydown", function(e){ if (e.key === "Enter") { e.preventDefault(); submit(); } });
+})();
+</script>
+</body>
+</html>

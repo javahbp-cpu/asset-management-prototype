@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="jZzFDYvrQnKJnCgzPGFH9F">
+<head data-page-node-id="ZjPO2c6J1zrT1HFgpW7znd">
+<meta charset="UTF-8" data-page-node-id="Ui80ztktmy3WHm80CVrICS">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="RtRN2UrsPQjgti3i4CHBQH">
+<title>资产详情 · 资产管理原型</title>
+<link rel="stylesheet" href="assets/proto.css" data-page-node-id="ProtoCssLink00001">
+<script data-page-node-id="PreGate00000000001">
+(function(){try{
+  if(localStorage.getItem("baize.assetmgmt.session.v1"))return;
+  var b=(location.pathname.split("/").pop()||"index.html")+location.search+location.hash;
+  location.replace("login.html?back="+encodeURIComponent(b));
+}catch(e){}})();
+</script>
+</head>
+<body data-page-node-id="sVU6yFYEAn2BNpRlHG1qQN" data-page="pg-detail">
+
+<div class="topbar" data-page-node-id="FFfoGZbBRSrId0ls5ljU7j">
+  <div class="logo" data-page-node-id="LiriLxAujCxv0rUAsgsgZV"><span class="logo-mark" data-page-node-id="BaizeLogoMark00001">白泽</span><strong data-page-node-id="OgoCyLCaYORNWKLRMthZnf">白泽</strong><span class="logo-div" data-page-node-id="BaizeLogoDiv000001"></span><span class="logo-sub" data-page-node-id="BaizeLogoSub000001">零信任 · 运维管理平台</span></div>
+  <div class="who" data-page-node-id="vtGA7YVoOdWhlJU7lESfmJ"><span id="topbarUser" data-page-node-id="TopbarWhoLabel0001">安全管理员 张伟</span><button class="btn ghost sm" type="button" id="btnLogout" data-page-node-id="TopbarLogoutBtn01" title="退出登录并返回登录页">退出登录</button></div>
+</div>
+
+<div class="layout" data-page-node-id="5tGrLN6PdF2dJGy76tPblX">
+  <aside class="side" id="side" data-page-node-id="u2m7BK8ZZnuNR1lB2p9Gdb">
+    <div class="g" data-page-node-id="D1wdBTSSmLiuaUhKsXuF0C">资产管理</div>
+    <div class="mi on" data-pg="pg-list" data-page-node-id="TqADHy8PcLqyG8x5mzEsvb"><span class="ic" data-page-node-id="a89pK9drBDGp2F9l3Smam5">▤</span>资产列表</div>
+    <div class="g" data-page-node-id="ET60aEH8unu5I95PyYhKCO">安全策略</div>
+    <div class="mi" data-pg="pg-asp" data-page-node-id="7swUQJ93EfDByVCwsFoJJ7"><span class="ic" data-page-node-id="WbWsKOZZMsKA09wrFX7uOl">◈</span>资产访问控制策略</div>
+    <div class="mi" data-pg="pg-websec" data-page-node-id="PgWebSecNavItem000A1"><span class="ic" data-page-node-id="PgWebSecNavItem000A2">◉</span>Web 安全防护策略</div>
+    <div class="mi" data-pg="pg-rulelib" data-page-node-id="PgRuleLibNavItem00A1"><span class="ic" data-page-node-id="PgRuleLibNavItem00A2">☰</span>规则库管理</div>
+    <div class="g" data-page-node-id="BaizeNavGrpSecSet001">安全设置</div>
+    <div class="mi" data-pg="pg-cred" data-page-node-id="PgCredNavItem0000A1"><span class="ic" data-page-node-id="PgCredNavItem0000A2">▣</span>凭据托管</div>
+  </aside>
+
+  <div class="main" data-page-node-id="F3BHXnrKSVMffSdAYEeBsw">
+    <div class="crumbs" data-page-node-id="kgTJrYB9yQBWF12r4CAotr">
+      <div id="crumbs" data-page-node-id="IQXCg7hCxqTOGBfs9xzow2"><span class="p">资产管理</span><span class="sep">/</span><span>资产列表</span><span class="sep">/</span><span>资产详情</span></div>
+    </div>
+
+    <div class="wrap" id="wrap" data-page-node-id="FLUo0gdwcQmZPAoUX0qU0B">
+
+      <!-- ============ 资产详情 / 登记 ============ -->
+      <div class="pg on" id="pg-detail" data-page-node-id="jHhAbfa9A31vZIDGPm1yIN">
+        <div class="title-row" data-page-node-id="JawCNDi8EdPhRBILO9tEhB"><h2 id="detTitle" data-page-node-id="7fq3pnjpYumrwC6zVbL9UY">资产详情</h2>
+          <div class="toolbar" data-page-node-id="OxCFnrGHHMMQFWdy8tiNjC">
+            <button class="btn" id="btnBackList" data-page-node-id="F9Eqe5Uzf0GI0Im9o08OAW">← 返回资产列表</button>
+            <button class="btn primary" id="btnEditMeta" title="进入编辑向导：基础信息 / 资源与访问 / 细粒度资源清单 / 代理与上游 / 核对与提交" data-page-node-id="PVJ1w8kuZg7aywL513UaCh">编辑</button>
+            <button class="btn" id="btnGoAsp" title="资产准入策略（属性策略设计器）" data-page-node-id="SgRrLGnArdqzWdzhVlVGSy">准入策略</button>
+            <button class="btn" id="btnGoFg" title="资源级访问要求（按资源协议呈现：L7 作用对象 / 非 L7 目标级）" data-page-node-id="nHeFRj1XUQH8g6qNeilsiK">访问要求</button>
+          </div>
+        </div>
+
+        <!-- 头部状态条 -->
+        <div class="card" data-page-node-id="0DfBg594o1vERGVfQv3IZ9">
+          <div class="card-b" style="display:flex; align-items:center; gap:18px; flex-wrap:wrap" data-page-node-id="dpsZTZNClWVWYhoOpwEOKn">
+            <div data-page-node-id="o8FXVZ1EO6Ve5mZl6ZjZrM"><div class="fld-lg" style="font-size:16px; font-weight:500" id="detName" data-page-node-id="PVqDgrErJl64MY5J3plsUD">—</div>
+              <div class="muted" id="detAddr" data-page-node-id="v8ow7ihb5vMrdDDOM9Hfvx">—</div></div>
+            <span class="tag t-info" id="detType" data-page-node-id="rJmUXQ9Nvi3k2IA21J0HyW">网页应用</span>
+            <span class="lv l3" id="detLv" data-page-node-id="7HvPdrrbO45pWGMYqHQVVe">L3</span>
+            <div style="margin-left:auto; display:flex; align-items:center; gap:20px" data-page-node-id="XDjMqGg8qDs96vEZK2ZTDn">
+              <div class="fld-lg" id="detEnWrap" data-page-node-id="8I7P2hhVCSLFzpvMso4AAS">
+                <span style="margin-right:8px; color:var(--txt2); font-size:13px" data-page-node-id="ndNDF3CinTP64GmoWPkKZQ">资产状态</span>
+                <span class="switch" title="启用=资产在网可访问（含开通无端访问）；停用=整体下线，无端访问编排同步撤销（2 秒内全节点停止放行）" data-page-node-id="gzpI8qm2XVoiE21bF8HsFB"><input type="checkbox" id="swEn" onchange="enSwitch((window._detailAid||CUR),this.checked)" data-page-node-id="klRrXDm19lGNfhnIdNiKzr"><span class="sl" data-page-node-id="ZkxqpoOkq7wxtJEpGXrmte"></span></span>
+                <span id="detEnState" class="tag t-ok" style="margin-left:8px" data-page-node-id="lqhjhZ9RaQL7wmNVNgp6A5">已启用</span>
+              </div>
+              <div class="fld-lg" id="detOpenWrap" data-page-node-id="eZygjI7eb7CBVlISV2FVJd">
+                <span style="margin-right:8px; color:var(--txt2); font-size:13px" data-page-node-id="SK9768F0LhNmXW4VutGEmq">无端访问</span>
+                <span class="switch" title="开启=一键开通无端访问（未配置访问要求前 default deny）；关闭=撤销并清理编排对象（2 秒内全节点收敛）" data-page-node-id="5iyNCpETQtPPrWt0eRFx8h"><input type="checkbox" id="swOpen" onchange="openSwitch((window._detailAid||CUR),this.checked)" data-page-node-id="A0btZACzELcoN4FD67PrOH"><span class="sl" data-page-node-id="tKDxLf2UeBKd1nCR6L38A2"></span></span>
+                <span id="detOpenState" class="tag t-gray" style="margin-left:8px" data-page-node-id="BIbK6typhxE2mVHNUwlBn7">未开通</span>
+                <span id="detOpenAct" style="margin-left:8px" data-page-node-id="BJKh5pAz6G1PURmVLSVfZE"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tabs" id="detTabs" data-page-node-id="8IkTtTvBsGTIHNQ6fz2ICn">
+          <button class="on" data-t="t1" data-page-node-id="wx66AlJDt01QL4765kI8am">基础信息</button>
+          <button data-t="t2" data-page-node-id="WrFq1EXgPkc5h0PfBoh9Zp">地址与访问</button>
+          <button data-t="t3" data-page-node-id="TS33hIknADPt2yAm2ogFuG">细粒度资源清单 <span class="num" id="nPaths" data-page-node-id="KF2VqEbvi7jfu2wJvv1QnC">0</span></button>
+          <button data-t="t4" data-page-node-id="k8cII6EbJrC14MIUfbSFMU">代理与上游</button>
+          <button data-t="t5" data-page-node-id="XHMHK2sHvxDURWMDtpcoSH">访问记录</button>
+        </div>
+
+        <!-- T1 基础信息 -->
+        <div class="tbp on" id="t1" data-page-node-id="pcwZn5Q4YVnK8locz1FcOc">
+          <div class="card" data-page-node-id="ovUoLScfIN8qvZZMd5Kxzz"><div class="card-h" data-page-node-id="AOBDsXpWpQoXAe3pDzkS9c"><h3 data-page-node-id="zcqEDvVXSM6vux4rxEKX77">基础信息</h3><button class="btn sm" onclick="editMeta()" data-page-node-id="oxVI9xDzwcoFeVeKCogK56">编辑</button></div>
+            <div class="card-b" data-page-node-id="zC84lEdVscU88E4XfEmL03">
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 30px" data-page-node-id="Y5WKAEkPk0KhLKQMm8CB2Q">
+                <div class="kv" data-page-node-id="1JgGehrSUqw8BXnvba5H6G"><span class="k" data-page-node-id="pQzeEFO2BHnefm8ZIX6jgq">资产名称</span><b id="mName" data-page-node-id="QJIMfwGBtmznEzfybYQTFb">—</b></div>
+                <div class="kv" data-page-node-id="CFRgLbZPzYu3qGxTevecC6"><span class="k" data-page-node-id="7OuAlvtr7OajOP2MOFMHOc">资产类型</span><b id="mType" data-page-node-id="uDHkLqCPxffujT9V9LHZQJ">网页应用</b><div class="muted" style="grid-column:2" data-page-node-id="QbjvkbNLnhHULwD3B8zwZq">登记后不可直接修改，需重新登记迁移</div></div>
+                <div class="kv" data-page-node-id="Q0mSzE7VvyKgSdgkYfOcEX"><span class="k" data-page-node-id="Z5BAqcmprAxO2uCL0KTIRb">所属部门</span><b id="mDept" data-page-node-id="LCTCBR4x3tAR13n2uur5zF">—</b></div>
+                <div class="kv" data-page-node-id="VBOWdO5v9Plweh9TEkPqRT"><span class="k" data-page-node-id="wycMsAy5f9HABQBX52mE0F">安全等级</span><span id="mLevel" data-page-node-id="VswXM8VMZfYPDOvQGbqMgo"></span><div class="muted" style="grid-column:2" data-page-node-id="ZPlqeGOtbUyKWsAN1hAkuQ">登记属性：按敏感度填写，驱动防护出厂默认，变更入审计</div></div>
+                <div class="kv" data-page-node-id="E7TaN9l7ANVuw2eiW77qkg"><span class="k" data-page-node-id="AGYilebHCbN7LO6MCrnCVL">分组</span><b id="mGrp" data-page-node-id="j6SLtiJFFGAG4JUu0zuVyx">—</b></div>
+                <div class="kv" data-page-node-id="l7bKBe1v1YBWUZoziVVgCR"><span class="k" data-page-node-id="uaUJaK5sAhiQ6ec9KA5bSb">负责人</span><b id="mOwner" data-page-node-id="LGSbDOD17suMiT5nSKCCXq">—</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- T2 地址与访问 -->
+        <div class="tbp" id="t2" data-page-node-id="EK9Hu5ZfKXGGEYjB8dlBqB">
+          <div class="card" id="addrCard" data-page-node-id="f4ksK8fqTZati4f58tuCuB"><div class="card-h" data-page-node-id="hnvx8Rb5hyPHou8tq1L2Cv"><h3 data-page-node-id="RBzJm56zKnGURdXDoYcW15">资源与访问<span class="sub" id="addrCardSub" data-page-node-id="fOl1oiPqltEBz8FFdMql9t">主资源 + 附属资源（每项独立：类型 / 访问协议 / 多节点 / 外部访问地址）</span></h3>
+            <button class="btn sm" id="btnAddRes" data-page-node-id="JZNjbEprYP6Il5J91rA17i">+ 添加资源</button></div>
+            <div class="card-b" id="addrWrap" data-page-node-id="Rq4TkjETBP1JMIfWOOu7c5"></div>
+          </div>
+        </div>
+
+        <!-- T3 细粒度资源清单 -->
+        <div class="tbp" id="t3" data-page-node-id="8oRDvbGKaFALC0YxfCcbYL">
+          <div class="card" data-page-node-id="4D8987nPGzIx6JvCn3RXFo">
+            <div class="card-h" data-page-node-id="tWiEzfdHGBvGbHWMRAVr9n"><h3 data-page-node-id="FQ7Fc2xYTphVIG7cZMW2Uj">细粒度资源清单<span class="sub" data-page-node-id="YDefYggNySxEy1DTKqVgvF">每项资源一份独立清单：登记 名称 / 方法 / 匹配 / 路径 / 版本 / 风险 / 负责人 / 生命周期</span></h3>
+              <div class="toolbar" data-page-node-id="mgs5trFlSs2BL6vpZ2MGLz">
+                <button class="btn sm" id="btnOpenapi" data-page-node-id="mx3jKbrBecVpUX6vjGILru">OpenAPI 导入</button>
+                <button class="btn sm" id="btnSyncApi" data-page-node-id="GCyZY3Epdgatti39j1YU4i">同步</button>
+                <button class="btn sm primary" id="btnAddApi" data-page-node-id="DSpv5ujQAbjH11sDFOCjxH">+ 登记细粒度资源</button>
+                <button class="btn sm" data-go="fg" title="到「资产细粒度访问策略」配置该资源的访问要求（按资源协议呈现）" data-page-node-id="8LhErQiA4FcBEUvNpLzZG3">配置访问要求</button>
+              </div></div>
+            <div class="card-b" data-page-node-id="fHusCVkgWNzacDOUBaUVDM">
+              <div class="toolbar" style="margin-bottom:10px" data-page-node-id="HhPMbGlrMofqBdGmpYl8YF">
+                <div class="input-w" data-page-node-id="0XlYgAXnBhph0L26g28BNO"><input type="search" id="fPathK" placeholder="搜索名称 / 路径（模糊匹配）" style="width:230px" data-page-node-id="wxwRngOStaVVrFXxC5piAR"><i data-page-node-id="t72SuZeGBE8uEGAFi3JrzQ">搜索</i></div>
+                <select id="fPathRes" data-page-node-id="UAX4r7aJa8Mz90jtkIV8OC"><option value="" data-page-node-id="blVDZXNAERWnIKNBbuHLDH">全部资源</option></select>
+                <div class="chips" id="fPathMethod" data-page-node-id="s34rDeK6EBBcReW3RpVfIh"><span class="chip on" data-act="fPathMTog" data-m="">全部方法</span></div>
+                <select id="fPathRisk" data-page-node-id="QbvzD9FaZgzyfZPlqvSA1Q"><option value="" data-page-node-id="8jfxrXtN6XPFamkiDKdzU5">全部风险</option><option data-page-node-id="f1znOxGAnbYceEVhMa3Ad9">低</option><option data-page-node-id="CabSRGXVoE8dLml6cGd4b1">中</option><option data-page-node-id="EiGMi7WvJIPjDQTDiQJuxF">高</option></select>
+                <select id="fPathLc" data-page-node-id="ehFNgsWCcK5RuMWP8Jldqg"><option value="" data-page-node-id="iceLftboGBUXH9DKbXV34k">全部生命周期</option><option data-page-node-id="Rr7RI1EndJ8mtwFBrCPJIC">已激活</option><option data-page-node-id="vvDn3EV1Ni506jcN760zF0">已下线</option></select>
+              </div>
+              <table id="pathTbl" data-page-node-id="i874Lw7AAOhznBNZy7rmjL">
+                <thead data-page-node-id="Uh6u6xZCEcbnv16V5R6Bj8"><tr data-page-node-id="5w5pDcdYFObZBPzT9r1Yqj"><th data-page-node-id="tYtRATFwHHf7LFclAFCxpM">所属资源</th><th data-page-node-id="zYuz9nhk7jxZkxALXITzBv">名称</th><th data-page-node-id="8cAv9PLAUvi5GKGXG9lHyw">方法</th><th data-page-node-id="uDgDl8CTDAjJwlGP13U1I7">规范化路径</th><th data-page-node-id="NGfmvPOlLKPEw85REBz8ED">版本</th><th data-page-node-id="JEdmD99XSuSmNjNSQlB3LB">风险</th><th data-page-node-id="CwSDW6mWUDDshtUhduRgUR">负责人</th><th data-page-node-id="5vtLQRnMBFFgT2FaXI3nSG">生命周期</th><th style="width:120px" data-page-node-id="CBibY4Kqj96UXl5b0MFd6T">操作</th></tr></thead>
+                <tbody data-page-node-id="ZmROtaTkOLYCYhbBj0MAHF"></tbody>
+              </table>
+              <div id="pathPager" data-page-node-id="U7p6RrQDi01ZgXwSUcrKvv"></div>
+            </div>
+          </div>
+        </div>
+        <!-- T4 代理与上游（配置就地可编辑：变更即时写入资产并 2 秒内全节点收敛） -->
+        <div class="tbp" id="t4" data-page-node-id="5JIa04Wh1j0j9S6IFiwUqP">
+          <div class="muted" style="margin:2px 0 12px; line-height:1.6" data-page-node-id="aEC7vC2HMUhZAUbQyTsKPe">上游连接与通道安全（网关 → 资产后端）不参与「谁能访问」判定；浏览器会话无需在此配置资产凭据。</div>
+          <div class="card" id="rwCard" data-page-node-id="d0MWrc68yk055yRWxZGAzD"><div class="card-h" data-page-node-id="dXvXwRnl6sLuB6LmiaCBDG"><h3 data-page-node-id="aPevCof8V8fuFrwaNekBgn">响应地址改写</h3></div>
+            <div class="card-b up-cfg" id="t4RwBody" data-page-node-id="BGIoDru9gRKZgVAGsfOOpp"></div>
+          </div>
+          <div class="card" data-page-node-id="0qx2sa8VXVF7mtxKfhNUlG"><div class="card-h" data-page-node-id="tX6HZEyW6sToxZV6xwMqNI"><h3 data-page-node-id="7sGRDG7zivtA7ZTvGZrqHb">上游认证与凭据处理<span class="sub" data-page-node-id="rv4Wnmyctfi9Y4us8B4YZT">浏览器会话流量不需要资产凭据；本区块针对网关到上游的连接</span></h3></div>
+            <div class="card-b up-cfg" id="t4AuthBody" data-page-node-id="DflUSlz3lYjLqs0mIijnre"></div>
+          </div>
+          <div class="card" data-page-node-id="7XDyEcILvdDa9dtJCb5Jx8"><div class="card-h" data-page-node-id="T9Rzuem4xSBTJP9rByUJf5"><h3 data-page-node-id="spbWmcNwf6aPZfdFFiODIx">目标网段安全校验（防 SSRF / DNS rebinding）</h3></div>
+            <div class="card-b up-cfg" id="t4NetBody" data-page-node-id="nOdWySeu2jI0fvn4nJynmG"></div>
+          </div>
+        </div>
+
+        <!-- T5 访问记录 -->
+        <div class="tbp" id="t5" data-page-node-id="mpp7lOYBe5fDVjlEMAI39s">
+          <div class="card" data-page-node-id="0lOAfkoFksPkdppha0W3wJ"><div class="card-b" data-page-node-id="gNIQxnlfTUDjxHRCKNr43J">
+            <div class="empty" data-page-node-id="D9B7Ajw4gDj8SWIRN22HFB"><div class="big" data-page-node-id="WOScGyfRPZDcElMPsHyXMl">审计检索入口</div><span class="muted" data-page-node-id="ZSXndDf7KrFtOTVMBBHKKf">该资产的命中 / 风险事件与访问日志在「审计中心」按资产检索（带资产筛选），本页为跳转入口</span></div>
+            <div class="bar" style="justify-content:center" data-page-node-id="iTMvjMySbIpBiJYbp9isfs"><button class="btn" onclick="toast('原型：跳转审计中心 · 资产命中/风险事件与访问日志（演示）')" data-page-node-id="JyOZlSJKHidfUcXuRMCfHs">查看命中 / 风险事件</button>
+            <button class="btn" onclick="toast('原型：跳转审计中心 · 结构化访问日志（演示）')" data-page-node-id="gcy8g6GhhbXeNlfEsgFwaR">查看访问日志</button></div>
+          </div></div>
+        </div>
+      </div>
+
+    </div><!-- /wrap -->
+    <div class="foot" data-page-node-id="Ummxs6gmfUVrebPZlp0Oic">
+      <span data-page-node-id="CRR6GT39LjCxUc1deprNk9">资产管理原型（演示数据 · 交互示意）</span>
+      <span style="display:flex;align-items:center;gap:14px">      <span class="hint" id="footHint" data-page-node-id="1tl2DDBVliGV5HiQeFShkB"></span><button class="btn link" type="button" onclick="resetDemo()" title="清除浏览器本地保存的演示改动，恢复初始演示数据" style="font-size:12.5px">重置演示数据</button></span>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 弹窗区 ================= -->
+<div class="dlg-bg" id="dlg1" data-page-node-id="2sfHbfSXMtDaZYa6JThbCI">
+  <div class="dlg" data-page-node-id="95Feska6HmuAv1YbBbuP99">
+    <h4 id="dlg1Title" data-page-node-id="Zb9nrbG3yOZffKOyBXyvvO">标题</h4>
+    <div class="msg" id="dlg1Msg" data-page-node-id="fut4Px6U0KfCUbhHzYTPsH"></div>
+    <div id="dlg1Body" data-page-node-id="D4kRbAEXmnjoO5jp6giuHO"></div>
+    <div class="ops" data-page-node-id="ZwiAhnIlXIhFMdIb5ZKXME">
+      <button class="btn" id="dlg1No" data-page-node-id="wzSHznH29RGEkLVUQe7uTz">取消</button>
+      <button class="btn primary" id="dlg1Ok" data-page-node-id="GlMhdT85nhpOs2ziQP5jUo">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" data-page-node-id="L6dfBqdzJsZRzMPy9iSoeN"></div>
+
+<!-- 通用确认弹窗（二次确认 / 危险操作 · 安全策略模块） -->
+<div class="dlg-bg" id="dlgCfm" data-page-node-id="6adJ0CvQ4tiWvmWJFu5XyS">
+  <div class="dlg lg" style="width:720px" data-page-node-id="mk1Z3QfcPYWSvctOS9EGaO">
+    <h4 id="cfmTitle" data-page-node-id="C2oB0pUuNVyTE1PVzw8TA9">确认</h4>
+    <div class="msg" id="cfmMsg" data-page-node-id="d3tiUFpH7q23YxVCfYzFgF"></div>
+    <div id="cfmBody" data-page-node-id="JTEfRtdmcspj3zQg6dv69S"></div>
+    <div class="ops" style="margin-top:16px" data-page-node-id="hLIrUwQRr7maqlZzzb3apM">
+      <button class="btn" data-act="cfmNo" data-page-node-id="cmCuIuCWBtL5A54DmBQinV">取消</button>
+      <button class="btn primary" id="cfmYes" data-act="cfmYes" data-page-node-id="X1owFvtMPjB672V9dtbby2">确认</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
