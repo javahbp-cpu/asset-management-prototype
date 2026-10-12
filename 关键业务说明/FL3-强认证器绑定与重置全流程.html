@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FL3 · 强认证器绑定与重置全流程 — 白泽运维管理平台原型</title>
+<link rel="stylesheet" href="../assets/proto.css">
+<script>
+(function(){try{
+  if(localStorage.getItem("baize.assetmgmt.session.v1"))return;
+  var b=(location.pathname.split("/").pop()||"index.html")+location.search+location.hash;
+  location.replace("../login.html?back="+encodeURIComponent("关键业务说明/"+b));
+}catch(e){}})();
+</script>
+</head>
+<body>
+<div class="spec-page">
+
+<header class="spec-hero">
+  <div class="wrap">
+    <span class="no">关键业务流程图 FL3</span>
+    <h1>强认证器绑定与重置全流程</h1>
+    <p class="sub">强认证器从登记到重置的全过程：登记须由已认证会话发起、challenge 一次性消费、吊销按凭据 ID 执行、全不可用时的管理员重置通道。</p>
+    <div class="meta"><span>依据 <b>强认证器绑定管理</b></span><span>对应页面 <b>强认证器绑定管理</b></span><span>登记须<b>已认证会话</b></span></div>
+    <a class="back" href="../index.html">&larr; 返回原型索引</a>
+  </div>
+</header>
+
+<main class="spec-body">
+<p class="lead">强认证器（设备生物因素 / 活体人脸 / USB Key / passkey）是 L4~L5 高强度认证的载体。它的登记、吊销与重置都带<b>身份核验前置</b>要求，这是它与普通凭据最大的不同。</p>
+<section class="spec-sec">
+  <h2><span class="n">1</span> 主干步骤 · 登记</h2>
+<div class="fx-line"><span class="fx-node">已认证会话发起</span><span class="fx-arw"><svg viewBox="0 0 14 9" fill="none"><path d="M0 4.5h11.4M8.6 1.5l3.4 3-3.4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="fx-node">取一次性 challenge</span><span class="fx-arw"><svg viewBox="0 0 14 9" fill="none"><path d="M0 4.5h11.4M8.6 1.5l3.4 3-3.4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="fx-node">本机完成核验</span><span class="fx-arw"><svg viewBox="0 0 14 9" fill="none"><path d="M0 4.5h11.4M8.6 1.5l3.4 3-3.4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="fx-node">提交公钥与凭据</span><span class="fx-arw"><svg viewBox="0 0 14 9" fill="none"><path d="M0 4.5h11.4M8.6 1.5l3.4 3-3.4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="fx-node">绑定到用户</span><span class="fx-arw"><svg viewBox="0 0 14 9" fill="none"><path d="M0 4.5h11.4M8.6 1.5l3.4 3-3.4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="fx-node">置为有效</span></div><div class="spec-note"><svg class="ni" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 11.2v5M12 7.6v.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg><div><b>登记必须由已认证会话发起</b> —— <b>禁止匿名登记</b>。这是防止攻击者抢先为他人登记认证器的关键前置。</div></div><div class="fx"><div class="fx-step"><span class="fx-n">1</span><div class="fx-m"><div class="fx-t"><b>已认证会话发起</b><span class="fx-r">用户</span></div><p class="fx-d">用户已在平台完成一次有效认证，登记动作在<b>该会话内</b>发起。未经认证的请求<b>直接拒绝</b>，不进入后续任何环节。</p></div></div><div class="fx-step"><span class="fx-n">2</span><div class="fx-m"><div class="fx-t"><b>取一次性 challenge</b><span class="fx-r">平台 → 客户端</span></div><p class="fx-d">平台下发 <code>challenge</code>。⚠ <b>challenge 一次性消费</b>：无论后续成功或失败，<b>立即作废，不可复用</b>。</p></div></div><div class="fx-step"><span class="fx-n">3</span><div class="fx-m"><div class="fx-t"><b>本机完成核验</b><span class="fx-r">用户 + 认证器</span></div><p class="fx-d">在终端本机完成生物核验 / 人脸活体 / USB Key 触碰。<b>生物特征不出本机</b>，平台侧只收到签名结果。</p></div></div><div class="fx-step"><span class="fx-n">4</span><div class="fx-m"><div class="fx-t"><b>提交公钥与凭据</b><span class="fx-r">客户端 → 平台</span></div><p class="fx-d">提交认证器<b>公钥</b>、凭据类型（<b>绑定型</b> / <b>可同步凭据</b>）、RP ID 与登记设备标识。</p></div></div><div class="fx-step"><span class="fx-n">5</span><div class="fx-m"><div class="fx-t"><b>绑定到用户</b><span class="fx-r">平台</span></div><p class="fx-d">把该认证器绑定到发起会话的<b>该用户</b>。绑定关系是一对多（一个用户可多枚）。</p></div></div><div class="fx-step"><span class="fx-n">6</span><div class="fx-m"><div class="fx-t"><b>置为有效</b><span class="fx-r">平台</span></div><p class="fx-d">记录安全级别（L4 / L5）、凭据类型、登记时间与登记设备，状态置<b>有效</b>。</p></div></div></div>
+</section>
+<section class="spec-sec">
+  <h2><span class="n">2</span> 主干步骤 · 吊销与重置</h2>
+<div class="fx-line"><span class="fx-node">管理员吊销</span><span class="fx-arw"><svg viewBox="0 0 14 9" fill="none"><path d="M0 4.5h11.4M8.6 1.5l3.4 3-3.4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="fx-node">按凭据 ID 执行</span><span class="fx-arw"><svg viewBox="0 0 14 9" fill="none"><path d="M0 4.5h11.4M8.6 1.5l3.4 3-3.4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="fx-node">置为已吊销</span><span class="fx-split">或</span><span class="fx-node">管理员重置</span><span class="fx-arw"><svg viewBox="0 0 14 9" fill="none"><path d="M0 4.5h11.4M8.6 1.5l3.4 3-3.4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="fx-node">核验身份</span><span class="fx-arw"><svg viewBox="0 0 14 9" fill="none"><path d="M0 4.5h11.4M8.6 1.5l3.4 3-3.4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="fx-node">吊销该用户全部凭据</span></div><div class="fx"><div class="fx-step"><span class="fx-n">1</span><div class="fx-m"><div class="fx-t"><b>管理员吊销（单枚）</b><span class="fx-r">安全管理员</span></div><p class="fx-d">吊销指定的一枚认证器。<b>吊销后立即失效</b>，用户须重新登记。</p></div></div><div class="fx-step"><span class="fx-n">2</span><div class="fx-m"><div class="fx-t"><b>按凭据 ID 执行</b><span class="fx-r">平台</span></div><p class="fx-d">⚠ 若为<b>可同步凭据</b>（如 passkey），<b>按凭据 ID 单独执行、不依赖设备状态</b> —— 不能因为「设备还在」就认为凭据仍可用。</p></div></div><div class="fx-step"><span class="fx-n">3</span><div class="fx-m"><div class="fx-t"><b>管理员重置（全部）</b><span class="fx-r">安全管理员</span></div><p class="fx-d">当某用户<b>全部认证器均不可用</b>时走此通道：经<b>身份核验</b>后，吊销该用户<b>全部 WebAuthn 凭据</b>并允许重新登记。</p></div></div><div class="fx-step"><span class="fx-n">4</span><div class="fx-m"><div class="fx-t"><b>重置全程入审计</b><span class="fx-r">平台</span></div><p class="fx-d"><b>重置是高风险动作</b>：核验方式、操作人、目标用户、处置结果全部记审计。</p></div></div></div><div class="fx-branch"><div class="fb-h">分支与失败</div><div class="fb-rows"><div class="fb-row no"><em>未经认证的会话发起登记</em><span><b>拒绝</b>；不生成 challenge</span></div><div class="fb-row no"><em>challenge 已消费 / 过期 / 不匹配</em><span>拒绝；<b>challenge 不可复用</b></span></div><div class="fb-row no"><em>本机核验失败</em><span>登记失败；无凭据写入</span></div><div class="fb-row no"><em>重复登记同一凭据</em><span>幂等识别并拒绝（同一凭据 ID 不得绑两次）</span></div><div class="fb-row keep"><em>可同步凭据在多设备出现</em><span>按<b>凭据 ID</b> 统一管理；吊销一次即全端失效</span></div><div class="fb-row keep"><em>用户仍有其它可用认证器</em><span>管理员重置<b>不应</b>被使用；优先走单枚吊销</span></div></div></div>
+</section>
+<section class="spec-sec">
+  <h2><span class="n">3</span> 认证器属性与约束</h2>
+<div class="spec-wrap"><table class="spec-table"><thead><tr><th>属性</th><th>取值</th><th>说明</th></tr></thead><tbody><tr><td>认证器类型</td><td>设备生物因素（指纹）/ 活体人脸 / USB Key / passkey</td><td>决定核验方式与可携带性</td></tr><tr><td>凭据类型</td><td><b>绑定型</b> / <b>可同步凭据</b></td><td><b>可同步凭据</b>会跨设备存在，吊销须按凭据 ID 执行</td></tr><tr><td>安全级别</td><td>L4 / L5</td><td><b>仅 L4 / L5 可置位抗钓鱼</b>；抗钓鱼是方式的内生属性</td></tr><tr><td>RP ID</td><td>如 <code>baize.example.com</code></td><td>绑定域名；更换域名须重新登记</td></tr><tr><td>登记设备</td><td>终端标识</td><td>用于审计溯源，<b>不作为吊销的唯一依据</b></td></tr></tbody></table></div><div class="spec-note warn"><svg class="ni" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 11.2v5M12 7.6v.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg><div>「<b>认证方式字典</b>」中的 L4 / L5 方式，其实际可用性取决于用户是否已完成认证器登记 —— 字典回答「有哪些方式」，本页回答「这个用户此刻能否用」。</div></div><div class="spec-ref"><b>依据：</b><b>强认证器绑定管理页</b>（登记 / 吊销 / 重置）；<b>认证方式字典页</b>（L4~L5 与抗钓鱼属性）　登记须<b>已认证会话</b>；challenge <b>一次性</b></div>
+</section>
+<section class="spec-sec">
+  <h2><span class="n">4</span> 登记前置与作用域约束</h2>
+<ul><li><b>登记前置与安全约束</b>：① <b>必须由已认证会话发起</b>（禁止匿名登记）；② <b>challenge 一次性</b>（平台生成、一次性消费、与注册记录绑定，随机位数 ≥128 bit，未消费记录 TTL ≤5 分钟）；③ <b>fail-closed</b>（策略要求 L4 及以上而认证器不可用或未注册时，结果为<b>拒绝</b>，不静默回退）；④ <b>错误响应不暴露内部信息</b>（不暴露认证器型号、凭据 ID）；⑤ <b>RP ID 校验</b>（认证器因 RP ID 不符拒绝签名，平台不产生认证记录；资产外部域不参与 RP ID 判定）。</li><li><b>RP ID 是认证器凭据的作用域</b>（不属于绑定项）：取发起认证 origin 的<b>可注册域名（eTLD+1）</b>，须为 origin 的域名后缀且<b>非公共后缀</b>；同一 RP ID 下的子域<b>共享凭据集合</b>，不得跨 eTLD 混用；<b>平台主域变更须按新 RP ID 重新登记</b>。</li><li><b>绑定项三项</b>：用户 / 安全级别 / 凭据绑定属性（默认按绑定型登记）。启用可同步凭据（passkey）时须标注其<b>可漫游属性</b>，吊销<b>按凭据 ID 单独执行并即时失效</b>，不依赖设备状态。「凭据绑定属性」列描述的是<b>凭据自身可否随账号漫游</b>，与「认证方式」（凭据的种类：指纹 / USB Key / 活体人脸…）<b>不是同一维度</b>。</li><li><b>多枚冗余与恢复</b>：同一用户可登记<b>多枚</b>认证器（同级别多枚、跨级别多枚），天然构成冗余 —— 单枚不可用不影响其余凭据继续认证；只有<b>全部不可用</b>时才走<b>身份核验后的管理员重置</b>（吊销该用户全部认证器凭据并允许重新登记，<b>全程记审计</b>）。</li></ul>
+</section>
+</main>
+
+<nav class="spec-foot">
+  <a href="FL2-凭据全生命周期全流程.html">&larr; FL2 · 凭据全生命周期全流程</a>
+  <span class="sp">关键业务流程图 FL1~FL3 · 身份与认证模块 · 共 3 篇</span>
+  <span></span>
+</nav>
+
+</div>
+</body>
+</html>

@@ -8,7 +8,7 @@
 <script data-page-node-id="PreLogin0000000001">
 (function(){try{
   if(!localStorage.getItem("baize.assetmgmt.session.v1"))return;
-  var OK=["index.html","asset-detail.html","asset-edit.html","cred-hosting.html","access-policy.html","fine-grained.html","access-requirement.html","web-security-policy.html","rate-limit-policy.html","request-constraint.html","rule-library.html"];
+  var OK=["index.html","asset-detail.html","asset-edit.html","cred-hosting.html","auth-workbench.html","auth-source.html","auth-dict.html","auth-scenario.html","bio-binding.html","machine-agent.html","sso-provisioning.html","identity-adapt.html","access-policy.html","fine-grained.html","access-requirement.html","web-security-policy.html","rate-limit-policy.html","request-constraint.html","rule-library.html"];
   var b=new URLSearchParams(location.search).get("back")||"";
   var f=b.split("?")[0].split("#")[0];
   location.replace(OK.indexOf(f)>=0?b:"index.html");
@@ -114,7 +114,7 @@
 </div>
 
 <!-- ================= 弹窗区 ================= -->
-<div class="dlg-bg" id="dlg1" data-page-node-id="2sfHbfSXMtDaZYa6JThbCI">
+<div class="dlg-bg" id="dlg1" role="dialog" aria-modal="true" aria-labelledby="dlg1Title" data-page-node-id="2sfHbfSXMtDaZYa6JThbCI">
   <div class="dlg" data-page-node-id="95Feska6HmuAv1YbBbuP99">
     <h4 id="dlg1Title" data-page-node-id="Zb9nrbG3yOZffKOyBXyvvO">标题</h4>
     <div class="msg" id="dlg1Msg" data-page-node-id="fut4Px6U0KfCUbhHzYTPsH"></div>
@@ -126,7 +126,7 @@
   </div>
 </div>
 
-<div class="toast" id="toast" data-page-node-id="L6dfBqdzJsZRzMPy9iSoeN"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" data-page-node-id="L6dfBqdzJsZRzMPy9iSoeN"></div>
 
 <!-- 通用确认弹窗（二次确认 / 危险操作 · 安全策略模块） -->
 <div class="dlg-bg" id="dlgCfm" data-page-node-id="6adJ0CvQ4tiWvmWJFu5XyS">
@@ -148,7 +148,7 @@
   var q = new URLSearchParams(location.search);
   var back = q.get("back") || "";
   /* back 白名单（防开放重定向）：非白名单一律回退 index.html（白名单见 build.js 的 BACK_OK）。 */
-  var BACK_OK = ["index.html","asset-detail.html","asset-edit.html","cred-hosting.html","access-policy.html","fine-grained.html","access-requirement.html","web-security-policy.html","rate-limit-policy.html","request-constraint.html","rule-library.html"];
+  var BACK_OK = ["index.html","asset-detail.html","asset-edit.html","cred-hosting.html","auth-workbench.html","auth-source.html","auth-dict.html","auth-scenario.html","bio-binding.html","machine-agent.html","sso-provisioning.html","identity-adapt.html","access-policy.html","fine-grained.html","access-requirement.html","web-security-policy.html","rate-limit-policy.html","request-constraint.html","rule-library.html"];
   var safeBack = (function(){ var f = back.split("?")[0].split("#")[0]; return BACK_OK.indexOf(f) >= 0 ? back : "index.html"; })();
   /* 已登录态：登录页立即回跳（与 <head> 的 PRELOGIN 双保险——localStorage 不可用时 PRELOGIN 静默放过，
      这里再用内存兜底的 getSession() 判一次；否则已登录用户会看到登录页，误以为掉登录态）。 */
@@ -158,7 +158,11 @@
                "cred-hosting.html":"凭据托管", "access-policy.html":"资产访问控制策略",
                "fine-grained.html":"资产细粒度访问策略", "access-requirement.html":"设置访问要求",
                "web-security-policy.html":"Web 防护（WAF）", "rate-limit-policy.html":"集群级限流",
-               "request-constraint.html":"请求约束", "rule-library.html":"规则库管理" };
+               "request-constraint.html":"请求约束", "rule-library.html":"WAF 规则库管理",
+               "auth-workbench.html":"认证场景工作台", "auth-source.html":"认证源",
+               "auth-dict.html":"认证能力字典", "auth-scenario.html":"认证策略与场景",
+               "bio-binding.html":"生物识别绑定", "machine-agent.html":"机器与智能体身份",
+               "sso-provisioning.html":"免认证访问", "identity-adapt.html":"身份适配" };
   function setAlert(kind, title, msg){
     var box = $("#lgAlert");
     if (!kind) { box.hidden = true; box.innerHTML = ""; return; }

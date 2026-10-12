@@ -16,12 +16,48 @@ const PG_FILE = {
   "pg-websec": "web-security-policy.html",
   "pg-rate": "rate-limit-policy.html", "pg-reqcon": "request-constraint.html",
   "pg-rulelib": "rule-library.html",
+  /* 2026-09-29：原「认证族」7 页已从本原型撤除，改由全新的「身份」「认证」两模块承接。
+     2026-09-30：身份适配不再是独立页 —— 它是「资产详情 / 资产编辑」的页签（t6），
+     随资产对象走，故此处不留条目（唯一配置面 = 资产详情的身份适配页签）。 */
+  /* 2026-09-29：新增「身份」6 页 —— 用户 / 终端 / 客户端软件 / 客户端实例 /
+     智能体软件 / 智能体实例。粒度口径：软件级登记（软件 + 版本列表）与
+     实例级注册（终端 + License 证书）是两个层级，勿混。 */
+  "pg-iduser": "identity-user.html",
+  "pg-idterm": "identity-terminal.html",
+  "pg-idcsw": "identity-clientsw.html",
+  "pg-idcin": "identity-clientinst.html",
+  "pg-idagsw": "identity-agentsw.html",
+  "pg-idagin": "identity-agentinst.html",
+  /* 2026-09-29：新增「认证」6 页 —— 方式字典 / 认证源 / 网关凭据托管 /
+     用户代填账号托管 / 签发凭据管理 / 强认证器绑定管理。 */
+  "pg-audict": "auth-dict.html",
+  "pg-ausrc": "auth-source.html",
+  "pg-auusercred": "auth-user-cred.html",
+  "pg-auissue": "auth-issue.html",
+  "pg-auauthr": "auth-authenticator.html",
+  /* 2026-09-30：新增「动态防护」3 页（二期口径第一批）—— 防护总览 / 防护策略 / 行为基线；
+     另有公共页「风险事件告警」（pg-alert，覆盖各防护域，不属动态防护模块）。
+     2026-10-08：增第 4 页「对抗能力」（pg-dparms）—— 二期 F1.1 / F1.2 的参数面与效果面。 */
+  "pg-dpov": "dp-overview.html",
+  "pg-dppol": "dp-policy.html",
+  "pg-dpbase": "dp-baseline.html",
+  "pg-dparms": "dp-arms.html",
+  "pg-alert": "alert-events.html",
   "pg-login": "login.html"
 };
 const DEMO_KEY = "baize.assetmgmt.demo.v1";
+/* ★ 2026-10-10（R27）：演示数据版本 —— **改动本段种子（ASSETS / POLICIES / CRED_LIST / CA_LIST /
+   MTLS_LIST）必须同轮递增**。原 `saveDemoState` 已写 `schema` 却**无人读**（旧注释称「供将来
+   迁移分叉」）⇒ 改种子后旧档照样覆盖，用户始终看到改前的数据。此处与认证段（au-*）/ 身份段
+   （id-*）/ 动态防护段（DP_VER）的判版纪律对齐：`loadDemoState` 遇版本不符即**整档丢弃**、
+   回落当前种子（与「重置演示数据」同效）。 */
+const DEMO_SCHEMA = 2;
 
 /* 跨页跳转的唯一出口：先落盘演示数据，再改地址栏。
-   —— 「资产列表 / 详情 / 向导 / 凭据托管 / 策略族（含 Web 安全防护策略的三子页）/ 规则库」之间的一切切换都经过这里。 */
+   —— 「资产列表 / 详情 / 向导 / 网关凭据托管 / 策略族（含 Web 安全防护策略的三子页）/ 规则库」
+       之间的一切切换都经过这里。
+   2026-09-29：原「认证族」7 页从本原型撤除，改由「身份」「认证」两模块承接；
+   2026-09-30：身份适配由独立页改为**资产详情页签（t6）**，不再经此处跨页跳转。 */
 function goPage(id, params) {
   saveDemoState();
   let url = PG_FILE[id] || "index.html";
@@ -38,9 +74,20 @@ function markBad(id, on) {
   const e = typeof id === "string" ? document.getElementById(id) : id;
   if (!e) return;
   e.classList.toggle("bad", !!on);
+  /* ★ 2026-10-10（R13）：错误态此前只有 .bad 红框（纯视觉）⇒ 读屏用户无感，补 aria-invalid。 */
+  try { if (on) { e.setAttribute("aria-invalid", "true"); } else { e.removeAttribute("aria-invalid"); } } catch (_e1) { /* 忽略 */ }
   if (on) {
-    e.addEventListener("input", () => e.classList.remove("bad"), { once: true });
-    if (e.focus) { try { e.focus(); } catch (_e) { /* 元素不可聚焦：忽略 */ } }
+    /* ★ 2026-10-10（R14）：一次性监听原先只清 .bad 红框、**不清 aria-invalid** ⇒ 用户已改正，
+       读屏仍在该字段上持续播报「无效」。清除路径必须与设置路径成对。 */
+    e.addEventListener("input", () => { e.classList.remove("bad"); try { e.removeAttribute("aria-invalid"); } catch (_e2) { /* 忽略 */ } }, { once: true });
+    /* ★ 2026-10-11（R17）：一轮校验里多字段同时标红时，原实现每个 markBad 都 focus() ⇒ 焦点停在
+       **最后一个**失败字段，用户自上而下修表要先 Shift+Tab 退回。改为「同轮只聚焦首个失败字段」：
+       布尔锁在下一个宏任务（即用户下一次操作之前）自动释放。 */
+    if (e.focus && !window.__mbFocusLock) {
+      window.__mbFocusLock = 1;
+      try { e.focus(); } catch (_e) { /* 元素不可聚焦：忽略 */ }
+      setTimeout(function () { window.__mbFocusLock = 0; }, 0);
+    }
   }
 }
 window.markBad = markBad;
@@ -85,7 +132,7 @@ window.doLogout = doLogout;
 function saveDemoState() {
   try {
     localStorage.setItem(DEMO_KEY, JSON.stringify({
-      schema: 1,
+      schema: DEMO_SCHEMA,
       ASSETS, POLICIES, CRED_LIST, CA_LIST, MTLS_LIST,
       detailAid: window._detailAid || "",
       curAcl: CUR_ACL,
@@ -100,6 +147,9 @@ function loadDemoState() {
   let s = null;
   try { s = JSON.parse(localStorage.getItem(DEMO_KEY) || "null"); } catch (e) { s = null; }
   if (!s) return;
+  /* ★ 2026-10-10（R27）：判版 —— 旧档（无 schema）或版本不符一律丢弃，回落当前种子。
+     否则改了本段种子（如给资产新增 `_adapt` 契约）也会被旧快照盖掉，改动等于没改。 */
+  if (s.schema !== DEMO_SCHEMA) return;
   try {
     if (Array.isArray(s.ASSETS)) ASSETS.splice(0, ASSETS.length, ...s.ASSETS);
     if (s.POLICIES && typeof s.POLICIES === "object") { Object.keys(POLICIES).forEach(k => delete POLICIES[k]); Object.assign(POLICIES, s.POLICIES); }
@@ -143,7 +193,7 @@ function loadDemoState() {
 /* 重置演示数据（页脚提供入口）：清快照并回资产列表。
    2026-09-21：新增页（Web 安全防护策略族三子页共用一个 key / 规则库管理一个 key）的演示改动
    各自落独立 key，一并清除，避免「重置」后新页仍留改动。 */
-function resetDemo() { try { localStorage.removeItem(DEMO_KEY); localStorage.removeItem("baize.assetmgmt.websec.v1"); localStorage.removeItem("baize.assetmgmt.rulelib.v1"); } catch (e) {} location.href = "index.html"; }
+function resetDemo() { try { localStorage.removeItem(DEMO_KEY); localStorage.removeItem("baize.assetmgmt.websec.v1"); localStorage.removeItem("baize.assetmgmt.rulelib.v1"); localStorage.removeItem("baize.assetmgmt.dp.v1"); localStorage.removeItem("baize.assetmgmt.auth.v1"); localStorage.removeItem("baize.assetmgmt.identity.v1"); } catch (e) {} location.href = "index.html"; }
 window.resetDemo = resetDemo;
 
 /* ==========================================================================
@@ -165,6 +215,8 @@ function showPage(id){
   $$("#side .mi").forEach(m=>m.classList.toggle("on", m.dataset.pg===id || ((id==="pg-detail"||id==="pg-edit") && m.dataset.pg==="pg-list")));
   _cur=id;
   window.scrollTo(0,0);
+  /* ★ 2026-10-10（R15）：侧栏当前项须同步 `aria-current`（见上方 __sideMarkCur）。 */
+  try { if (window.__sideMarkCur) window.__sideMarkCur(); } catch (_esc) { /* 忽略 */ }
 }
 $$("#side .mi").forEach(m=>m.addEventListener("click",()=>{
   const id=m.dataset.pg;
@@ -174,6 +226,47 @@ $$("#side .mi").forEach(m=>m.addEventListener("click",()=>{
   document.getElementById("crumbs").innerHTML=`<span class="p">${gEl?gEl.textContent.trim():""}</span><span class="sep">/</span><span>${m.textContent.replace(m.querySelector(".ic").textContent,"").trim()}</span>`;
   showPage(id);
 }));
+/* ★ 2026-10-10（R14）：侧栏菜单项**键盘不可达** —— `.mi` 是无 tabindex 的 div，纯键盘用户无法经
+   侧栏在页面间导航。只补 tabindex/role 与 Enter/Space → click()；菜单项原有 click 处理器
+   （本处及各页自行绑定的）**原样复用**，不新增第二条执行链路。 */
+$$("#side .mi").forEach(m=>{
+  if(m.getAttribute("tabindex")==null) m.setAttribute("tabindex","0");
+  if(!m.getAttribute("role")) m.setAttribute("role","button");
+  m.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); m.click(); } });
+});
+/* ★ 2026-10-10（R15）：R14 让侧栏可聚焦后，**导航地标仍然缺失** —— `#side` 不是 `role="navigation"`、
+   `.main` 不是 `role="main"`、当前项无 `aria-current`、也没有「跳到正文」。实测每页要按 22 次 Tab
+   才到正文首个控件（`tabBeforeMain:22`）。此处一次性补齐（**不改六外壳**）。 */
+try {
+  var _side = document.getElementById("side");
+  if (_side) {
+    if (!_side.getAttribute("role")) _side.setAttribute("role", "navigation");
+    if (!_side.getAttribute("aria-label")) _side.setAttribute("aria-label", "主导航");
+  }
+  var _mainEl = document.querySelector(".main");
+  if (_mainEl && !_mainEl.getAttribute("role")) _mainEl.setAttribute("role", "main");
+  /* 当前项 `aria-current`：`.on` 由 showPage 翻转，故做成可重入函数、由 showPage 调用。 */
+  window.__sideMarkCur = function () {
+    $$("#side .mi").forEach(function (m) {
+      if (m.classList.contains("on")) m.setAttribute("aria-current", "page");
+      else m.removeAttribute("aria-current");
+    });
+  };
+  window.__sideMarkCur();
+  if (!document.getElementById("skipMain")) {
+    var _sk = document.createElement("a");
+    _sk.id = "skipMain"; _sk.href = "#";
+    _sk.textContent = "跳到正文";
+    _sk.addEventListener("click", function (e9) {
+      e9.preventDefault();
+      var m9 = document.querySelector(".main"); if (!m9) return;
+      if (!m9.getAttribute("tabindex")) m9.setAttribute("tabindex", "-1");
+      try { m9.focus(); } catch (_ex) { /* 忽略 */ }
+      try { m9.scrollIntoView(); } catch (_ey) { /* 忽略 */ }
+    });
+    document.body.insertBefore(_sk, document.body.firstChild);
+  }
+} catch (_esz) { /* 忽略 */ }
 let toastTimer;
 function toast(msg){const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),2600);}
 /* R17 复位写在打开时：调用方随后按需覆盖文案与处理器。此前 #dlg1Ok 的文案被「关闭会话」改写之后
@@ -189,18 +282,113 @@ function openDlg(title,msg,bodyHtml,size){
   try {
     $("#dlg1Body").querySelectorAll(".fld").forEach(function(f){
       var lb=f.querySelector("label"), ct=f.querySelector("input,select,textarea");
-      if(!lb||!ct||lb.contains(ct)||lb.htmlFor) return;
-      if(!ct.id) ct.id="dlgfld-"+Math.random().toString(36).slice(2,8);
-      lb.htmlFor=ct.id;
+      if(!lb||!ct) return;
+      if(!lb.contains(ct)&&!lb.htmlFor){
+        if(!ct.id) ct.id="dlgfld-"+Math.random().toString(36).slice(2,8);
+        lb.htmlFor=ct.id;
+      }
+      /* ★ 2026-10-10（R13）：标了 <span class="req">*</span> 的必填项补 required / aria-required ——
+         此前「必填」只是视觉标记，无障碍树上并非必填（读屏不播报）。 */
+      if(lb.querySelector(".req") && !ct.disabled){
+        ct.setAttribute("aria-required","true");
+        if(ct.tagName==="INPUT"||ct.tagName==="TEXTAREA"){ try{ ct.required=true; }catch(_e4){} }
+      }
     });
   } catch(_e) {}
+  /* ★ 2026-10-11（R17）：判脏基线改为**交互标记**（见 dlg1Dirty）—— 每次开窗清零。
+     不用「打开时的取值快照」：多个入口（ucNew 的 auOwnerSync、isIssue 的 isKindSync/isCnSync）
+     在 openDlg 之后**同步重写**控件取值/选项，快照当场失真 ⇒ 未动过的表单被误判为「已填写」。 */
+  window.__dlgDirty0 = 0;
+  /* ★ 2026-09-30（第十七轮 · 无障碍）：记录触发元素，关闭时归还焦点 ——
+     只在「弹窗原本未打开」时记录，避免弹窗内重开（步骤切换）把记录覆盖成已销毁的节点。 */
+  try { if (!$("#dlg1").classList.contains("show")) window.__dlgPrevFocus = document.activeElement; } catch(_e) {}
   $("#dlg1").classList.add("show");
-  /* 无障碍（第十九轮）：打开弹窗即把焦点移入首个可编辑控件（此前需手动 Tab 进来）。 */
-  try { var _f0=$("#dlg1Body").querySelector("input:not([readonly]),select,textarea"); if(_f0&&_f0.focus) _f0.focus(); } catch(_e) {}
+  /* ★ 2026-10-10（R15）：R14 给 `#dlg1Body` 加了独立滚动（`max-height:68vh; overflow:auto`）后，
+     容器本身**不可键盘滚动**（`bodyTabindex:null`）—— 焦点在 `.ops` 按钮上时 PageDown 无效，
+     纯键盘用户只能靠 Tab 间接滚动。仅当内容**确实溢出**时补 `tabindex="0"`（须在 `.show` 之后测，
+     隐藏时 `scrollHeight` 恒 0）。 */
+  try {
+    var _bd = $("#dlg1Body");
+    _bd.removeAttribute("tabindex");
+    if (_bd.scrollHeight > _bd.clientHeight + 1) _bd.setAttribute("tabindex", "0");
+  } catch (_ebd) { /* 忽略 */ }
+  /* 无障碍（第十九轮）：打开弹窗即把焦点移入首个可编辑控件（此前需手动 Tab 进来）。
+     ★ 2026-10-10（R13）：**无任何可编辑控件**的纯消息弹窗（如「不可删除」「源未启用」）此前
+     焦点根本不进入弹窗（留在触发按钮 / body），键盘用户要先穿过整页才能到弹窗按钮
+     ⇒ 无控件时回退聚焦主按钮 #dlg1Ok。 */
+  try {
+    var _f0=$("#dlg1Body").querySelector("input:not([readonly]),select,textarea");
+    if(!_f0){ var _ok0=$("#dlg1Ok"); if(_ok0 && !_ok0.disabled) _f0=_ok0; }
+    if(_f0&&_f0.focus) _f0.focus();
+  } catch(_e) {}
 }
-function closeDlg(){$("#dlg1").classList.remove("show"); window._nbOps=0; window._nbRes=null;}
-$("#dlg1No").onclick=closeDlg;
-$("#dlg1").addEventListener("click",e=>{if(e.target.id==="dlg1") closeDlg();});
+/* 表单类弹窗的**脏值拦截**（R17）--------------------------------------------------------
+   本仓把 #dlg1 同时当「提示弹窗」与「表单弹窗」用。既有注释写「点击遮罩取消——取消不产生任何
+   变更，故无数据损失」，那只对**提示类**成立：新增认证源 / 签发凭据 / 轮换证书 / 上传信任锚这类
+   弹窗里填了半张表，一次误触遮罩或一个 Esc 即**静默丢弃**、无任何提示。
+   此处按「弹窗内是否产生过 input/change」判脏，脏则先确认再关（确认框里选取消则留在原弹窗）。
+   ⚠ 判据必须是**交互**而非**取值差异**：开窗后调用方还会同步预填控件（见 openDlg 内注释），
+     按取值差异判会把「刚开窗、用户未动」误判为脏。 */
+function dlg1Dirty() {
+  /* 脏 ≡ 用户在**本弹窗内**产生过 input/change（监听挂在下文 #dlg1Body 上）。
+     程序化赋值不触发事件 ⇒ 开窗时的预填不再误判为脏。 */
+  return !!window.__dlgDirty0;
+}
+/* 「取消 / Esc / 点遮罩」三条关闭途径共用入口：脏则确认，不脏直接关。
+   ⚠ 提交成功后的 `closeDlg()` 调用**不走这里** —— 那是已落库的正常收尾，不该再问一句。 */
+function tryCloseDlg1() {
+  if (dlg1Dirty()) {
+    confirmDlg("放弃已填写的内容？", "该弹窗内有<b>尚未提交的录入</b>，关闭后<b>不会保存</b>。", closeDlg, "放弃并关闭");
+    return;
+  }
+  closeDlg();
+}
+function closeDlg(){$("#dlg1").classList.remove("show"); window._nbOps=0; window._nbRes=null; /* ★ 2026-09-30（第十六轮）：弹窗关闭即复位两步契约弹窗的步号 ——
+     原实现从不复位，仅靠「开窗即置 1」掩盖；任何绕过 adaptOpenContract 的重开路径都会
+     落在上一步（脏值隐患）。 */
+window.__dlgStep=1;
+/* ★ 2026-09-30（第十七轮 · 无障碍）：焦点归还触发元素 —— 原实现关闭后焦点留在被移除的节点上
+   （浏览器回退 body），键盘用户需从头 Tab 一遍。 */
+try { if (window.__dlgPrevFocus && window.__dlgPrevFocus.focus) window.__dlgPrevFocus.focus(); } catch(_e) {}
+window.__dlgPrevFocus = null;
+/* ★ 2026-10-10（R17）：交互标记随弹窗关闭一并清零 —— 否则下次打开前的任何判脏调用会拿到旧标记。 */
+window.__dlgDirty0 = 0;}
+$("#dlg1No").onclick = tryCloseDlg1;
+/* ★ 2026-10-10（R17）：点遮罩同走判脏入口 —— 表单类弹窗误触遮罩是最常见的丢数据路径。 */
+$("#dlg1").addEventListener("click", e => { if (e.target.id === "dlg1") tryCloseDlg1(); });
+/* ★ 2026-10-11（R17）：脏值监听 —— 挂在 #dlg1Body **容器**上（openDlg 只替换其 innerHTML，
+   容器本身常驻）。用捕获阶段，避免个别控件 stopPropagation 时漏记。 */
+["input", "change"].forEach(function (ev) {
+  $("#dlg1Body").addEventListener(ev, function () { window.__dlgDirty0 = 1; }, true);
+});
+/* ★ 2026-10-10（R14）：两扇弹窗此前只有 aria-labelledby（标题）、正文容器未关联 ⇒ 读屏进入弹窗
+   只听到标题、错过「吊销后立即失效」这类**后果说明**。运行时补 aria-describedby（不必改六外壳）。 */
+try {
+  var _d1a = document.getElementById("dlg1"); if (_d1a) _d1a.setAttribute("aria-describedby", "dlg1Msg");
+  var _dca = document.getElementById("dlgCfm"); if (_dca) _dca.setAttribute("aria-describedby", "cfmMsg");
+} catch (_e7) { /* 忽略 */ }
+/* ★ 2026-10-10（R13）：模态**焦点陷阱** —— 模态开启时背景内容对键盘用户应当是**不可达**的，
+   此前 Tab 会一路走出弹窗进入页面主体。两层（#dlg1 < #dlgCfm）各陷自身，只在**最上一层**生效。 */
+(function () {
+  var SEL = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  function trap(root) {
+    root.addEventListener("keydown", function (e) {
+      if (e.key !== "Tab") return;
+      var cfm = document.getElementById("dlgCfm");
+      var isTop = (cfm && cfm.classList.contains("show")) ? (root === cfm) : (root.id === "dlg1" && root.classList.contains("show"));
+      if (!isTop) return;
+      var items = Array.prototype.filter.call(root.querySelectorAll(SEL), function (el) {
+        return el.offsetParent !== null || el === document.activeElement;
+      });
+      if (items.length < 2) return;
+      var first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }, true);
+  }
+  var _d1 = document.getElementById("dlg1"); if (_d1) trap(_d1);
+  var _dc = document.getElementById("dlgCfm"); if (_dc) trap(_dc);
+})();
 /* R24 弹窗关闭途径统一口径：
    ① Esc = 取消（三扇弹窗一致，含表单类）；
    ② 提示 / 确认 / 二次认证类弹窗（#dlg1 / #dlgCfm）支持点击遮罩取消——取消不产生任何变更，
@@ -216,10 +404,32 @@ function closeTopDialog() {
     const yes = $("#cfmYes"); if (yes) yes.click();
     return;
   }
-  if ($("#dlg1").classList.contains("show")) closeDlg();
+  /* ★ 2026-10-10（R17）：Esc 同走判脏入口（与「取消」「点遮罩」三条途径口径一致）。 */
+  if ($("#dlg1").classList.contains("show")) { tryCloseDlg1(); return; }
 }
 $("#dlgCfm").addEventListener("click", e => { if (e.target.id === "dlgCfm") closeTopDialog(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeTopDialog(); });
+/* R5 弹窗键盘可达性：Enter 提交 -----------------------------------------------------------
+   此前只有 Esc（= 取消），表单类弹窗必须鼠标点「确定」—— 纯键盘用户走不到提交。
+   · 输入框 / 下拉里回车 = 点「确定」（校验逻辑与鼠标路径完全同一份，不经第二条链路）；
+   · 文本域内回车是换行、按钮回车是原生激活 ⇒ 一律不接管（避免双触发）；
+   · 层叠顺序 #dlg1 < #dlgCfm，同时显示时只作用于最上一扇。 */
+document.addEventListener("keydown", e => {
+  if (e.key !== "Enter" || e.altKey || e.ctrlKey || e.metaKey) return;
+  const tg = e.target && e.target.tagName;
+  if (tg === "TEXTAREA" || tg === "BUTTON" || tg === "A") return;
+  const d1 = $("#dlg1");
+  if (d1 && d1.classList.contains("show")) {
+    const b = document.getElementById("dlg1Ok");
+    if (b) { e.preventDefault(); b.click(); }
+    return;
+  }
+  const cf = $("#dlgCfm");
+  if (cf && cf.classList.contains("show")) {
+    const y = $("#cfmYes");
+    if (y) { e.preventDefault(); y.click(); }
+  }
+});
 /* 环境标识 */
 const ENV="生产";
 
@@ -321,7 +531,10 @@ const ASSETS=[
    {id:"r1",name:"报表门户",kind:"页面与静态资源",main:1,nodes:["10.20.1.41:8443"],ext:"report.baize.example.com",paths:[
      {name:"报表页面目录",m:"GET",mt:"前缀",p:"/reports/*",v:"v1",risk:"中",owner:"孙悦",lc:"已激活",req:"登录即可（经鉴权会话）"}]},
    {id:"r2",name:"报表下载服务",kind:"文件传输",nodes:["10.20.3.51:80"],ext:"report-dl.baize.example.com",paths:[
-     {name:"下载报表文件",m:"GET",mt:"参数化",p:"/dl/{fileId}",v:"v1",risk:"低",owner:"孙悦",lc:"已激活",req:"登录即可（经鉴权会话）"}]}]},
+     {name:"下载报表文件",m:"GET",mt:"参数化",p:"/dl/{fileId}",v:"v1",risk:"低",owner:"孙悦",lc:"已激活",req:"登录即可（经鉴权会话）"}]}],
+  /* ★ 2026-10-10（R27 · C-4）：D 档契约落在**资产侧**（唯一真源）—— 页④「用户代填账号托管」
+     只读引用本契约，不再自持副本（原「双写 + 双读」，任一侧单独改动即成漂移源）。 */
+  _adapt:{mode:"D",d:{url:"https://report.baize.example.com/login.do",urlAlt:"—",kind:"多步（两步及以上）",userSel:"#userName",pwdSel:"#passWord",submitSel:"#loginBtn",submit:"等用户点击",captcha:"无",verify:"URL 含 /report/",step2:{url:"https://report.baize.example.com/report/main.jsp",userSel:"#u",pwdSel:"input[name=\"pwd\"]",submitSel:"#okBtn"}}}},
  {id:"a5",name:"统一身份门户",type:"网页应用",dept:"科技管理部",lv:3,grp:"办公协同",owner:"周宁",open:"开通中",
   res:[{id:"r1",name:"SSO 认证页",kind:"页面与静态资源",main:1,nodes:["10.20.1.51:8443"],ext:"idp.baize.example.com",paths:[
      {name:"单点登录页面目录",m:"GET",mt:"前缀",p:"/sso/*",v:"v1",risk:"中",owner:"周宁",lc:"已激活",req:"登录即可（经鉴权会话）"}]}]},
@@ -340,7 +553,8 @@ const ASSETS=[
      {name:"手机银行接口前缀",m:"GET",mt:"前缀",p:"/api/mb/*",v:"v2",risk:"高",owner:"陈静",lc:"已激活",req:"登录即可（经鉴权会话）"}]}]},
  {id:"a10",name:"报表导出网关",type:"网页应用",dept:"综合管理部",lv:2,grp:"办公协同",owner:"孙悦",open:"已开通",
   res:[{id:"r1",name:"导出网关页面",kind:"页面与静态资源",main:1,nodes:["10.20.1.61:8443"],ext:"export.baize.example.com",paths:[
-     {name:"报表文件下载目录",m:"GET",mt:"前缀",p:"/xls/*",v:"v1",risk:"低",owner:"孙悦",lc:"已激活",req:"登录即可（经鉴权会话）"}]}]},
+     {name:"报表文件下载目录",m:"GET",mt:"前缀",p:"/xls/*",v:"v1",risk:"低",owner:"孙悦",lc:"已激活",req:"登录即可（经鉴权会话）"}]}],
+  _adapt:{mode:"D",d:{url:"https://export.baize.example.com/auth",urlAlt:"—",kind:"单步（账号+密码同页）",userSel:"input#txtUser",pwdSel:"input#txtPass",submitSel:"input#btnLogin",submit:"自动提交",captcha:"图形验证码",verify:"出现元素 .user-avatar"}}},
  {id:"a11",name:"生产区运维桌面",type:"远程主机",dept:"科技管理部",lv:4,grp:"核心业务",owner:"郑浩",open:"未开通",addr:"10.10.3.5:3389",addrProto:"RDP",ext:"-",res:[
    {id:"r1",name:"生产区运维桌面会话",kind:"远程桌面会话",proto:"RDP",host:"10.10.3.5",port:"3389",path:"",open:"web",client:null,paths:[]},
    {id:"r2",name:"桌面虚拟通道",kind:"虚拟通道",proto:"RDP",host:"10.10.3.5",port:"3389",path:"",open:"web",client:null,paths:[]}]},
@@ -367,8 +581,24 @@ const ASSETS=[
      {name:"控制台首页",m:"GET",mt:"精确",p:"/",v:"v1",risk:"高",owner:"郑浩",lc:"已激活",req:"用户所属组织机构=科技管理部 且 用户职级≥经理"},
      {name:"会话录制回放",m:"GET",mt:"前缀",p:"/sessions/playback/*",v:"v1",risk:"高",owner:"郑浩",lc:"已激活",req:"用户角色包含 审计员"},
      {name:"运维指令下发",m:"POST",mt:"精确",p:"/api/cmd/exec",v:"v1",risk:"高",owner:"郑浩",lc:"已激活",req:"用户所属组织机构=科技管理部 且 用户标签=运维岗"},
-     {name:"控制台静态资源",m:"GET",mt:"前缀",p:"/static/*",v:"-",risk:"低",owner:"郑浩",lc:"已激活",req:"登录即可（经鉴权会话）"}]}]},
+     {name:"控制台静态资源",m:"GET",mt:"前缀",p:"/static/*",v:"-",risk:"低",owner:"郑浩",lc:"已激活",req:"登录即可（经鉴权会话）"}]}],
+  _adapt:{mode:"D",d:{url:"https://bastion-web.baize.example.com/",urlAlt:"—",kind:"单步（账号+密码同页）",userSel:"#loginForm input[name=\"username\"]",pwdSel:"#loginForm input[name=\"password\"]",submitSel:"#loginForm button[type=\"submit\"]",submit:"自动提交",captcha:"无",verify:"登录后 URL 须为 /console/home"}}},
 ];
+/* License 授权范围（业务系统级）受控取值域 —— 与资产台账**显式挂钩**（消除下游各自命名）：
+   下游（认证段「签发凭据」的授权范围 / 身份段客户端实例 License 的授权范围）一律取此处名称，
+   不再另立一套业务系统名。每个业务系统的 ids 指向台账中的资产，可用于交叉核对。 */
+const LIC_SCOPE_SET = [
+  { name: "信贷核心系统", ids: ["a1", "a2", "a9"] },
+  { name: "客户管理平台", ids: ["a8", "a9"] },
+  { name: "报表分析平台", ids: ["a4", "a10"] },
+  { name: "办公自动化平台", ids: ["a4", "a5", "a10"] },
+  { name: "数据中台", ids: ["a3", "a6", "a13"] },
+  { name: "代码库", ids: ["a15"] },
+  { name: "需求库", ids: ["a15"] },
+  { name: "沙箱环境", ids: ["a15"] }
+];
+function licScopeNames() { return LIC_SCOPE_SET.map(function (x) { return x.name; }); }
+function licScopeAssets(name) { for (var i = 0; i < LIC_SCOPE_SET.length; i++) if (LIC_SCOPE_SET[i].name === name) return LIC_SCOPE_SET[i].ids.slice(); return []; }
 /* 演示初始更新时间（登记 / 最近变更基准；运行期操作会动态刷新 _upd） */
 [["a1","2026-09-06"],["a2","2026-09-05"],["a3","2026-09-10"],["a4","2026-09-06"],["a5","2026-09-03"],["a6","2026-09-05"],["a7","2026-09-02"],["a8","2026-09-01"],["a9","2026-09-06"],["a10","2026-09-04"],["a11","2026-09-06"],["a12","2026-09-05"],["a13","2026-09-10"],["a15","2026-09-06"],["a19","2026-09-07"],["a20","2026-09-08"]].forEach(([id,d])=>{const x=ASSETS.find(a=>a.id===id); if(x) x._upd=d;});
 const CUR="a1";           // 当前详情资产
@@ -488,6 +718,12 @@ function showTab(navId,which){
   nav.querySelectorAll("button").forEach(b=>b.classList.toggle("on", b.dataset.t===which));
 }
 bind("#detTabs", el=>el.addEventListener("click",e=>{const b=e.target.closest("button"); if(b) showTab("detTabs", b.dataset.t);}));
+/* 2026-09-30：身份适配页签（t6）内容在切换时渲染 —— 与 t1~t5 的静态骨架不同，
+   它按当前资产的 _adapt 状态现算（资产引用选择器也在页内，故每次进入重渲染）。 */
+bind("#detTabs", el=>el.addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  if(b.dataset.t==="t6" && typeof renderAdaptPage==="function") renderAdaptPage();
+}));
 bind("#btnBackList", el=>el.onclick=()=>showPage("pg-list"));
 
 /* ===== 无端访问开通 / 撤销 / 重试：列表列内开关与详情主开关共用一套状态机 =====
@@ -754,16 +990,22 @@ function pathGoto(p){ const a=curAsset(); if(!a) return; a._pathPage=Math.max(1,
 function pgmk(elId,total,page,go,unit,size,hint){
   size=size||LIST_PAGE;
   const el=$(elId); if(!el) return;
-  if(total<=size){ el.innerHTML=""; return; }
-  const pages=Math.ceil(total/size), cur=Math.min(Math.max(1,page||1),pages);
+  /* ★ 有数据即渲染，单页也渲染（2026-10-08 用户裁定）：分页器整体消失 ⇒ 读代码 / 看演示的人会
+     误判「该列表没有分页」。单页时导航按钮一律禁用，信息行仍给出「共 N 项 · 第 1/1 页」。
+     仅**零条**时不渲染 —— 那是空态（无数据），不是「无分页」。 */
+  if(total<=0){ el.innerHTML=""; return; }
+  const pages=Math.max(1,Math.ceil(total/size)), cur=Math.min(Math.max(1,page||1),pages), one=pages<=1;
   const win=[]; for(let i=Math.max(1,cur-2); i<=Math.min(pages,cur+2); i++) win.push(i);
-  const btn=(lb,p,on,dis)=>`<button class="b ${on?"on":""}" ${dis?"disabled":""} onclick="${go}(${p})">${lb}</button>`;
+  /* ★ 2026-10-10（R12）：补 `data-pgr`（角色键）—— 分页按钮此前**没有任何标识属性**
+     （只有内联 onclick），整段重渲染后无从复定位，键盘焦点必然掉到 body。
+     角色键（first / prev / 页码 / next / last）在重渲染前后稳定，故可按它找回同角色按钮。 */
+  const btn=(lb,p,on,dis,k)=>`<button class="b ${on?"on":""}" ${dis?"disabled":""} data-pgr="${k}" onclick="${go}(${p})">${lb}</button>`;
   el.innerHTML=`<div class="pager tight">
-    ${btn("« 首页",1,false,cur===1)}
-    ${btn("‹ 上页",cur-1,false,cur===1)}
-    ${win.map(n=>btn(n,n,n===cur)).join("")}
-    ${btn("下页 ›",cur+1,false,cur===pages)}
-    ${btn("末页 »",pages,false,cur===pages)}
+    ${btn("« 首页",1,false,one||cur===1,"first")}
+    ${btn("‹ 上页",cur-1,false,one||cur===1,"prev")}
+    ${win.map(n=>btn(n,n,n===cur,false,n)).join("")}
+    ${btn("下页 ›",cur+1,false,one||cur===pages,"next")}
+    ${btn("末页 »",pages,false,one||cur===pages,"last")}
     <span class="info">共 ${total} ${unit} · 第 ${cur}/${pages} 页 · ${hint||"勾选/批量作用于当前页"}</span></div>`;
 }
 function pgKeep(key,sig){ const w=window; if(w["_S"+key]!==sig){ w["_S"+key]=sig; w["P"+key]=1; } }
@@ -2271,7 +2513,15 @@ function efFill(){
   $("#eaName2").value=a.name||"";
   $("#eaDept2").value=a.dept||"";
   $("#eaOwner2").value=a.owner||"";
-  $("#eaGrp2").value=["核心业务","办公协同","数据平台","开发测试"].includes(a.grp)?a.grp:"核心业务";
+  /* ★ 2026-10-10（R26 · 跨模块评审 A-5）：取值域补齐「对外服务」。台账含 1 条
+     grp:"对外服务"（a19 对外行情资讯门户），而下拉此前只有 4 项 ⇒ 旧兜底把它**静默回落**
+     「核心业务」，用户一保存就篡改了资产分组（且认证源「适用范围」以资产组为取值域，
+     连带打破「与资产组同域」的前提）。此处不再回落，改为**保留原值**（缺项动态补 option）。 */
+  (function(){ var _sel=$("#eaGrp2"); if(!_sel) return; var _g=String(a.grp||"");
+    if(!_g) { _sel.value="核心业务"; return; }
+    var _has=[].slice.call(_sel.options).some(function(o){ return o.value===_g; });
+    if(!_has){ var _o=document.createElement("option"); _o.value=_g; _o.textContent=_g; _sel.appendChild(_o); }
+    _sel.value=_g; })();
   const enS=$("#eaEn2"); if(enS) enS.value=(a.en===0)?"0":"1";
   if(_formMode==="edit"){
     const ls=lvOpts(); if(ls) ls.value="L"+(a.lv||3);
@@ -2344,14 +2594,16 @@ function efBody2View(){
   }
 }
 /* ===== 代理与上游 · 可编辑配置组件（详情 t4 与 向导 S4 共用；id 前缀区分，详情 pfx="" / 向导 pfx="ef"）=====
-   资产键：_inj 注入模式（两档：不注入 / 注入网关托管凭据）/ _injCred 托管凭据 / _hdrAllow 允许透传业务头 /
+   资产键：_inj 注入模式（两档：不注入 / 注入网关托管凭据；**配置面 = 资产详情「身份适配 → 机器身份」**）/
+            _injCred 托管凭据（同上配置面）/ _hdrAllow 允许透传业务头（配置面 = 「上游透传与校验」）/
    _tls 上游 TLS / _idem401 非幂等 401 重放 / _scRw Set-Cookie 域重写 / _rewrite 响应地址改写 /
    _rwBigEx 大响应放行例外 / _nets 允许目标网段。全部就地编辑、变更即时写资产并提示收敛。
    注入范围（2026-09-20 用户口径）：固定为「仅非 public 路径」（硬规则、不提供开关）——显式公开（public）
    路径匿名直达、无主体身份，永不注入平台身份 / 托管凭据；计数与说明见 upScopeInfo / upScopeHtml。
    档位收敛（2026-09-22 v18 用户裁定）：「注入平台 token」注入的是**主体（用户）身份**，属二期 F2.2
    出站身份适配层 —— 该档已**迁入资产详情「身份适配」页签（A 档）**；本页自此只保留「网关 → 上游」
-   连接级的机器凭据（不注入 / 注入网关托管凭据）。引擎侧三档不变（FL2 §10），变的是配置面归属。 */
+   连接级的机器凭据（不注入 / 注入网关托管凭据），**配置面在资产详情「身份适配」**（2026-09-30 由本处移入）。
+   引擎侧三档不变（FL2 §10）。 */
 function upCfgDft(a){
   return { inj:(a._inj==="cred")?"cred":"none",
     cred:a._injCred||"cred-rpt",
@@ -2420,23 +2672,15 @@ function upCidrOk(v){
 function upChipDraw(wrapId,arr){ const w=document.getElementById(wrapId); if(!w) return; w.innerHTML=arr.map(upChipItem).join("")||`<span class="muted" style="font-size:12.5px">未配置</span>`; }
 /* 通用「输入 + 添加」行（role 区分：hdr / big / net） */
 function upAddRow(pfx,role,ph){ return `<div style="display:flex; gap:6px; align-items:center; margin:6px 0 2px"><input type="text" id="${pfx}${role}In" placeholder="${ph}" ${role==="hdr"?'list="'+pfx+'HdrList"':""} style="flex:1; min-width:0"><button class="btn sm" id="${pfx}${role}Add">+ 添加</button></div>`; }
-/* —— 上游认证与凭据处理卡 —— */
+/* —— 上游透传与校验卡 ——
+   ★ 2026-09-30：原名「注入网关托管凭据」。机器身份凭据注入已按用户裁定移入资产详情
+   「身份适配」页（唯一配置面），本卡保留「网关 → 上游」通路的其余治理项：
+   请求头透传白名单 / Cookie 域重写 / 上游 TLS 校验（含 mTLS）/ 401 重放。 */
 function upAuthRender(elId,pfx,a){
   const el=document.getElementById(elId); if(!el) return;
   upCfgEnsure(a);
-  const s=upCfgDft(a), R=pfx, I=(pfx==="")?{Rw:"swRewrite",Tls:"swTls",Inj:"injectMode",nm:"inj"}:{Rw:"efSwRw",Tls:"efSwTls",Inj:"efInjMode",nm:"efInj"};
-  const radios=["none","cred"].map((v,i)=>`<label class="${s.inj===v?"on":""}"><input type="radio" name="${I.nm}" value="${v}" ${s.inj===v?"checked":""}>${["不注入（上游自行认证）","注入网关托管凭据"][i]}</label>`).join("");
+  const s=upCfgDft(a), R=pfx, I=(pfx==="")?{Rw:"swRewrite",Tls:"swTls"}:{Rw:"efSwRw",Tls:"efSwTls"};
   el.innerHTML=`
-    <div class="kv"><span class="k">上游认证注入</span><div>
-      <span class="rmode" id="${I.Inj}" style="margin:0">${radios}</span>${upScopeInfo(a).non===0?'<span class="tag t-warn" style="margin-left:8px" title="本资产全部在网路径均为 public —— 按「public 永不注入」硬规则，本区块当前不生效；若确需注入，请先在「资产细粒度访问策略」中取消 public。">当前不生效</span>':''}
-      <div id="${R}CredRow" class="fldrow" style="display:${s.inj==="cred"?"":"none"}"><label>托管凭据</label><div>
-        <select id="${R}CredSel">${UP_CREDS().map(c=>`<option value="${c[0]}" ${s.cred===c[0]?"selected":""}>${c[1]}（${c[2]}）</option>`).join("")}</select>
-        <div class="help">网关到上游的<b>机器对接凭据</b>（Basic / API-Key / OAuth2 Client），由平台维护，见 <a href="#" class="hl" style="text-decoration:none" onclick="goCred('c1');return false">凭据托管</a>；<b>mTLS 客户端证书</b>不走本项，在下方「上游 TLS 校验 → 客户端证书（mTLS）」引用。</div>
-        <div id="${R}CredFlow" class="help" style="margin-top:6px"></div></div></div></div></div>
-    <div class="kv"><span class="k">用户身份注入</span><div>
-      <span class="muted">「用户 / 主体 → 资产」的传导（token 注入 · key 换取 · 协议 SSO · 代填 四档）已<b>统一在资产详情 →「身份适配」页签</b>配置 —— 本页只承载「<b>网关 → 上游</b>」连接级的机器凭据，<b>同一对象不在两处配</b>。</span>
-      <button class="btn sm" type="button" data-auth="adaptGo">去「身份适配」配置</button></div></div>
-    <div class="kv"><span class="k">注入范围</span><div>${upScopeHtml(a)}</div></div>
     <div class="kv"><span class="k">允许透传的业务头<span class="muted" style="font-weight:400">（白名单；未列出的一律删除）</span></span><div>
       <div id="${R}HdrWrap" style="display:flex; flex-wrap:wrap; gap:6px; align-items:center"></div>
       <datalist id="${R}HdrList">${UP_HDR_CANDS.map(x=>`<option value="${x}">`).join("")}</datalist>
@@ -2469,20 +2713,6 @@ function upAuthRender(elId,pfx,a){
     <div class="kv"><span class="k">Set-Cookie 处理</span><div style="display:flex; align-items:center; gap:10px"><span class="switch"><input type="checkbox" id="${R}ScSw" ${s.sc?"checked":""}><span class="sl"></span></span><span>业务 Cookie 按资产外部域重写 Domain / Path；平台保留前缀与父域写入固定删除</span></div></div>`;
   /* —— 绑定（闭包 a / s）—— */
   const q=id=>document.getElementById(id);
-  /* radio 注入模式联动 */
-  const im=q(I.Inj);
-  if(im) im.querySelectorAll("label").forEach(l=>l.addEventListener("click",()=>{
-    const v=l.querySelector("input").value;
-    im.querySelectorAll("label").forEach(x=>{x.classList.remove("on"); const xi=x.querySelector("input"); if(xi) xi.checked=false;});
-    l.classList.add("on"); l.querySelector("input").checked=true;
-    a._inj=v;
-    const cr=q(R+"CredRow");
-    if(cr) cr.style.display=v==="cred"?"":"none";
-    if(!pfx) toast("上游认证注入已切换："+(v==="none"?"不注入（上游自行认证）":"注入网关托管凭据")+"，2 秒内全节点生效（演示）");
-  }));
-  /* token 头名 / 凭据 */
-  const cred=q(R+"CredSel"); if(cred) cred.onchange=()=>{ a._injCred=cred.value; const f=q(R+"CredFlow"); if(f) f.innerHTML=upCredFlow(cred.value); if(!pfx) toast("托管凭据已切换（演示）"); };
-  const cf=q(R+"CredFlow"); if(cf) cf.innerHTML=upCredFlow(s.cred);
   /* TLS 配置组（L4～L5：开关不可关、测试例外禁开；详情取 ctxAsset().lv / 向导取 efLvVal） */
   const lvNow=()=> (formOn()?efLvVal():(ctxAsset()&&ctxAsset().lv))||3;
   const tl=q(I.Tls), zone=q(R+"TlsZone");
@@ -2746,8 +2976,8 @@ function efSubmit(){
     ASSETS.push(a); assetListRender();
   }
   // 代理与上游（第 4 步）：保存资产级配置
-  const injEl=document.querySelector('#efInjMode input[name="efInj"]:checked');
-  if(injEl) a._inj=injEl.value;
+  // ★ 机器身份（_inj / _injCred）不在本步收集 —— 2026-09-30 起其配置面为资产详情「身份适配」，
+  //   登记向导不承载该资产键（新建资产取默认「不注入」，入详情后再配）。
   const rwEl=document.getElementById("efSwRw"), tlEl=document.getElementById("efSwTls");
   if(rwEl) a._rewrite=rwEl.checked;
   if(tlEl) a._tls=tlEl.checked;
@@ -2967,23 +3197,103 @@ const CAT_DIMS = { subject: ["user", "auth", "client", "device"], env: ["env"] }
 /* 资源级属性策略可用的环境属性：仅网络与时间类——
    来源 IP / 网段、网络区域、时间窗口；地理位置、接入网络类型归页 A「资产访问控制策略」准入策略 */
 const REQ_ENV_ATTRS = ["env.ip", "env.zone", "env.time"];
-/* 认证方式与安全等级字典：**级别档位固定 L1~L5 且序不变**（不新增不删除），可自定义的是级别名称 /
-   判定含义与各级别下的方式集合；新增同级方式无需改写任何既有策略、也不使既有策略失效。
-   **同一安全级别可包含多种等效方式**（强度相当、可互换使用）——因此「认证」维度拆为两个可引用
-   属性：auth.level 取级别做强度门槛（按级别序比较），auth.method 取具体方式做方式限定
-   （同级多方式时可精确到一种或几种）。默认口径：L1 免认证登录 · L2 账号密码 / 邮箱验证码 ·
-   L3 短信验证码 / 企业微信扫码 / 动态口令（OTP）· L4 指纹识别 / USB Key 硬件令牌 ·
-   L5 活体人脸识别 / 虹膜识别 */
-const AUTH_METHODS = [
-  { level: 1, names: ["免认证登录"] },
-  { level: 2, names: ["账号密码", "邮箱验证码"] },
-  { level: 3, names: ["短信验证码", "企业微信扫码", "动态口令（OTP）"] },
-  { level: 4, names: ["指纹识别", "USB Key 硬件令牌"] },
-  { level: 5, names: ["活体人脸识别", "虹膜识别"] },
+/* ★★★ 认证方式字典 —— 全平台**方式名 + 方式固有属性**的唯一真源（本块即字典）★★★
+   取值口径取自《零信任无端接入网关-产品需求文档PRD-一期-202609018.md》F5.4
+   「认证方式字典（安全级别 L1~L5 · 同级可含多种等效方式）」表，及 F5.4 规则 12：
+     认证方式字典是**方式名**的唯一取值域来源 —— 策略条件、资源级访问要求、控制台提示与
+     合规说明均引用本字典，**不各自另立方式名**。
+   ★★★ 级别不归字典所有 —— 安全级别是「认证源 × 认证方式」的**联合判定结果** ★★★
+     · 本字典**不定义**任何方式的级别，也**不承载**「哪一档由哪些方式构成」的归属关系；
+     · 同一方式在不同认证源下级别可以不同：本地账号体系的「账号密码」（平台自己保管、可强制
+       口令策略、可锁定、可审计）与某外部 IdP 的「账号密码」（平台只接收断言、无法校验对方
+       策略）**强度与适用范围完全不同**；
+     · 字典里保留的 defLv 只是**参考默认级别** —— 新建「源 × 方式」记录时给出的初值，
+       **不构成裁决依据**；策略求值、控制台提示、合规说明一律读「源 × 方式」记录上的级别。
+       （唯一例外是「认证器登记」：认证器级别由方式的固有属性 `authrLv` 唯一确定，
+        同样**不经 defLv 反查** —— 详见 AU_METHODS 注释。）
+   ⇒ 身份模块客户端软件（ID_AMETH_DEF）、新建客户端弹窗（amethAll）等**方式名清单**由本数组
+     **派生**，不得各自另写一套；但**不得**由本数组反查派生任何「档位 → 方式集合」视图。
+   **级别档位固定 L1~L5 且序不变**（不新增、不删除）；可自定义的是级别名称与判定含义。
+   因此「认证」维度拆为两个可引用属性：auth.level 取级别做强度门槛（按级别序比较），
+   auth.method 取具体方式做方式限定 —— 二者取值域不同源：auth.level 的档位是平台常量，
+   auth.method 的方式名取自本字典。
+   ⚠ 抗钓鱼是方式的**固有属性**（取决于该方式是否具备**源绑定**能力），随字典登记；
+     **抗钓鱼由源绑定派生（anti ≡ srcBind），不提供独立开关** —— 不具备源绑定能力的方式
+     无法通过任何配置变得抗钓鱼。
+   ⚠ **人机校验不进本字典、不占任何档位、不计入会话档位**。
+   ⚠ 一期会话认证强度上限为 L2；L3~L5 方式在二期承载（一期策略声明高于 L2 时保存侧强提示、
+     不阻断保存）。 */
+/* ⚠⚠ 口径（最容易错的一条）：本表的「档位 → 方式集合」是**参考归属 / 示例**，
+   **不是**该方式在任何认证源下的实际安全级别，**不构成裁决依据**。
+   —— 级别是（认证源 × 认证方式）的**联合判定**结果：本地账号体系的「账号密码」（平台自己
+      保管、可强制口令策略、可加锁定、可审计）与某外部 IdP 的「账号密码」（平台只接收断言、
+      无法校验对方策略）**强度与适用范围完全不同**。转述、引用、策略求值一律读「源 × 方式」
+      记录上判定出的那一档，不要读本表。
+   —— 这里的初值仅在**新建「源 × 方式」记录**时给出默认选中项，落库后可改。 */
+/* 级别档位定义 —— **只描述档位本身**（序、名称、判定含义、承载期次）。
+   ⚠ 本表**不含「该档由哪些方式构成」**：档位不是方式的归属容器，方式与档位之间没有固定映射；
+     「该档可否抗钓鱼」同理不在此列 —— 抗钓鱼是**方式**的固有属性（见 AU_METHODS.srcBind）。 */
+var AU_LEVELS = [
+  { lv: 1, name: "无感代填",       desc: "用户本次未手工提交凭据，由平台以自管方式完成访问所需认证（会话身份 + 托管凭据代填 / 出站 token 注入）—— 本档只是当前会话的最低强度，与「匿名开放」不同：匿名开放免的是整条认证链", res: "一期" },
+  { lv: 2, name: "单因素",         desc: "单因素凭证", res: "一期" },
+  { lv: 3, name: "一次性验证码",   desc: "一次性验证码类", res: "二期承载" },
+  { lv: 4, name: "硬件与生物特征", desc: "本地生物特征与硬件令牌", res: "二期承载" },
+  { lv: 5, name: "活体生物特征",   desc: "生物特征（需活体检测，最强档）", res: "二期承载" }
 ];
-const AUTH_LV_NAMES = lv => (AUTH_METHODS.find(m => m.level === lv) || { names: [] }).names;
-/* 级别一览（字典与悬停提示用）：L3 短信验证码 / 企业微信扫码 / 动态口令（OTP） */
-const AUTH_LV_LABEL = lv => `L${lv} ${AUTH_LV_NAMES(lv).join(" / ")}`;
+/* 认证方式清单 —— 字典登记的是**方式名**与**方式的固有属性**：
+     · inherent    凭据固有属性（客观形态，与源无关）
+     · srcBind     是否具备**源绑定**能力（抗钓鱼的技术判据：srcBind ⇒ anti，页面只读派生）
+     · interactive 是否需用户手工提交凭据（「无感代填」由平台自动完成，不在其列）
+     · inSession   是否计入会话认证档位
+     · defLv       **参考默认级别** —— 新建「源 × 方式」记录时的初值，非该方式的安全级别
+     · authrLv     **可否作「强认证器」登记的固有属性** —— 填 4 / 5 表示该方式可作 L4 / L5
+                   强认证器（硬件令牌、设备端 / 活体生物特征）；不填即不可作认证器。
+                   ⚠ 它是**方式的属性**，不由 defLv 反查 —— 由参考级别反推「L4 / L5 档由哪些
+                     方式构成」正是本块明文禁止的「档位 → 方式集合」视图。
+   ★ 每条的 defLv 都是**参考值**：真正生效的级别由「源 × 方式」记录联合判定，本条不作裁决。
+   ★ 方式名统一口径：「免认证登录」更名为「无感代填」—— 经平台的免登录认证同样完成了访问
+     所需认证（会话身份 + 托管凭据代填 / 出站 token 注入），它是**平台自己提供的一种方式**。 */
+var AU_METHODS = [
+  { id: "none",   name: "无感代填",         defLv: 1, srcBind: false, interactive: false, inherent: "用户无手工提交；平台以自管方式完成（会话身份 + 托管凭据代填 / 出站 token 注入）", inSession: true },
+  { id: "pwd",    name: "账号密码",         defLv: 2, srcBind: false, interactive: true,  inherent: "口令形态凭据（单因素）", inSession: true },
+  { id: "email",  name: "邮箱验证码",       defLv: 2, srcBind: false, interactive: true,  inherent: "带外通道凭据（一次性）", inSession: true },
+  { id: "sms",    name: "短信验证码",       defLv: 3, srcBind: false, interactive: true,  inherent: "带外通道凭据（一次性）", inSession: true },
+  { id: "wecom",  name: "企业微信扫码",     defLv: 3, srcBind: false, interactive: true,  inherent: "带外通道凭据（第三方 IdP 扫码）", inSession: true },
+  { id: "otp",    name: "动态口令",         defLv: 3, srcBind: false, interactive: true,  inherent: "时间同步软 / 硬令牌", inSession: true },
+  { id: "fp",     name: "指纹识别",         defLv: 4, authrLv: 4, srcBind: true,  interactive: true,  inherent: "设备端生物特征认证器（源绑定）", inSession: true },
+  { id: "usbkey", name: "USB Key 硬件令牌", defLv: 4, authrLv: 4, srcBind: true,  interactive: true,  inherent: "外接硬件令牌（源绑定）", inSession: true },
+  { id: "fr",     name: "人脸识别",         defLv: 4, authrLv: 4, srcBind: true,  interactive: true,  inherent: "设备端生物特征认证器（源绑定）", inSession: true },
+  { id: "face",   name: "活体人脸识别",     defLv: 5, authrLv: 5, srcBind: true,  interactive: true,  inherent: "生物特征 · 需活体检测（源绑定）", inSession: true },
+  { id: "iris",   name: "虹膜识别",         defLv: 5, authrLv: 5, srcBind: true,  interactive: true,  inherent: "生物特征 · 需活体检测（源绑定）", inSession: true }
+];
+/* 内置方式内码集 —— 由种子一次性确定：**内置方式不可删除**（删掉会让方式名取值域残缺、
+   已落库的「源 × 方式」记录悬空）；运行时自建方式内码不在集内，未引用即可删。 */
+var AU_BUILTIN_IDS = AU_METHODS.map(function (m) { return m.id; });
+/* 可被**认证源**登记的方式集合 —— **即全字典**（含「无感代填」）。
+   曾以「不是某个身份体系能提供的凭据方式」为由把「无感代填」排除在外，该理由不成立：
+   经平台的免登录认证**同样完成了访问所需认证**（会话身份 + 托管凭据代填 / 出站 token 注入），
+   它是**平台自己提供的一种方式**；其强度级别同样由「源 × 方式」联合判定，
+   没有任何理由不让它进「源 × 方式」取值域。 */
+var AU_SRC_METHODS = AU_METHODS.slice();
+/* 认证模块的**运行时刻**（单一出处）—— 「上次测试 / 上次同步 / 登记时间」等运行期字段一律取此值；
+   避免同一模块内出现多个基准时刻（原先 srcTest 与 srcSync 各写各的）。
+   种子里的 lastTest（2026-09-29）是「上一次测试发生在昨天」，与运行时刻属不同语义，保持不动。 */
+var AU_TS_STAMP = "2026-09-30 09:14";
+/* ★ 2026-09-30 摘除：由字典反查派生的「档位 → 方式名集合」视图（原 AUTH_METHODS /
+   AUTH_LV_NAMES / AUTH_LV_LABEL）。该视图把方式**按级别分组**，等于把级别挂回字典 ——
+   与「级别是（认证源 × 认证方式）联合判定结果」的口径冲突。
+   资产访问策略的 auth.method 取值域改为**方式名平铺**（见 VALUE_POOL），
+   auth.level 取值域为平台固定的 L1~L5 档位常量。
+   另：由方式名反推级别无处可推（字典只带参考值）—— 引擎按「源 × 方式」记录求值，
+   策略侧不再由方式名反推级别（authCarryNote 只读显式声明的 auth.level）。 */
+/* ★ 2026-10-10（R30）：本取值域改为**渲染时由字典派生** —— 原为加载期一次性 map 出的常量
+   （`AUTH_METHOD_NAMES`），运行期在「认证方式字典」新增 / 删除方式后它仍停在初始快照
+   ⇒ 策略条件选不到新方式、已删方式仍可选。字典是**方式名的唯一取值域**，
+   取值域必须随字典实时同步（见 VALUE_POOL 的 auth.method 取值）。 */
+function authMethodNames() {
+  var ms = (typeof AU !== "undefined" && AU && AU.dict && AU.dict.methods) ? AU.dict.methods : AU_METHODS;
+  return ms.map(function (m) { return m.name; });
+}
 /* 认证要求 = 条件组内的「认证」维度条件行（auth.level / auth.method / auth.composite）。
    页 A 准入策略与页 B 资源级策略**同一结构**：认证要求不单独落库，由条件承载——
    追加认证不是策略可选动作，而是认证维度条件不达标时引擎的裁决结果。
@@ -3043,11 +3353,9 @@ function authSegToCondText(s) {
    不阻断保存、不改判定，也不改落库结构（认证要求仍由认证维度条件行承载）。 */
 function authCarryNote(cond) {
   const v = authViewOf(cond);
-  const fromMethods = (v.methods || []).reduce((mx, n) => {
-    const hit = AUTH_METHODS.find(x => x.names.indexOf(n) >= 0);
-    return hit && hit.level > mx ? hit.level : mx;
-  }, 0);
-  const lv = Math.max(v.lv || 0, fromMethods);
+  /* ⚠ 只读**显式声明**的 auth.level —— 不再由 auth.method 的方式名反推级别：
+     字典的方式只带**参考默认级别**，据其反推等于拿参考值当裁决依据（已废止）。 */
+  const lv = v.lv || 0;
   return lv > 2 ? `认证安全级别 ≥ L${lv} 高于一期承载上限 L2：该档位待二期承载后生效，本期按 L2 承载` : "";
 }
 
@@ -3068,8 +3376,9 @@ const VALUE_POOL = {
   "user.state": ["在职", "离职", "停用"],
   "user.perm": ["转账审批权", "付款审批权", "账户查询权", "批量代发权", "参数维护权", "报表导出权"],
   "auth.level": ["1 级", "2 级", "3 级", "4 级", "5 级"],
-  /* 认证方式按安全级别分组（同一级别可含多种等效方式），多选弹层按组呈现 */
-  "auth.method": Object.fromEntries(AUTH_METHODS.map(m => [m.level + " 级", m.names.slice()])),
+  /* 认证方式**平铺**（不再按级别分组）—— 级别是（认证源 × 认证方式）联合判定的结果，
+     不是方式的分组依据；按级别分组会把级别重新挂回字典。 */
+  get "auth.method"() { return authMethodNames(); },
   "auth.composite": ["1", "2", "3"],
   "client.os": ["Windows", "macOS", "Linux"],
   "client.sign": ["已签名", "未签名", "校验失败"],
@@ -4056,7 +4365,7 @@ function renderAspCfg(a) {
     <div class="hint-row ro"><i class="ic">匿名开放</i><div>
       <b>该资产整体匿名开放（整资产匿名型），不进入认证与授权链，准入策略不适用。</b>
       匿名开放<b>仅免除用户认证</b>（及其连带的资产访问状态与授权判定），<b>不做越权判定</b>（无主体身份，越权语义不存在）；
-      <b>WAF、限流、请求约束、行为策略与审计等安全防护照常生效</b>。如需按主体属性准入，请先在「资产细粒度访问策略」关闭整资产匿名开放声明。
+      <b>WAF、限流、请求约束与审计等安全防护照常生效</b>。如需按主体属性准入，请先在「资产细粒度访问策略」关闭整资产匿名开放声明。
     </div></div>
     <div class="card"><div class="card-h"><h3>准入策略<span class="sub">不适用</span></h3><span class="rolock">只读</span></div>
       <div class="card-b"><div class="empty"><div class="big">该资产整资产匿名开放，准入策略不适用</div>
@@ -4469,7 +4778,7 @@ function attrPopHTML(c) {
     return `<div class="it ${grey ? "dis" : ""} ${c.attr === x.id ? "on" : ""}" ${grey ? `data-act="dsGreyTip" data-attr="${x.id}"` : `data-act="dsAttr" data-uid="${c.uid}" data-attr="${x.id}"`}>${x.label} <span class="mini">${x.editor}</span></div>`;
   }).join("");
   const tip = pathScope
-    ? `<div class="tip">本页条件组支持<b>用户维度</b>、<b>认证维度</b>（认证要求即认证维度条件行）与<b>环境属性（网络与时间类）</b>；客户端软件 / 终端设备、地理位置与接入网络类型归「资产访问控制策略」。认证维度属性取自平台认证方式字典：<b>级别档位固定 L1~L5 且序不变</b>（不新增不删除），可自定义级别名称与判定含义与各级别下的方式集合。</div>`
+    ? `<div class="tip">本页条件组支持<b>用户维度</b>、<b>认证维度</b>（认证要求即认证维度条件行）与<b>环境属性（网络与时间类）</b>；客户端软件 / 终端设备、地理位置与接入网络类型归「资产访问控制策略」。认证维度属性取自平台认证方式字典：<b>级别档位固定 L1~L5 且序不变</b>（不新增不删除），级别名称与判定含义由平台内置；档位不是方式的归属容器，不存在「各级别下的方式集合」。</div>`
     : `<div class="tip blue">置灰项为当前形态（${MODE_LABEL[mode]}）不可得属性，配置后不会生效${mode === "agentless" && (a.modes || []).includes("agent") ? `。<span class="lk" data-act="dsToAgent">切换到「有端接入策略组」配置 →</span>` : ""}</div>`;
   return `<div class="sel-pop show two">
     <div class="sp-l">${catCells("subject", "主体属性")}${catCells("env", "环境属性")}</div>
@@ -4840,7 +5149,7 @@ function renderFgList() {
       <div class="muted" style="margin-top:4px">按「资源 × 协议 × 作用对象」配置访问要求——控制模式由资源协议决定：L7（HTTP(S) / WS(S) / gRPC）走作用对象级，其余协议走目标级</div></div>
   </div>
   <div class="hint-row"><i class="ic">分工</i><div>
-    业务判定顺序（<b>业务视角由外到内</b>）：<b>「资产访问控制策略」判定资产能否访问（准入）→ 本页判定具体资源能否访问</b>。引擎侧的执行序与此相反——<b>先执行本页的资源级路径授权，通过后才执行资产准入属性策略</b>；这只是业务阅读顺序，不代表判定先后。
+    与「资产访问控制策略」同属<b>访问对象准入</b>，是同一个统一 ABAC 授权模型的两个粒度：<b>先做资产级准入（该资产能否访问），通过后再做本页的资源级准入（该资产下的该资源能否访问）</b>。两个粒度与主体属性、环境属性在<b>同一轮求值</b>中比较，产出允许 / 追加认证 / 拒绝<b>一个</b>裁决。
     资源授权<b>对无端与有端两种接入形态共用同一份</b>——有端 L7 流量经可信转发进入无端网关执行本判定，因此本页不出现形态切换器。
     <br><b>除允许匿名访问的范围外，所有资产越权即拒绝</b>：未配置即默认拒绝、不达上游。
     <button class="btn link" data-act="aspList">前往「资产访问控制策略」→</button>
@@ -4876,7 +5185,7 @@ function renderFgMatrix(a) {
   if (!WEB(a)) return renderFamMatrix(a);
   const f = FG.filter;
   const modeTip = a.anon === "asset"
-    ? `<div class="hint-row ro"><i class="ic">匿名开放</i><div><b>该资产整资产匿名开放，逐路径授权不适用。</b>全部资源直通、<b>仅免除用户认证</b>（WAF / 限流 / 请求约束 / 行为策略与审计照常生效）；关闭下方「资产级匿名开放声明」即可恢复。</div></div>`
+    ? `<div class="hint-row ro"><i class="ic">匿名开放</i><div><b>该资产整资产匿名开放，逐路径授权不适用。</b>全部资源直通、<b>仅免除用户认证</b>（WAF / 限流 / 请求约束 与审计照常生效）；关闭下方「资产级匿名开放声明」即可恢复。</div></div>`
     : "";
 
   const ctxCard = `
@@ -5048,7 +5357,7 @@ function renderFamMatrix(a) {
     ? `该族以<b>目标级</b>为终态：可判维度为登记目标（IP / 域名 + 端口）。`
     : `当前档位：<b>${esc(famTier(a))}</b>；待启用：${esc(famNext(a))}（档位未启用不等于不支持——维度以置灰可见方式登记）。`;
   const hint = a.anon === "asset"
-    ? `<div class="hint-row ro"><i class="ic">匿名开放</i><div><b>该资产整资产匿名开放，资源级授权不适用。</b>全部资源<b>仅免除用户认证</b>（不做越权判定）；WAF、限流、请求约束、行为策略与审计照常生效。</div></div>`
+    ? `<div class="hint-row ro"><i class="ic">匿名开放</i><div><b>该资产整资产匿名开放，资源级授权不适用。</b>全部资源<b>仅免除用户认证</b>（不做越权判定）；WAF、限流、请求约束与审计照常生效。</div></div>`
     : "";
   const BA = fgBatchAvail(a);
   const conf = famConf(a);
@@ -5215,7 +5524,7 @@ function renderFgReq() {
   const kinds = [
     { k: "attr", t: "按主体属性", d: "以条件组表达访问要求：用户维度 + 认证维度 + 环境属性（网络与时间类）。客户端软件、终端设备、地理位置与接入网络类型归「资产访问控制策略」的准入判定。" },
     { k: "login", t: "登录即可", d: "通过主体认证（有效鉴权会话）即可访问，不附加属性条件。" },
-    { k: "public", t: "显式公开（public）", d: allowPub ? "命中即跳过主体认证、资产访问状态与准入判定；不跳过安全前置检查、限流与审计。保存需二次确认。" : `不可选：匿名开放要求资产为 L1 级且资源协议为 HTTP${a && a.lv !== 1 ? "（当前资产 L" + a.lv + "）" : R.fam ? "（非 L7 族对象不适用）" : "（当前资源协议 " + objProto + "）"}。`, dis: !allowPub },
+    { k: "public", t: "显式公开（public）", d: allowPub ? "命中即跳过主体认证、资产访问状态与准入判定；不跳过安全前置检查、限流、动态防护与审计。保存需二次确认。" : `不可选：匿名开放要求资产为 L1 级且资源协议为 HTTP${a && a.lv !== 1 ? "（当前资产 L" + a.lv + "）" : R.fam ? "（非 L7 族对象不适用）" : "（当前资源协议 " + objProto + "）"}。`, dis: !allowPub },
     { k: "none", t: "默认拒绝（未配置）", d: "清除该对象的访问要求：回到未配置 → 默认拒绝（请求不达上游）。" }];
   const cur = kinds.filter(x => x.k === R.kind)[0] || null;
   const v = validateDs("path");
@@ -5310,11 +5619,11 @@ function renderFgReq() {
     资源级条件组的属性闭包 = <b>用户维度 + 认证维度 + 环境属性</b>（网络与时间类）。客户端软件、终端设备、地理位置与接入网络类型归「资产访问控制策略」的准入判定，本页不呈现。
   </div></div>
   <div class="hint-row" style="margin-top:8px"><i class="ic">认证方式字典</i><div>
-    认证维度属性（认证安全级别 / 认证方式 / 认证复合方式数）取自平台认证方式字典：<b>级别档位固定 L1~L5 且序不变</b>（不新增不删除），可自定义级别名称与判定含义、各级别下的方式集合；新增同级方式<b>无需改写任何既有策略、也不使既有策略失效</b>，被启用策略引用的方式不可删除。一期会话认证强度上限为 <b>L2</b>，选到 L3~L5 时保存侧提示「待二期承载后生效」且不阻断保存。
+    认证维度属性（认证安全级别 / 认证方式 / 认证复合方式数）取自平台认证方式字典：<b>级别档位固定 L1~L5 且序不变</b>（不新增不删除），级别名称与判定含义由平台内置；新增同级方式<b>无需改写任何既有策略、也不使既有策略失效</b>，被启用策略引用的方式不可删除。一期会话认证强度上限为 <b>L2</b>，选到 L3~L5 时保存侧提示「待二期承载后生效」且不阻断保存。
   </div></div>
   <div class="hint-row" style="margin-top:8px"><i class="ic">影响面</i><div>
     <b>匿名开放范围之外的访问一律拒绝。</b>
-    ${R.kind === "public" ? `选中「显式公开」：该${R.fam ? "对象" : "路径"}将<b>跳过主体认证、资产访问状态与准入策略判定</b>（不跳过安全前置检查、限流与审计）——请确认其确实不含受保护数据。`
+    ${R.kind === "public" ? `选中「显式公开」：该${R.fam ? "对象" : "路径"}将<b>跳过主体认证、资产访问状态与准入策略判定</b>（不跳过安全前置检查、限流、动态防护与审计）——请确认其确实不含受保护数据。`
       : R.kind === "login" ? `选中「登录即可」：通过主体认证（有效鉴权会话）即可访问该${R.fam ? "对象" : "路径"}，不附加属性条件。`
       : R.kind === "attr" ? `命中本要求条件且<b>当前认证不达标时触发追加认证</b>（认证至达标后放行，不判为拒绝）；其余未配置对象 → 403 + 风险事件、<b>请求不达上游</b>（无观察档）。`
       : `选中「默认拒绝」：该${R.fam ? "对象" : "路径"}保存后回到未配置 → 403 + 风险事件、<b>请求不达上游</b>（无观察档）。`}
@@ -5387,13 +5696,116 @@ function reqSave() {
 function cleanTree(n) { const o = {}; ["t", "op", "attr", "v", "inc", "q", "mode", "ref"].forEach(k => { if (n[k] !== undefined) o[k] = n[k]; }); if (n.t === "g") { o.ch = (n.ch || []).map(cleanTree); delete o.attr; } return o; }
 
 /* ===== 确认弹窗 ===== */
+/* ★ 2026-10-10（R11）：#dlgCfm 的焦点管理（与 #dlg1 的 openDlg / closeDlg 同源）。
+   此前 confirmDlg / render2FA / cfmNo / cfmYes 都不做焦点处理 ⇒ 二次认证时焦点停在遮罩后的
+   背景元素上，键盘用户必须手动 Tab 才到 #tfaPwd；确认 / 取消后焦点也不归还触发元素。
+   #dlgCfm 被全站复用（不限认证模块）⇒ 修一处即全站受益。 */
+function cfmFocusIn(sel) {
+  try { if (!$("#dlgCfm").classList.contains("show")) window.__cfmPrevFocus = document.activeElement; } catch (_e) {}
+  $("#dlgCfm").classList.add("show");
+  try { var f = $(sel); if (f && f.focus) f.focus(); } catch (_e) {}
+}
+/* ★ 2026-10-10（R12）：重渲染后的**焦点复定位**基础设施（全站通用）。
+   整段重渲染（认证模块 `auRerender` / 同类出口）会把被点元素的节点换掉，浏览器随即把焦点
+   丢到 body —— 翻页、批量动作、二次认证确认后键盘用户失去落点。做法：渲染前记录「可复定位
+   选择器」（id 优先，其次 data-* 动作锚点），渲染后**仅当焦点已落 body** 时按选择器找回，
+   不抢其它控件的焦点。`cfmFocusBack` 与 `auRerender` 共用本组函数。 */
+function domFocusKey(el) {
+  if (!el || !el.getAttribute) return null;
+  if (el.id) return "#" + el.id;
+  var attrs = ["data-auact", "data-idact", "data-act", "data-ct", "data-aut", "data-pgr"];
+  for (var i = 0; i < attrs.length; i++) {
+    var v = el.getAttribute(attrs[i]);
+    if (v == null) continue;
+    var sel = "[" + attrs[i] + '="' + String(v).replace(/"/g, '\\"') + '"]';
+    /* ★ 2026-10-10（R14）：角色键此前只拼 `data-i`（页② 的**行下标**），行内破坏性动作的
+       `data-id`（**对象主键**）未参与 ⇒ `[data-auact="isRevoke"]` 匹配全表所有行，复定位
+       取首个可见元素 = **另一行**的同名按钮，紧随其后一次 Enter 就会对另一个对象发起动作。 */
+    /* ★ 2026-10-10（R15）：优先级此前是 **`data-i` 优先**、`data-id` 只在没有 `data-i` 时兜底 ——
+       而 `data-i` 是**行下标**，行内删除 / 移除后下标塌缩，选择器会命中**移位后占据同下标的
+       另一条记录**（页②「移除」实测：删掉第 0 行后焦点落到新第 0 行那条的破坏性按钮上）。
+       R14 裁决②只给 `isRevoke` 一类补了 `data-id`，却没改优先级 ⇒ 那条规则在此分支根本走不到。
+       改为**对象主键优先**：`data-id` 恒比行下标稳定；两者都无才退化为纯角色键。 */
+    var did = el.getAttribute("data-id");
+    var di = el.getAttribute("data-i");
+    if (did != null) sel += '[data-id="' + String(did).replace(/"/g, '\\"') + '"]';
+    else if (di != null) sel += '[data-i="' + di + '"]';
+    return sel;
+  }
+  return null;
+}
+function domFocusSave() { window.__domFocusKey = domFocusKey(document.activeElement); }
+function domFocusRestore() {
+  var k = window.__domFocusKey; window.__domFocusKey = null;
+  if (!k) return;
+  if (document.activeElement && document.activeElement !== document.body) return;
+  try {
+    var ns = document.querySelectorAll(k), el = null;
+    /* 同名多份时优先取**可见**的那一个（页签面板 / 隐藏卡片的同锚点控件）。 */
+    for (var i = 0; i < ns.length; i++) { if (ns[i].offsetParent !== null) { el = ns[i]; break; } }
+    if (!el && ns.length) el = ns[0];
+    /* ★ 2026-10-10（R14）：元素**随动作消失**（行内吊销 / 删除使整行被移除，页② 删源连详情视图
+       一并消失）时，此前 `ns[0]` 会落到**另一行**的同名破坏性按钮、或干脆找不到而把焦点丢回 body。
+       改为退到**当前活动页工具栏的首个可用按钮** —— 页面级稳定锚点，永不指向某个具体对象。 */
+    if (!el) {
+      var _tb = document.querySelector(".pg.on .toolbar button:not([disabled])") ||
+                document.querySelector(".pg.on .toolbar .btn:not([disabled])");
+      if (_tb && _tb.focus) { try { _tb.focus(); } catch (_e8) { /* 忽略 */ } }
+      return;
+    }
+    /* ★ 2026-10-10（R12）：翻到末页时「下页」按钮自己变禁用 ⇒ 目标虽找得到却不可聚焦，
+       焦点仍会丢。仅在分页器容器内回退到**第一个可用按钮**（末页时「首页 / 上页」必然可用）；
+       限定 `.pager` 内，避免影响弹窗确认路径的触发元素。 */
+    if (el && el.disabled) {
+      /* ★ 2026-10-10（R15）：禁用兜底此前**只认 `.pager` 容器** —— 分页器末页「下页」自禁用有解，
+         但**工具栏按钮**（页⑤「批量吊销」确认后勾选集清空 ⇒ 按钮自禁用）不在 `.pager` 内
+         ⇒ 落回 body，键盘用户要重新 Tab 穿越侧栏。改为逐级上溯（最多 4 层）取同容器首个可用
+         按钮，再退到当前活动页工具栏的首个可用按钮。 */
+      var _host = el.parentElement, _pick = null, _hop = 0;
+      while (_host && !_pick && _hop < 4) {
+        var _btns = _host.querySelectorAll("button:not([disabled])");
+        for (var j = 0; j < _btns.length; j++) {
+          if (_btns[j] !== el && _btns[j].offsetParent !== null) { _pick = _btns[j]; break; }
+        }
+        _host = _host.parentElement; _hop++;
+      }
+      if (!_pick) {
+        var _tb2 = document.querySelector(".pg.on .toolbar button:not([disabled])");
+        if (_tb2 && _tb2.offsetParent !== null) _pick = _tb2;
+      }
+      if (_pick) el = _pick;
+    }
+    if (el && el.focus && !el.disabled) el.focus();
+  } catch (_e) {}
+}
+/* ★ 2026-10-10（R12）：**全局兜底** —— 任何「点击 → 重渲染」路径（分页器 / 页签 / 行内动作 /
+   批量操作）都会把被点元素的节点换掉、焦点丢到 body。认证模块的翻页入口各自直呼本页渲染器
+   （`audPg` / `auucPg` / `auiPg` / `credPg*` …），并不经 `auRerender()` ⇒ 单独挂钩子必然漏。
+   捕获阶段先记键，事件处理（含同步重渲染）结束后按选择器找回；仅在焦点已落 body 时动作。 */
+document.addEventListener("click", function (e) {
+  var t = e.target;
+  var el = (t && t.closest) ? (t.closest("button,a,[role=tab],select,input") || t) : t;
+  var k = domFocusKey(el);
+  if (!k) return;
+  window.__domFocusKey = k;
+  window.setTimeout(domFocusRestore, 0);
+}, true);
+
+function cfmFocusBack() {
+  $("#dlgCfm").classList.remove("show");
+  /* 归还前先留一份「可复定位选择器」—— 确认回调（cb）常在归还**之后**整段重渲染。 */
+  var _k = domFocusKey(window.__cfmPrevFocus);
+  try { if (window.__cfmPrevFocus && window.__cfmPrevFocus.focus) window.__cfmPrevFocus.focus(); } catch (_e) {}
+  window.__cfmPrevFocus = null;
+  if (_k) { window.__domFocusKey = _k; window.setTimeout(domFocusRestore, 0); }
+}
 function confirmDlg(title, html, cb, okText) {
   S.cfmCb = cb; S.tfa = null;
   const no = $("#dlgCfm [data-act='cfmNo']"); if (no) no.style.display = "";
   $("#cfmTitle").textContent = title;
   $("#cfmMsg").innerHTML = html;
   $("#cfmYes").textContent = okText || "确认";
-  $("#dlgCfm").classList.add("show");
+  cfmFocusIn("#cfmYes");
 }
 
 /* ===== 策略体检：本组策略的只读分析（不修改任何策略） =====
@@ -5501,7 +5913,7 @@ function polCheck() {
   $("#cfmYes").textContent = "关闭";
   const no = $("#dlgCfm [data-act='cfmNo']"); if (no) no.style.display = "none";
   S.tfa = null; S.cfmCb = null;
-  $("#dlgCfm").classList.add("show");
+  cfmFocusIn("#cfmYes");
 }
 
 /* ===== 二次认证：敏感变更（启用 / 停用）的身份再确认 =====
@@ -5516,17 +5928,21 @@ function ask2FA(op, ok, cancel, note) {
 function render2FA() {
   const t = S.tfa; if (!t) return;
   const no = $("#dlgCfm [data-act='cfmNo']"); if (no) no.style.display = "";
+  /* 方式清单读**可变的**字典（AU.dict.methods）而非静态常量 —— 静态常量在新增方式后即过期，
+     会让「刚登记的方式」在二次认证里选不到。 */
+  const _tfaMs = (typeof AU !== "undefined" && AU && AU.dict && AU.dict.methods) ? AU.dict.methods : AU_METHODS;
   $("#cfmTitle").textContent = "二次认证";
   $("#cfmMsg").innerHTML = `
     <div class="hint-row" style="margin-bottom:12px"><i class="ic">二次认证</i><div>「<b>${esc(t.op)}</b>」属于<b>敏感变更</b>，需先完成<b>二次认证</b>确认身份；认证通过后操作才执行，取消不产生任何变更。</div></div>
     ${t.note ? `<div class="note" style="margin:0 0 12px">${t.note}</div>` : ""}
-    <div style="display:flex;gap:10px;align-items:baseline;margin-bottom:6px"><span style="flex:0 0 62px;color:var(--txt3);font-size:12.5px">认证方式</span><span class="mini">取自「认证方式字典」，默认<b>口令再认证（L2）</b></span></div>
-    <div class="seg wrap" style="margin:0 0 12px">${AUTH_METHODS.filter(x => x.level >= 2).map(x => x.names.map(n => `<button class="${t.method === n ? "on" : ""}" data-act="tfaMethod" data-v="${esc(n)}">${esc(n)}</button>`).join("")).join("")}</div>
+    <div style="display:flex;gap:10px;align-items:baseline;margin-bottom:6px"><span style="flex:0 0 62px;color:var(--txt3);font-size:12.5px">认证方式</span><span class="mini">取自「认证方式字典」<b>（方式名唯一取值域）</b>；此处<b>不标级别</b> —— 级别由「认证源 × 认证方式」联合判定。「无感代填」不适用（本次操作需用户手工确认）</span></div>
+    <div class="seg wrap" style="margin:0 0 12px">${_tfaMs.filter(m => m.interactive).map(m => `<button class="${t.method === m.name ? "on" : ""}" data-act="tfaMethod" data-v="${esc(m.name)}">${esc(m.name)}</button>`).join("")}</div>
     <div style="display:flex;gap:10px;align-items:center"><span style="flex:0 0 62px;color:var(--txt3);font-size:12.5px">凭据</span>
-      <input type="password" class="mini-inp" id="tfaPwd" style="min-width:220px" placeholder="输入${esc(t.method)}凭据" value="${esc(t.pwd || "")}"></div>
+      <input type="password" class="mini-inp" id="tfaPwd" aria-label="二次认证凭据（${esc(t.method)}）" style="min-width:220px" placeholder="输入${esc(t.method)}凭据" value="${esc(t.pwd || "")}"></div>
   `;
   $("#cfmYes").textContent = "验证并执行";
-  $("#dlgCfm").classList.add("show");
+  /* 开窗**与**切换认证方式（tfaMethod 会重渲染本函数、替换 #tfaPwd 节点）后，焦点都归到口令框 */
+  cfmFocusIn("#tfaPwd");
 }
 
 /* ==========================================================================
@@ -5871,7 +6287,7 @@ document.addEventListener("click", (e) => {
       const ba = nonHttpProtos(a);
       if (ba.length) { toast("整资产匿名开放要求资产下全部资源均为 HTTP 协议；当前存在：" + ba.join("、") + "，请先移除或改为 HTTP 资源"); break; }
       confirmDlg("声明整资产匿名开放？", `<b>${esc(a.name)}</b> 将整体匿名开放：请求不进入认证与授权链，跳过主体认证、资产访问状态与准入判定。
-        <div class="note red" style="margin-top:10px">影响：① 该资产在「资产访问控制策略」中的准入策略<b>整体不适用</b>；② 本页路径授权矩阵转只读；③ 现有逐路径访问要求<b>保留但暂不生效</b>（关闭声明后恢复）；④ <b>不做越权判定</b>，但 <b>WAF、限流、请求约束、行为策略与审计照常生效</b>。<br>约束：整资产匿名<b>仅适用于 L1 级、全部资源为 HTTP 协议、且未登记有端接入的资产</b>；请确认该资产不含需要登录保护的资源。</div>`,
+        <div class="note red" style="margin-top:10px">影响：① 该资产在「资产访问控制策略」中的准入策略<b>整体不适用</b>；② 本页路径授权矩阵转只读；③ 现有逐路径访问要求<b>保留但暂不生效</b>（关闭声明后恢复）；④ <b>不做越权判定</b>，但 <b>WAF、限流、请求约束与审计照常生效</b>。<br>约束：整资产匿名<b>仅适用于 L1 级、全部资源为 HTTP 协议、且未登记有端接入的资产</b>；请确认该资产不含需要登录保护的资源。</div>`,
         () => { a.anon = "asset"; $("#dlgCfm").classList.remove("show"); toast("已声明整资产匿名开放（变更入审计）"); renderFg(); }, "确认匿名开放");
       break;
     }
@@ -5887,7 +6303,7 @@ document.addEventListener("click", (e) => {
     case "cfmNo": {
       /* 二次认证：取消 = 不产生任何变更，回调调用方回滚 UI 状态 */
       const t = S.tfa; S.tfa = null; S.cfmCb = null;
-      $("#dlgCfm").classList.remove("show");
+      cfmFocusBack();
       if (t && t.cancel) t.cancel();
       break;
     }
@@ -5896,11 +6312,12 @@ document.addEventListener("click", (e) => {
       if (S.tfa) {
         const t = S.tfa;
         const v = (($("#tfaPwd") || {}).value || "").trim();
-        if (!v) { toast("请输入" + t.method + "凭据后再提交（二次认证）"); break; }
-        S.tfa = null; S.cfmCb = null; $("#dlgCfm").classList.remove("show");
+        /* 空凭据：除 toast 外还须给**字段级红框** —— 全站统一用 markBad 定位到具体控件。 */
+        if (!v) { markBad($("#tfaPwd"), true); toast("请输入" + t.method + "凭据后再提交（二次认证）"); break; }
+        S.tfa = null; S.cfmCb = null; cfmFocusBack();
         t.ok(); break;
       }
-      const cb = S.cfmCb; S.cfmCb = null; $("#dlgCfm").classList.remove("show"); if (cb) cb(); break;
+      const cb = S.cfmCb; S.cfmCb = null; cfmFocusBack(); if (cb) cb(); break;
     }
     case "tfaMethod": {
       if (S.tfa) { S.tfa.pwd = (($("#tfaPwd") || {}).value || ""); S.tfa.method = el.dataset.v; render2FA(); }
@@ -5988,10 +6405,35 @@ document.addEventListener("change", (e) => {
   }
 });
 /* 搜索框即时过滤 */
+/* ★ 2026-10-10（R10）：搜索框「合成 change」的统一出口。
+   ① **组合态（中文候选）不派发** —— 下游 auOnChange 的组合态守卫只挡 `e.type === "input"`，
+      合成 change 会从守卫旁边走过去，260ms 后整页重渲染 ⇒ IME 候选被清空、输入跳变
+      （实测：全量 4 行被提前筛成 1 行）。组合结束由下面的 compositionend 补一次派发。
+   ② **派发前后复位焦点**（含光标位置）—— 整页重渲染会替换搜索框节点，
+      焦点落回 body，键盘用户须重新 Tab 一遍。 */
+function _fireSearchChange(el, delay) {
+  if (!el) return;
+  clearTimeout(el._t);
+  el._t = setTimeout(function () {
+    var fid = el.id, pos = null;
+    try { pos = el.selectionStart; } catch (_e) { pos = null; }
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    if (!fid) return;
+    var ne = document.getElementById(fid);
+    if (!ne || ne === document.activeElement) return;
+    try { ne.focus(); if (pos != null && ne.setSelectionRange) ne.setSelectionRange(pos, pos); } catch (_e2) { /* 忽略 */ }
+  }, delay == null ? 260 : delay);
+}
 document.addEventListener("input", (e) => {
   const el = e.target.closest("input[type=search]");
+  if (!el || e.isComposing) return;
+  _fireSearchChange(el);
+});
+/* 组合结束（候选上屏）⇒ 立即按终值派发一次，筛选才落地。 */
+document.addEventListener("compositionend", (e) => {
+  const el = e.target && e.target.closest && e.target.closest("input[type=search]");
   if (!el) return;
-  clearTimeout(el._t); el._t = setTimeout(() => { el.dispatchEvent(new Event("change", { bubbles: true })); }, 260);
+  _fireSearchChange(el, 0);
 });
 /* 组树内的自由文本（IP / 版本 / 时间）即时同步，避免重渲染后丢值 */
 document.addEventListener("input", (e) => {
@@ -6092,7 +6534,7 @@ $$("#btnGoFg").forEach(b => b.addEventListener("click", _goFg));
 $$("[data-go='fg']").forEach(b => b.addEventListener("click", _goFg));
 
 /* ==========================================================================
-   安全设置 · 凭据托管（网关托管凭据管理）· 一期
+   认证 · 网关凭据托管（网关托管凭据管理）· 一期
    --------------------------------------------------------------------------
    三个分区（与资产「代理与上游」卡逐行对应）：
      ① 网关托管凭据   口令 / 密钥类：Basic / API-Key / OAuth2 Client
@@ -6101,43 +6543,61 @@ $$("[data-go='fg']").forEach(b => b.addEventListener("click", _goFg));
    需求依据：F6.2 规则 6~9（上游 TLS 校验 / 身份头默认删除 / 可信凭据注入 / 上游认证三档）
             F9.3 规则 2·3（帮助语口径「由平台维护」；「不参与谁能访问判定」）
             AC-F6.2-4 / AC-F9.3-1；WBS B7.1（上游认证配置面与语义边界说明）
-   与资产详情 / 登记向导「代理与上游 → 上游认证与凭据处理」卡双向可达：
+   与资产详情 / 登记向导「上游透传与校验」卡双向可达：
      · 卡内「托管凭据」下拉            → 本页「网关托管凭据」
      · 卡内「信任锚（根 CA）」行        → 本页「CA 管理」
      · 卡内「客户端证书（mTLS）」行     → 本页「mTLS 客户端证书」（mTLS 客户端证书，私钥不出平台）
-   演示基准日取宿主 nowD() = 2026-09-06；「即将过期」= 有效期 ≤ 30 天。
+   演示基准日取认证模块统一运行时刻 AU_TS_STAMP（2026-09-30 09:14）的日期部分；「即将过期」= 有效期 ≤ 30 天。
    ========================================================================== */
 /* ① 网关托管凭据：口令 / 密钥类（mTLS 客户端证书因含私钥、形态为证书，单列第 ③ 分区维护） */
 const CRED_TYPES = ["Basic", "API-Key", "OAuth2 Client"];
 const CRED_LIST = [
   { id:"cred-rpt",    name:"监管报送网关", type:"Basic",         where:"Authorization: Basic", user:"svc-report", inj:{ carrier:"header", field:"Authorization", prefix:"Basic " }, assets:["监管报送接口"],   rot:"2026-08-12", st:"启用" },
-  { id:"cred-aml",    name:"反洗钱报送",   type:"OAuth2 Client", where:"Authorization: Bearer（平台代取 token）", oauth:{ endpoint:"https://aml-gw.example.com/oauth2/token", mode:"client_credentials", authMethod:"client_secret_basic", scope:"aml.report", audience:"https://aml.example.com" }, clientId:"aml-gw-client", assets:["核心网银门户"], rot:"2026-09-01", st:"启用" },
+  { id:"cred-aml",    name:"反洗钱报送",   type:"OAuth2 Client", where:"Authorization: Bearer（平台代取 token）", oauth:{ endpoint:"https://aml-gw.example.com/oauth2/token", mode:"client_credentials", authMethod:"client_secret_basic", scope:"aml.report", audience:"https://aml.example.com" }, clientId:"aml-gw-client", assets:["反洗钱报送门户"], rot:"2026-09-01", st:"启用" },
   { id:"cred-open",   name:"开放平台对接", type:"API-Key",       where:"X-API-Key（请求头）", inj:{ carrier:"header", field:"X-API-Key", prefix:"" }, assets:[],                 rot:"2026-07-18", st:"启用" },
   { id:"cred-legacy", name:"老报送通道",   type:"Basic",         where:"Authorization: Basic", user:"svc-legacy", inj:{ carrier:"header", field:"Authorization", prefix:"Basic " }, assets:[],                 rot:"2026-03-02", st:"停用" }
 ];
 /* ③ mTLS 客户端证书：证书 + 私钥；私钥不出平台、不可导出、不可回读 */
 const MTLS_LIST = [
   { id:"mtls-mb",  name:"手机银行对账", subj:"CN=mb-recon.bank.local",  issuer:"CN=Bank Internal Issuing CA", exp:"2027-03-15", fp:"5D:0A:77:…:31", assets:["手机银行后台"], rot:"2026-06-30", keyEnc:true,  st:"有效" },
-  { id:"mtls-rpt", name:"数据报送前置", subj:"CN=rpt-front.bank.local", issuer:"CN=Bank RPT Root CA",         exp:"2026-09-28", fp:"E1:6B:3C:…:02", assets:["监管报送接口"],     rot:"2026-04-08", keyEnc:false, st:"即将过期" }
+  { id:"mtls-rpt", name:"数据报送前置", subj:"CN=rpt-front.bank.local", issuer:"CN=Bank RPT Root CA",         exp:"2026-09-28", fp:"E1:6B:3C:…:02", assets:["监管报送接口"],     rot:"2026-04-08", keyEnc:false, st:"已过期" }
 ];
 const CA_LIST = [
   { id:"ca-wy",    name:"网银域根 CA",      code:"bank-wy-root",         type:"根 CA",       subj:"CN=Bank WY Root CA, O=XX Bank",  exp:"2031-05-08", fp:"3F:9A:C1:…:C2", assets:["核心网银门户","对公网银体验门户"], st:"有效" },
   { id:"ca-oa",    name:"OA 域根 CA",       code:"bank-oa-root",         type:"根 CA",       subj:"CN=Bank OA Root CA, O=XX Bank",  exp:"2027-11-20", fp:"7C:11:8E:…:5E", assets:["统一身份门户"],           st:"有效" },
   { id:"ca-rpt",   name:"数据报送域根 CA",  code:"bank-rpt-root",        type:"根 CA",       subj:"CN=Bank RPT Root CA, O=XX Bank", exp:"2026-10-02", fp:"A2:4D:F0:…:90", assets:["监管报送接口"],      st:"即将过期" },
-  { id:"ca-front", name:"报送前置自签证书", code:"rpt-front.bank.local", type:"自签叶证书", subj:"CN=rpt-front.bank.local",        exp:"2026-09-30", fp:"B8:22:19:…:4A", assets:[],                    st:"即将过期" }
+  { id:"ca-front", name:"报送前置自签证书", code:"rpt-front.bank.local", type:"自签叶证书", subj:"CN=rpt-front.bank.local",        exp:"2026-09-30", fp:"B8:22:19:…:4A", assets:[],                    st:"已过期" }
+];
+/* ② 平台签发 CA 清单 —— 供**平台签发给主体**的凭据（客户端 License 证书 / 智能体短时凭据）
+   选择签发者，取值域＝本清单（闭集）。
+   ⚠ 与 `CA_LIST`（页③「CA 管理（信任锚）」）**不是同一池**，不得互相并入：
+   `CA_LIST` 是「网关 → 上游」**出站方向**的信任锚（种子条条带 `assets` 被访问域归属）；
+   本清单是平台自身作为签发者的 CA。两者混用会造出「客户端 License 证书由网银域根 CA 签发」这类错误。
+   ★ 2026-10-09：本清单原为 `AU.gw.cas`（已撤除的重复页 `pg-augwcred` 的残留种子），
+   在此升格为与 `CRED_LIST` / `CA_LIST` / `MTLS_LIST` 同体例的模块级常量，去处影子化。 */
+const GW_SIGN_CAS = [
+  { id: "sg_01", name: "白泽内网 CA",     type: "内网私有 PKI", cn: "Baize Internal Root CA", exp: "2031-01-01" },
+  { id: "sg_02", name: "外购 CA（CFCA）", type: "外购 CA",      cn: "CFCA RSA ROOT",           exp: "2029-06-30" }
 ];
 const _ST_TAG = { "启用":"t-ok", "停用":"t-gray", "有效":"t-ok", "即将过期":"t-warn", "已过期":"t-err" };
 const stTag = s => `<span class="tag ${_ST_TAG[s]||"t-gray"}">${esc(s)}</span>`;
-/* 日期工具（第十九轮）：演示基准日 nowD() 即「今天」，上传 / 轮换若把 exp 写成 nowD()，
+/* 日期工具（第十九轮）：基准日取认证模块统一运行时刻 AU_TS_STAMP 的日期部分（即「今天」），上传 / 轮换若把 exp 写成该日期，
      就会出现「刚换的证书当天到期、却仍标有效」的自相矛盾（评审 D1）。故一律 +365 天；
      并给出按 exp 推导状态的唯一真源 credExpSt（≤0 已过期 / ≤30 即将过期 / 否则有效）。 */
-const addDays = (d, n) => { const t = new Date(d + "T00:00:00"); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
-const credExpSt = exp => { const days = Math.round((new Date(exp + "T00:00:00") - new Date(nowD() + "T00:00:00")) / 86400000); return days <= 0 ? "已过期" : days <= 30 ? "即将过期" : "有效"; };
+/* ★ 2026-10-09：原实现用 toISOString()（UTC）取回日期，在 TZ=+08:00 下一律**少 1 天**
+   （实测 addDays("2026-09-30",365) → "2027-09-29"、addDays("2027-03-13",365) → "2028-03-11"），
+   且同一份演示在不同时区机器上产出不同日期。改为按**本地日期分量**格式化，与入参同一时区基准。 */
+const addDays = (d, n) => { const t = new Date(d + "T00:00:00"); t.setDate(t.getDate() + n);
+  const p2 = (x) => (x < 10 ? "0" : "") + x;
+  return t.getFullYear() + "-" + p2(t.getMonth() + 1) + "-" + p2(t.getDate()); };
+const credExpSt = exp => { const days = Math.round((new Date(exp + "T00:00:00") - new Date(AU_TS_STAMP.slice(0, 10) + "T00:00:00")) / 86400000); return days <= 0 ? "已过期" : days <= 30 ? "即将过期" : "有效"; };
 /* 状态真源接线（第二十轮）：CA / mTLS 的「有效性状态」**唯一**由 exp 派生 ——
    第十九轮抽出了 credExpSt 却零调用（新建 / 轮换写死 st:"有效"、种子写死「即将过期」），
    改 exp 不改 st 会自相矛盾。credNormalize 在每次渲染前把 CA / mTLS 的 st 重算回写；
    ⚠ CRED 的「启用 / 停用」是运维态、与证书有效期无关，**不参与**派生。
-   已验算：用 credExpSt 重算全部 CA / mTLS 种子 exp，结果与既有写死 st **完全一致**（基准日 2026-09-06）。 */
+   已核对：种子 st 字面量已与 credExpSt 在基准日（AU_TS_STAMP）下的推导结果对齐 —— 含 2 条按当日
+   推为「已过期」的（`ca-front` exp 2026-09-30、`mtls-rpt` exp 2026-09-28），原字面量写「即将过期」
+   与派生不符；即便日后 AU_TS_STAMP 前移，credNormalize 也会在每次渲染前覆盖，UI 口径以现算为准。 */
 function credNormalize(){ [].concat(CA_LIST, MTLS_LIST).forEach(function(c){ if(c && c.exp) c.st = credExpSt(c.exp); }); }
 /* 引用资产列：默认只读文本；传入 id 时渲染为**只读入口**，点开「反向引用清单」。
    kind: "cred"（默认）| "ca" | "mtls" —— 三个分区共用同一入口，分别派发 credRefs / caRefs / mtlsRefs。
@@ -6149,112 +6609,131 @@ const refCell = (arr, id, kind) => {
   var fn = kind === "ca" ? "caRefs" : kind === "mtls" ? "mtlsRefs" : "credRefs";
   return '<a href="#" class="hl" style="text-decoration:none" data-cid="' + id + '" onclick="' + fn + '(this.dataset.cid);return false" title="查看引用该对象的资产（只读；挂载与解绑在资产「代理与上游」侧）">' + txt + '</a>';
 };
-const taStyle = "width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:ui-monospace,Menlo,Consolas,monospace";
+const taStyle = "width:100%;box-sizing:border-box;padding:8px 10px;font-size:12.5px;font-family:ui-monospace,Menlo,Consolas,monospace";
 
+/* 页③ 主操作按钮（随激活分区变化）—— 与其余 5 页同范式：主操作置于页头 .title-row 的 .toolbar */
+function credActBtn(ct) {
+  return ct === "c2" ? '<button class="btn primary" onclick="caUp()">+ 上传信任锚</button>'
+       : ct === "c3" ? '<button class="btn primary" onclick="mtlsUp()">+ 上传客户端证书</button>'
+       : '<button class="btn primary" onclick="credNew()">+ 新建凭据</button>';
+}
 function renderCred(){
   credNormalize();
   const host = document.getElementById("pg-cred"); if(!host) return;
   const tab = ["c1", "c2", "c3"].indexOf(window._credTab) >= 0 ? window._credTab : "c1";
   host.innerHTML = `
-    <div class="title-row">
-      <h2>凭据托管</h2>
-      <div class="muted">网关到上游的<b>机器对接凭据</b>与<b>信任锚</b>；由平台统一托管，<b>不参与「谁能访问」判定</b></div>
-    </div>
-    <div class="note blue">上游连接与通道安全配置（网关 → 资产后端）<b>不参与「谁能访问」判定</b>；浏览器会话流量不需要资产凭据，本页仅针对<b>网关到上游</b>的连接。账号密码代填（用户凭据）属平台基座认证集成能力，<b>与本页不同层</b>（F9.3 规则 2·3）。</div>
+    ${idTitle("网关凭据托管", "网关到上游的<b>机器对接凭据</b>与<b>信任锚</b>；由平台统一托管，<b>不参与「谁能访问」判定</b>", '<div class="toolbar">' + credActBtn(tab) + "</div>")}
+    ${idScopeNote("上游连接与通道安全配置（网关 → 资产后端）<b>不参与「谁能访问」判定</b>；浏览器会话流量不需要资产凭据，本页仅针对<b>网关到上游</b>的连接。账号密码代填（用户凭据）属平台基座认证集成能力，<b>与本页不同层</b>")}
 
-    <div class="tabs" id="credTabs">
-      <button data-ct="c1" class="${tab==="c1"?"on":""}">网关托管凭据<span class="num">${CRED_LIST.length}</span></button>
-      <button data-ct="c2" class="${tab==="c2"?"on":""}">CA 管理（信任锚）<span class="num">${CA_LIST.length}</span></button>
-      <button data-ct="c3" class="${tab==="c3"?"on":""}">mTLS 客户端证书<span class="num">${MTLS_LIST.length}</span></button>
+    <div class="tabs" id="credTabs" role="tablist">
+      <button type="button" role="tab" id="credTabsTab_c1" aria-controls="ct-c1" aria-selected="${tab==="c1"?"true":"false"}" data-ct="c1" class="${tab==="c1"?"on":""}">网关托管凭据<span class="num">${CRED_LIST.length}</span></button>
+      <button type="button" role="tab" id="credTabsTab_c2" aria-controls="ct-c2" aria-selected="${tab==="c2"?"true":"false"}" data-ct="c2" class="${tab==="c2"?"on":""}">CA 管理（信任锚）<span class="num">${CA_LIST.length}</span></button>
+      <button type="button" role="tab" id="credTabsTab_c3" aria-controls="ct-c3" aria-selected="${tab==="c3"?"true":"false"}" data-ct="c3" class="${tab==="c3"?"on":""}">mTLS 客户端证书<span class="num">${MTLS_LIST.length}</span></button>
     </div>
 
-    <div class="tbp ${tab==="c1"?"on":""}" id="ct-c1">
+    <div class="tbp ${tab==="c1"?"on":""}" id="ct-c1" role="tabpanel" aria-labelledby="credTabsTab_c1">
       <div class="card">
         <div class="card-h">
           <h3>网关托管凭据<span class="sub">网关到上游的机器对接凭据（口令 / 密钥类）；由平台托管，录入后明文不可回读</span></h3>
-          <div class="toolbar"><button class="btn primary" id="credNewBtn">+ 新建凭据</button></div>
         </div>
         <div class="card-b">
           <div class="toolbar" style="margin-bottom:12px">
-            <div class="input-w"><input type="search" id="credK" placeholder="搜索凭据名称 / 适用上游" style="width:240px"><i>搜索</i></div>
-            <select id="credFType"><option value="">全部类型</option>${CRED_TYPES.map(t=>`<option>${esc(t)}</option>`).join("")}</select>
-            <select id="credFSt"><option value="">全部状态</option><option>启用</option><option>停用</option></select>
+            <div class="input-w"><input type="search" id="credK" placeholder="搜索凭据名称 / 适用上游" aria-label="搜索凭据名称或适用上游" style="width:240px"><i>搜索</i></div>
+            <select id="credFType" aria-label="筛选凭据类型"><option value="">全部类型</option>${CRED_TYPES.map(t=>`<option>${esc(t)}</option>`).join("")}</select>
+            <select id="credFSt" aria-label="筛选凭据状态"><option value="">全部状态</option><option>启用</option><option>停用</option></select>
           </div>
           <div class="tbl-wrap">
             <table class="lst" id="credTbl">
-              <colgroup><col style="width:176px"><col style="width:140px"><col><col style="width:120px"><col style="width:110px"><col style="width:84px"><col style="width:292px"></colgroup>
+              <colgroup><col style="width:106px"><col style="width:167px"><col style="width:277px"><col style="width:106px"><col style="width:100px"><col style="width:84px"><col style="width:182px"></colgroup>
               <thead><tr><th>凭据名称</th><th>类型</th><th>注入位置</th><th>引用资产</th><th>最近轮换</th><th>状态</th><th>操作</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
-          <div class="note" style="margin-top:12px">
-            <b>网关托管凭据口径</b>：① 本区承载<b>口令 / 密钥类</b>机器对接凭据（Basic / API-Key / OAuth2 Client）；<b>mTLS 客户端证书</b>因含私钥、形态为证书，单列「mTLS 客户端证书」分区——F9.3 规则 3 的类型集（Basic / API-Key / mTLS / OAuth2 Client）由本页两个分区共同承载。<br>② <b>明文不可回读</b>——凭据值录入后仅以掩码呈现，界面不提供「查看明文」，变更一律走「轮换（替换）」。<br>③ <b>删除保护</b>——被资产引用时不可删除，须先在资产「代理与上游 → 上游认证与凭据处理」解除引用。<br>④ <b>轮换</b>支持<b>双值过渡</b>（新值生效后旧值保留 N 天，供上游平滑切换）或<b>立即失效</b>。<br>⑤ <b>停用</b>后引用该凭据的资产上游注入失败，请求按 F6.2 规则 13 返回 <b>502</b>，须先替换或解除引用。<br>⑥ 新建 / 轮换 / 停用 / 删除与查看引用<b>全部入审计</b>。<br>⑦ <b>「应用（绑定）」只发生在资产侧</b>——「哪个资产用哪条凭据」在资产「代理与上游 → 上游认证与凭据处理」中配置；本页只做<b>反向只读反映</b>（「引用资产」列点开为只读清单），<b>不提供从库侧挂载 / 解绑的动作</b>。<br>⑧ <b>OAuth2 Client 是「换取式」</b>——网关以 <b>POST application/x-www-form-urlencoded</b> 调<b>令牌端点</b>换取<b>短时 access token</b>（再注入 <b>Authorization: Bearer</b>），token 过期自动重取；F6.2 规则 11 的「上游 401 仅 GET / HEAD 自动刷新并重放一次」适用于<b>注入 token 的模式</b>（平台 token 与换取式托管凭据均在内）。<b>凭据本体</b>＝ client_id（可回读）+ client_secret（密文 · 不可回读）；<b>换取配置</b>＝ 令牌端点 / 授权模式（grant_type）/ 客户端认证方式（token_endpoint_auth_method：client_secret_basic｜client_secret_post）/ scope / audience。授权模式一期承载 client_credentials；password（需资源拥有者账号）与 mTLS 换 token 属二期 F2.x。<b>Basic / API-Key / mTLS 为静态注入</b>，不经换取。<br>⑨ <b>参数按类型驱动</b>——凭据不是一个「单值」：<b>Basic</b> 本体为<b>用户名 + 口令</b>（注入 <b>Authorization: Basic base64(user:pass)</b>）；<b>API-Key</b> 本体为<b>密钥值</b>，注入由<b>注入载体（请求头 / 查询参数 / Cookie）+ 字段名 + 值前缀</b>共同决定；<b>OAuth2 Client</b> 见 ⑧。注入位置<b>由类型推导、不再手填</b>。<br>⑩ <b>可编辑的只有非敏感元数据</b>——名称 / 适用上游 / 注入载体与字段名 / OAuth2 换取配置可「编辑」；<b>类型与凭据值</b>（口令 / 密钥 / client_secret）<b>不可改</b>，凭据值变更一律走「轮换（替换）」。CA / mTLS 同理：名称（CA 另含类型）可编辑，证书内容走「轮换」。
-          </div>
+          <div class="lst-foot"><div id="credPager" style="flex:1"></div></div>
+          <!-- ★ 2026-10-10（R19·A4）：原「口径」长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 -->
         </div>
       </div>
     </div>
 
-    <div class="tbp ${tab==="c2"?"on":""}" id="ct-c2">
+    <div class="tbp ${tab==="c2"?"on":""}" id="ct-c2" role="tabpanel" aria-labelledby="credTabsTab_c2">
       <div class="card">
         <div class="card-h">
           <h3>信任锚（根 CA）<span class="sub">内网私有 PKI / 自签证书；供上游 TLS「自定义信任锚」引用</span></h3>
-          <div class="toolbar"><button class="btn primary" id="caUpBtn">+ 上传信任锚</button></div>
         </div>
         <div class="card-b">
+          <!-- ★ 2026-10-10（R11）：c2 补筛选行 —— 该表含「即将过期 / 已过期」状态却无法按状态筛，
+               与页内 c1 及其余 5 页列表体例不一致。 -->
+          <div class="toolbar" style="margin-bottom:12px">
+            <div class="input-w"><input type="search" id="caK" placeholder="搜索名称 / 标识 / 主体 / 指纹" aria-label="搜索信任锚" style="width:240px"><i>搜索</i></div>
+            <select id="caFSt" aria-label="筛选信任锚状态"><option value="">全部状态</option><option>有效</option><option>即将过期</option><option>已过期</option></select>
+          </div>
           <div class="tbl-wrap">
             <table class="lst" id="caTbl">
-              <colgroup><col style="width:176px"><col style="width:100px"><col><col style="width:100px"><col style="width:142px"><col style="width:130px"><col style="width:86px"><col style="width:240px"></colgroup>
+              <colgroup><col style="width:132px"><col style="width:96px"><col style="width:150px"><col style="width:102px"><col style="width:136px"><col style="width:122px"><col style="width:100px"><col style="width:184px"></colgroup>
               <thead><tr><th>名称</th><th>类型</th><th>主体（Subject）</th><th>有效期至</th><th>指纹（SHA-256）</th><th>引用资产</th><th>状态</th><th>操作</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
-          <div class="note" style="margin-top:12px">
-            <b>CA 管理口径</b>：① <b>仅托管公钥证书</b>——此处为<b>信任锚（根 CA / 自签证书）</b>，不含私钥；<b>mTLS 客户端证书（含私钥）</b>在「mTLS 客户端证书」分区中以凭据形式托管，<b>私钥不出平台</b>（F6.2 规则 6）。<br>② <b>上传</b>支持粘贴 PEM 或上传文件（.pem / .crt / .cer），解析主体、有效期与 SHA-256 指纹后确认入库；同名或同指纹重复将被拒绝。<br>③ <b>轮换</b>新旧锚<b>并存过渡</b>（避免上游切换 CA 时断链），过渡结束由管理员停用旧锚。<br>④ <b>引用保护</b>——被资产「代理与上游 → 上游 TLS 校验 → 自定义信任锚」引用时不可删除。<br>⑤ 有效期 ≤ 30 天标注<b>即将过期</b>并提示轮换。<br>⑥ 本列表即资产侧「信任锚（根 CA）」输入框（选择平台预置 CA 或输入名称）的候选来源，变更<b>全部入审计</b>。
-          </div>
+          <div class="lst-foot"><div id="caPager" style="flex:1"></div></div>
+          <!-- ★ 2026-10-10（R19·A4）：原「口径」长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 -->
         </div>
       </div>
     </div>
 
-    <div class="tbp ${tab==="c3"?"on":""}" id="ct-c3">
+    <div class="tbp ${tab==="c3"?"on":""}" id="ct-c3" role="tabpanel" aria-labelledby="credTabsTab_c3">
       <div class="card">
         <div class="card-h">
           <h3>mTLS 客户端证书<span class="sub">网关到上游双向 TLS 握手时出示；证书与私钥由平台托管，私钥不出平台</span></h3>
-          <div class="toolbar"><button class="btn primary" id="mtlsUpBtn">+ 上传客户端证书</button></div>
         </div>
         <div class="card-b">
+          <!-- ★ 2026-10-10（R11）：c3 补筛选行（同上，与 c1 同体例） -->
+          <div class="toolbar" style="margin-bottom:12px">
+            <div class="input-w"><input type="search" id="mtlsK" placeholder="搜索名称 / 标识 / 主体 / 颁发者" aria-label="搜索客户端证书" style="width:240px"><i>搜索</i></div>
+            <select id="mtlsFSt" aria-label="筛选客户端证书状态"><option value="">全部状态</option><option>有效</option><option>即将过期</option><option>已过期</option></select>
+          </div>
           <div class="tbl-wrap">
             <table class="lst" id="mtlsTbl">
-              <colgroup><col style="width:152px"><col><col style="width:184px"><col style="width:100px"><col style="width:142px"><col style="width:120px"><col style="width:84px"><col style="width:258px"></colgroup>
+              <colgroup><col style="width:132px"><col style="width:132px"><col style="width:150px"><col style="width:102px"><col style="width:136px"><col style="width:108px"><col style="width:88px"><col style="width:184px"></colgroup>
               <thead><tr><th>名称</th><th>主体（Subject）</th><th>颁发者</th><th>有效期至</th><th>指纹（SHA-256）</th><th>引用资产</th><th>状态</th><th>操作</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
-          <div class="note" style="margin-top:12px">
-            <b>mTLS 客户端证书口径</b>：① 托管对象 = <b>客户端证书 + 私钥</b>；私钥<b>不出平台、不可导出、不可回读</b>，界面仅呈现证书主体、颁发者、有效期与指纹（F6.2 规则 6）。<br>② <b>使用时由网关在握手阶段自动出示</b>——资产侧在「代理与上游 → 客户端证书（mTLS）」引用本区凭据；未引用则为单向 TLS。<br>③ <b>轮换</b>上传新证书与私钥后<b>新旧并存过渡</b>（避免上游握手失败），过渡结束停用旧证书。<br>④ <b>引用保护</b>——被资产引用时不可删除。<br>⑤ 有效期 ≤ 30 天标注<b>即将过期</b>并提示轮换。<br>⑥ 变更<b>全部入审计</b>。
-          </div>
+          <div class="lst-foot"><div id="mtlsPager" style="flex:1"></div></div>
+          <!-- ★ 2026-10-10（R19·A4）：原「口径」长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 -->
         </div>
       </div>
     </div>
-
-    <div class="note" style="margin-top:2px">
-      <b>需求依据</b>：F6.2 规则 6~9（上游 TLS 校验 / 身份头默认删除 / 可信凭据注入 / 上游认证三档：不注入 · 平台 token · 网关托管凭据）· F9.3 规则 2·3（帮助语口径与「不参与判定」）· AC-F6.2-4 / AC-F9.3-1 · WBS B7.1。<br>
-      <b>三个分区与「代理与上游」卡逐行对应</b>：<b>网关托管凭据</b> ↔ 上游认证「注入网关托管凭据」档；<b>CA 管理（信任锚）</b> ↔ 上游 TLS「信任锚（根 CA）」；<b>mTLS 客户端证书</b> ↔ 上游 TLS「客户端证书（mTLS）」。
-    </div>`;
+`;
 
   host.querySelectorAll("#credTabs button").forEach(b=>b.addEventListener("click",()=>credTab(b.dataset.ct)));
-  ["credK","credFType","credFSt"].forEach(id=>{ const el=host.querySelector("#"+id); if(el) el.addEventListener("input",credRows); });
-  host.querySelector("#credNewBtn").addEventListener("click", credNew);
-  host.querySelector("#caUpBtn").addEventListener("click", caUp);
-  host.querySelector("#mtlsUpBtn").addEventListener("click", mtlsUp);
+  /* ★ 2026-10-10（R9）：页③ 搜索框与认证 5 页同源问题 —— 组合中的 input 走整页重渲染会销毁
+     输入节点、打断中文候选；组合期间跳过，compositionend 时再渲染一次。 */
+  ["credK","credFType","credFSt"].forEach(id=>{ const el=host.querySelector("#"+id); if(el){ el.addEventListener("input",(ev)=>{ if(ev.isComposing) return; CRED_PG.c1=1; credRows(); }); el.addEventListener("compositionend",()=>{ CRED_PG.c1=1; credRows(); }); } });
+  /* ★ 2026-10-10（R11）：c2 / c3 的筛选控件事件（与 c1 同口径，含 IME 组合态守卫） */
+  [["caK","caFSt","c2",caRows],["mtlsK","mtlsFSt","c3",mtlsRows]].forEach(function(cfg){
+    [cfg[0],cfg[1]].forEach(function(id2){ var el2=host.querySelector("#"+id2); if(!el2) return;
+      var go=function(ev){ if(ev&&ev.isComposing) return; CRED_PG[cfg[2]]=1; cfg[3](); };
+      el2.addEventListener("input",go); el2.addEventListener("change",go); el2.addEventListener("compositionend",go); });
+  });
+  /* ★ 2026-10-10（R10）：主操作已移到页头 .title-row（随分区切换、用内联 onclick 绑定），
+     原按 id 绑定的三行随之撤除 —— 否则 querySelector 返回 null、空指针报错且按钮失灵。 */
   credRows(); caRows(); mtlsRows();
 }
 
 function credTab(ct){
   window._credTab = ct;
   const host = document.getElementById("pg-cred"); if(!host) return;
-  host.querySelectorAll("#credTabs button").forEach(b=>b.classList.toggle("on", b.dataset.ct===ct));
+  /* ★ 2026-10-10（R13）：切换时补 aria-selected —— 原实现只切 .on 类，aria-selected 停在**渲染时**
+     写入的旧值（静态陈旧属性），读屏用户切了页签仍听到旧的选中项。口径同 R12 页①/页④。 */
+  host.querySelectorAll("#credTabs button").forEach(b=>{const _on=b.dataset.ct===ct; b.classList.toggle("on", _on); b.setAttribute("aria-selected", _on?"true":"false");});
   /* 分区板：统一按 .tbp 的 id 约定（ct-<分区>）切换，新增分区不必再改本函数 */
   host.querySelectorAll(".tbp").forEach(p=>p.classList.toggle("on", p.id === "ct-" + ct));
+  /* ★ 2026-10-10（R10）：三个分区主操作不同（新建凭据 / 上传信任锚 / 上传客户端证书），
+     页头按钮随分区切换 —— 不换会「看着 A 分区、按的却是 B 分区的动作」。 */
+  var tb = host.querySelector(".title-row .toolbar");
+  if (tb) tb.innerHTML = credActBtn(ct);
+  /* ★ 2026-10-10（R15）：页③ 页签 roving 同步。 */
+  try { auTabsRoveAll(); } catch (_et2) { /* 忽略 */ }
 }
 /* 与「代理与上游」卡互跳：详情 / 向导两处的帮助语链接均调用本函数 */
 function goCred(tab){
@@ -6262,7 +6741,7 @@ function goCred(tab){
   /* 多页化：凭据托管已独立成页（cred-hosting.html）。 */
   if (PG_CUR !== "pg-cred") { goPage("pg-cred", tab ? { tab: tab } : {}); return; }
   showPage("pg-cred");
-  document.getElementById("crumbs").innerHTML='<span class="p">安全设置</span><span class="sep">/</span><span>凭据托管</span>';
+  document.getElementById("crumbs").innerHTML='<span class="p">认证</span><span class="sep">/</span><span>网关凭据托管</span>';
   renderCred();
   $$("#side .mi").forEach(m=>m.classList.toggle("on", m.dataset.pg==="pg-cred"));
   window.scrollTo(0,0);
@@ -6274,22 +6753,24 @@ function credRows(){
   const host=document.getElementById("pg-cred"); if(!host) return;
   const k=(host.querySelector("#credK").value||"").trim().toLowerCase();
   const t=host.querySelector("#credFType").value, s=host.querySelector("#credFSt").value;
-  const rows=CRED_LIST.filter(c=>(!k||[c.name,c.id,c.where,c.up||""].concat(c.assets).join(" ").toLowerCase().includes(k))&&(!t||c.type===t)&&(!s||c.st===s));
+  const rowsAll=CRED_LIST.filter(c=>(!k||[c.name,c.id,c.where,c.up||""].concat(c.assets).join(" ").toLowerCase().includes(k))&&(!t||c.type===t)&&(!s||c.st===s));
+  const rows=credSlice(rowsAll, "c1");
   const tb=host.querySelector("#credTbl tbody"); if(!tb) return;
+  credPager("c1", "credPager", rowsAll.length, "条凭据", "搜索 / 筛选 / 分页只作用于本表");
   tb.innerHTML = rows.length ? rows.map(c=>`<tr>
-    <td><b>${esc(c.name)}</b><div class="muted">${esc(c.id)}</div></td>
+    <td><b>${esc(c.name)}</b><div class="muted">${esc(c.id)}</div>${c.up ? `<div class="muted" style="font-size:11.5px">上游：${esc(c.up)}</div>` : ""}</td>
     <td>${esc(c.type)}${c.oauth ? '<div class="muted" style="font-size:11.5px">换取式 · '+esc(c.oauth.mode||"client_credentials")+'</div>' : ""}</td>
     <td class="muted">${esc(c.where)}</td>
     <td>${refCell(refsOf("cred", c.id), c.id)}</td>
-    <td class="col-dt">${esc(c.rot)}</td>
+    <td class="col-dt">${c.rot?esc(c.rot):'<span class="muted">—</span>'}</td>
     <td>${stTag(c.st)}</td>
     <td class="cell-op"><span class="opgrp">
-      <button class="btn sm" onclick="credEdit('${c.id}')">编辑</button>
-      <button class="btn sm" onclick="credRotate('${c.id}')">轮换</button>
-      <button class="btn sm" onclick="credToggle('${c.id}')">${c.st==="启用"?"停用":"启用"}</button>
-      <button class="btn sm danger" onclick="credDel('${c.id}')">删除</button>
+      <button class="btn link" id="credEdit_${c.id}" data-id="${c.id}" onclick="credEdit('${c.id}')">编辑</button>
+      <button class="btn link" id="credRotate_${c.id}" data-id="${c.id}" onclick="credRotate('${c.id}')">轮换</button>
+      <button class="btn link" id="credToggle_${c.id}" data-id="${c.id}" onclick="credToggle('${c.id}')">${c.st==="启用"?"停用":"启用"}</button>
+      <button class="btn link danger" id="credDel_${c.id}" data-id="${c.id}" onclick="credDel('${c.id}')">删除</button>
     </span></td></tr>`).join("") :
-    `<tr><td colspan="7"><div class="empty"><div class="big">无匹配凭据</div>调整筛选条件或新建凭据</div></td></tr>`;
+    idEmptyRow(7, (k || t || s) ? "没有符合条件的凭据" : "暂无托管凭据 · 新建凭据后由资产「身份适配 → 机器身份」引用");
 }
 const credById = id => CRED_LIST.find(c=>c.id===id);
 /* 引用真源统一（第二十轮）：库侧「引用资产」= **种子登记 ∪ 资产侧显式引用**
@@ -6319,7 +6800,7 @@ function credEdit(id){
     `<div class="fld"><label>类型 <span class="muted">（不可修改）</span></label><input type="text" value="${esc(c.type)}" readonly></div>`,
   ];
   if(isBasic){
-    rows.push(`<div class="fld"><label>用户名</label><input type="text" id="ceUser" value="${esc(c.user||"")}"></div>`);
+    rows.push(`<div class="fld"><label>用户名 <span class="req">*</span></label><input type="text" id="ceUser" value="${esc(c.user||"")}"></div>`);
     rows.push(`<div class="fld"><label>口令 <span class="muted">（不可回读）</span></label><input type="text" value="••••••••" readonly><div class="help">口令变更请用「轮换」。</div></div>`);
   }
   if(isKey){
@@ -6329,10 +6810,10 @@ function credEdit(id){
     rows.push(`<div class="fld"><label>密钥值 <span class="muted">（不可回读）</span></label><input type="text" value="••••••••" readonly><div class="help">密钥变更请用「轮换」。</div></div>`);
   }
   if(isOAuth){
-    rows.push(`<div class="fld"><label>客户端标识 client_id</label><input type="text" id="ceOauthId" value="${esc(c.clientId||"")}"></div>`);
+    rows.push(`<div class="fld"><label>客户端标识 client_id <span class="req">*</span></label><input type="text" id="ceOauthId" value="${esc(c.clientId||"")}"></div>`);
     rows.push(`<div class="fld"><label>客户端密钥 client_secret <span class="muted">（不可回读）</span></label><input type="text" value="••••••••" readonly><div class="help">client_secret 变更请用「轮换」。</div></div>`);
     rows.push(`<div class="fld full"><label>令牌端点 token_endpoint <span class="req">*</span></label><input type="text" id="ceOauthEp" value="${esc(o.endpoint||"")}"></div>`);
-    rows.push(`<div class="fld"><label>授权模式 grant_type</label><select id="ceOauthMode">${sel("client_credentials",o.mode,"客户端凭据 client_credentials（一期承载）")}${sel("password",o.mode,"账号密码 password（二期）")}${sel("mtls",o.mode,"客户端证书换 token（二期）")}</select></div>`);
+    rows.push(`<div class="fld"><label>授权模式 grant_type</label><select id="ceOauthMode">${sel("client_credentials",o.mode,"客户端凭据 client_credentials")}</select></div>`);
     rows.push(`<div class="fld"><label>客户端认证方式</label><select id="ceOauthAuth">${sel("client_secret_basic",o.authMethod,"client_secret_basic（Basic 头 · 推荐）")}${sel("client_secret_post",o.authMethod,"client_secret_post（密钥放 body）")}</select></div>`);
     rows.push(`<div class="fld"><label>scope</label><input type="text" id="ceOauthScope" value="${esc(o.scope||"")}"></div>`);
     rows.push(`<div class="fld"><label>audience / resource</label><input type="text" id="ceOauthAud" value="${esc(o.audience||"")}"></div>`);
@@ -6347,8 +6828,10 @@ function credEdit(id){
     if(isOAuth){
       const ep=(document.getElementById("ceOauthEp").value||"").trim();
       if(!ep){ markBad("ceOauthEp",true); toast("OAuth2 Client：令牌端点必填"); return; }
-      if(!/^https:\/\//i.test(ep)){ markBad("ceOauthEp",true); toast("令牌端点必须为 HTTPS（F6.2 规则 6）："+ep); return; }
+      if(!/^https:\/\//i.test(ep)){ markBad("ceOauthEp",true); toast("令牌端点必须为 HTTPS："+ep); return; }
       if(!((document.getElementById("ceOauthId")||{}).value||"").trim()){ markBad("ceOauthId",true); toast("OAuth2 Client：客户端标识 client_id 为必填"); return; }
+      var ceMode=((document.getElementById("ceOauthMode")||{}).value||"");
+      if(ceMode!=="client_credentials"){ markBad("ceOauthMode", true); toast("当前版本仅承载 client_credentials；password / mTLS 换 token 在后续版本提供"); return; }
     }
     /* 校验前置（第二十轮）：此前先写 c.name / c.up 再校验用户名 ⇒ 校验失败 return 时
        「部分落库」（改了一半、取消无效）。现改为**全部校验通过后才写库**。 */
@@ -6364,7 +6847,7 @@ function credEdit(id){
       c.where=fld+"（"+CARN[car]+"）"; }
     if(isOAuth){ c.clientId=((document.getElementById("ceOauthId")||{}).value||"").trim();
       c.oauth={ endpoint:(document.getElementById("ceOauthEp").value||"").trim(), mode:document.getElementById("ceOauthMode").value, authMethod:document.getElementById("ceOauthAuth").value, scope:(document.getElementById("ceOauthScope").value||"").trim(), audience:(document.getElementById("ceOauthAud").value||"").trim() }; }
-    closeDlg(); toast("凭据「"+name+"」已更新（仅非敏感元数据；凭据值变更请用「轮换」，变更入审计）（演示）"); renderCred(); credTab("c1");
+    closeDlg(); toast("凭据「"+name+"」已更新（仅非敏感元数据；凭据值变更请用「轮换」，变更入审计）（演示）"); saveDemoState(); renderCred(); credTab("c1");
   };
 }
 
@@ -6384,14 +6867,14 @@ function credNew(){
       <div class="fld" id="cnOauthIdWrap" style="display:none"><label>客户端标识 client_id <span class="req">*</span></label><input type="text" id="cnOauthId" placeholder="如：aml-gw-client"></div>
       <div class="fld" id="cnOauthSecretWrap" style="display:none"><label>客户端密钥 client_secret <span class="req">*</span></label><input type="password" id="cnOauthSecret" placeholder="贴入密钥；提交后不可回读"></div>
       <div class="fld full" id="cnOauthWrap" style="display:none"><label>令牌端点 token_endpoint <span class="req">*</span></label><input type="text" id="cnOauthEp" placeholder="如：https://gw.example.com/oauth2/token">
-        <div class="help">网关在本端点以 <b>POST application/x-www-form-urlencoded</b> 发起换取，响应取 <b>access_token</b>；必须 HTTPS（F6.2 规则 6）。</div></div>
-      <div class="fld" id="cnOauthModeWrap" style="display:none"><label>授权模式 grant_type</label><select id="cnOauthMode"><option value="client_credentials">客户端凭据 client_credentials（一期承载）</option><option value="password">账号密码 password（二期 F2.x · 需资源拥有者账号）</option><option value="mtls">客户端证书换 token（二期 · 用 mTLS 客户端证书）</option></select></div>
+        <div class="help">网关在本端点以 <b>POST application/x-www-form-urlencoded</b> 发起换取，响应取 <b>access_token</b>；必须 HTTPS。</div></div>
+      <div class="fld" id="cnOauthModeWrap" style="display:none"><label>授权模式 grant_type</label><select id="cnOauthMode"><option value="client_credentials">客户端凭据 client_credentials</option></select></div>
       <div class="fld" id="cnOauthAuthWrap" style="display:none"><label>客户端认证方式 token_endpoint_auth_method</label><select id="cnOauthAuth"><option value="client_secret_basic">client_secret_basic（Basic 头 · 推荐）</option><option value="client_secret_post">client_secret_post（密钥放 body）</option></select></div>
       <div class="fld" id="cnOauthScopeWrap" style="display:none"><label>scope <span class="muted" style="font-weight:400">（选填）</span></label><input type="text" id="cnOauthScope" placeholder="如：aml.report"></div>
       <div class="fld" id="cnOauthAudWrap" style="display:none"><label>audience / resource <span class="muted" style="font-weight:400">（选填）</span></label><input type="text" id="cnOauthAud" placeholder="如：https://aml.example.com"></div>
       <div class="note" style="margin:0">凭据值按<b>类型</b>分别录入（Basic：用户名 + 口令；API-Key：密钥值；OAuth2：client_id + client_secret）；录入即加密托管并脱敏，界面不再显示明文，变更请用「轮换」。</div>
       <div class="fld full"><label>适用上游 <span class="muted">（选填，仅作检索备注）</span></label><input type="text" id="cnUp" placeholder="如：监管报送接口">
-        <div class="help">仅用于检索。<b>此处不产生引用</b>——该凭据被哪个资产使用，在资产「代理与上游 → 上游认证与凭据处理」中配置。</div></div>
+        <div class="help">仅用于检索。<b>此处不产生引用</b>——该凭据被哪个资产使用，在资产「身份适配 → 机器身份」中配置。</div></div>
     </div>`,"lg");
   /* 类型联动：按类型显隐字段，并推导只读「注入位置」预览。
      Basic → 用户名 + 口令；API-Key → 密钥值 + 载体 + 字段名 + 值前缀；OAuth2 Client → 凭据本体 + 换取配置。 */
@@ -6430,7 +6913,8 @@ function credNew(){
     const up=(document.getElementById("cnUp").value||"").trim();
     /* OAuth2 Client 的「凭据本体 + 换取配置」；其余类型为 null，不落库。 */
     const clientId=isOAuth?((document.getElementById("cnOauthId").value||"").trim()):"";
-    const clientSecret=isOAuth?(document.getElementById("cnOauthSecret").value||""):"";
+    /* 与 credEdit 同口径 trim：否则纯空格能通过「必填」校验，并原样落库成密钥。 */
+    const clientSecret=isOAuth?(document.getElementById("cnOauthSecret").value||"").trim():"";
     const oauth=isOAuth?{ endpoint:(document.getElementById("cnOauthEp").value||"").trim(), mode:document.getElementById("cnOauthMode").value, authMethod:document.getElementById("cnOauthAuth").value, scope:(document.getElementById("cnOauthScope").value||"").trim(), audience:(document.getElementById("cnOauthAud").value||"").trim() }:null;
     if(!name){ markBad("cnName",true); toast("凭据名称为必填"); return; }
     /* 重名保护与 CA 区一致：同名凭据会让「引用资产 / 适用上游」检索与审计口径含糊。 */
@@ -6440,18 +6924,21 @@ function credNew(){
     else if(isOAuth){
       if(!clientId||!clientSecret){ markBad("cnOauthId",!clientId); markBad("cnOauthSecret",!clientSecret); toast("OAuth2 Client：客户端标识 client_id 与客户端密钥 client_secret 为必填"); return; }
       if(!oauth.endpoint){ markBad("cnOauthEp",true); toast("OAuth2 Client 为换取式：令牌端点必填——网关用它换取短时 access token 后再注入"); return; }
-      /* 帮助语已写「必须 HTTPS（F6.2 规则 6）」，此前无任何校验 ⇒ 填 http:// 也能入库。 */
-      if(!/^https:\/\//i.test(oauth.endpoint)){ markBad("cnOauthEp",true); toast("令牌端点必须为 HTTPS（F6.2 规则 6）："+oauth.endpoint); return; }
+      /* 帮助语已写「必须 HTTPS」，此前无任何校验 ⇒ 填 http:// 也能入库。 */
+      if(!/^https:\/\//i.test(oauth.endpoint)){ markBad("cnOauthEp",true); toast("令牌端点必须为 HTTPS："+oauth.endpoint); return; }
+      if(oauth.mode!=="client_credentials"){ markBad($("#cnOauthMode"), true); toast("当前版本仅承载 client_credentials；password / mTLS 换 token 在后续版本提供"); return; }
     }
     /* ⚠ 库侧不建立引用：「适用上游」只作检索备注（up），不得写入 assets（引用资产）。
-       「哪个资产用哪条凭据」在资产「代理与上游 → 上游认证与凭据处理」侧配置。 */
-    CRED_LIST.push({ id:"cred-"+Date.now().toString(36), name, type, where, up: up, user: user, inj: inj, oauth: oauth, clientId: clientId, assets: [], rot: nowD(), st:"启用" });
-    closeDlg(); toast("已新建凭据「"+name+"」：明文加密托管、不可回读，2 秒内全节点生效（演示）"); renderCred(); credTab("c1");
+       「哪个资产用哪条凭据」在资产「身份适配 → 机器身份」侧配置。 */
+    CRED_LIST.push({ id:"cred-"+Date.now().toString(36), name, type, where, up: up, user: user, inj: inj, oauth: oauth, clientId: clientId, assets: [], rot: "", st:"启用" });
+    CRED_PG.c1 = Math.max(1, Math.ceil(CRED_LIST.length / AU_PAGE));
+    closeDlg(); toast("已新建凭据「"+name+"」：明文加密托管、不可回读，2 秒内全节点生效（变更入审计，演示）"); saveDemoState(); renderCred(); credTab("c1");
   };
 }
 function credRotate(id){
   const c=credById(id); if(!c) return;
   openDlg("轮换凭据 · "+c.name,"凭据变更一律以「轮换（替换）」完成，界面不提供查看明文。",`
+    ${refsOf("cred", c.id).length? `<div class="note warn">该凭据正被 <b>${esc(refsOf("cred", c.id).join("、"))}</b> 引用：选「立即失效」将使其上游注入立刻失败，请求返回 <b>502</b>；建议用「双值过渡」。</div>` : `<div class="note">当前无资产引用该凭据。</div>`}
     <div class="rmode" id="rotMode">
       <label class="on"><input type="radio" name="rotm" value="dual" checked>双值过渡（推荐）</label>
       <label><input type="radio" name="rotm" value="now">立即失效</label>
@@ -6471,25 +6958,40 @@ function credRotate(id){
     const daysRaw=(document.getElementById("rotDays").value||"").trim();
     if(dual && !/^(?:[1-9]|[12]\d|30)$/.test(daysRaw)){ markBad("rotDays", true); toast("旧值保留天数须为 1~30 的整数"); return; }
     const days=daysRaw;
-    c.rot=nowD(); c.rotMode=dual?"dual":"now"; if(dual) c.rotKeepDays=Number(days); closeDlg();
-    toast("凭据「"+c.name+"」已轮换："+(dual?("双值过渡（旧值保留 "+days+" 天）"):"立即失效")+"，变更入审计（演示）");
-    renderCred(); credTab("c1");
+    /* ★ 2026-10-10（R19）：轮换改变该凭据的生效值 ⇒ 属生效面动作，与同页启停 / 删除同档走二次认证。 */
+    closeDlg();
+    ask2FA("轮换凭据「"+c.name+"」", ()=>{
+      c.rot=AU_TS_STAMP.slice(0, 10); c.rotMode=dual?"dual":"now"; if(dual) c.rotKeepDays=Number(days);
+      toast("凭据「"+c.name+"」已轮换："+(dual?("双值过渡（旧值保留 "+days+" 天）"):"立即失效")+"，变更入审计（演示）");
+      saveDemoState(); renderCred(); credTab("c1");
+    }, null, dual?("轮换后上游即刻改用新值，旧值保留 "+days+" 天供平滑切换。") : "轮换后旧值<b>立即失效</b>，上游注入即刻改用新值。");
   };
 }
 function credToggle(id){
   const c=credById(id); if(!c) return;
-  if(c.st!=="启用"){ c.st="启用"; toast("凭据「"+c.name+"」已启用（演示）"); renderCred(); credTab("c1"); return; }
-  confirmDlg("停用凭据 · "+c.name,
-    (refsOf("cred", c.id).length? `<div class="note warn">该凭据正被 <b>${esc(refsOf("cred", c.id).join("、"))}</b> 引用：停用后其上游注入失败，请求按 F6.2 规则 13 返回 <b>502</b>，须先替换或解除引用。</div>` : "")
-    +`<div class="note">停用不等于删除：凭据保留在库中，可随时重新启用。停用动作<b>入审计</b>。</div>`,
-    ()=>{ c.st="停用"; toast("凭据「"+c.name+"」已停用（变更入审计，演示）"); renderCred(); credTab("c1"); },"确认停用");
+  const refs=refsOf("cred", c.id);
+  /* 启停是**生效面**动作（改变该凭据是否参与上游注入）⇒ 与同模块另 5 页同档：走二次认证。
+     此前「启用」直接落库、「停用」只走普通确认，同组同名模块两套档位属硬伤。 */
+  if(c.st!=="启用"){
+    ask2FA("启用凭据「"+c.name+"」",
+      ()=>{ c.st="启用"; toast("凭据「"+c.name+"」已启用（演示）"); saveDemoState(); renderCred(); credTab("c1"); },
+      null,
+      "启用后该凭据<b>即刻参与上游注入</b>。"+(refs.length? "当前被 <b>"+esc(refs.join("、"))+"</b> 引用。" : "当前无资产引用该凭据。")+"<b>本次变更入审计</b>。");
+    return;
+  }
+  ask2FA("停用凭据「"+c.name+"」",
+    ()=>{ c.st="停用"; toast("凭据「"+c.name+"」已停用（变更入审计，演示）"); saveDemoState(); renderCred(); credTab("c1"); },
+    null,
+    (refs.length? "该凭据正被 <b>"+esc(refs.join("、"))+"</b> 引用：停用后其上游注入失败，请求返回 <b>502</b>，须先替换或解除引用。" : "")
+    +"停用不等于删除：凭据保留在库中，可随时重新启用。<b>停用动作入审计</b>。");
 }
 function credDel(id){
   const c=credById(id); if(!c) return;
   if(refsOf("cred", c.id).length){ openDlg("无法删除 · "+c.name,`该凭据被 <b>${esc(refsOf("cred", c.id).join("、"))}</b> 引用，受删除保护。`,`
-    <div class="note">请先在资产「代理与上游 → 上游认证与凭据处理」中<b>解除引用</b>（改用其它凭据或切到「不注入」），再回到本页删除。</div>`); return; }
-  confirmDlg("删除凭据 · "+c.name,`<div class="note red">删除后不可恢复；库中记录与历史引用一并清理，动作<b>入审计</b>。</div>`,
-    ()=>{ const i=CRED_LIST.indexOf(c); if(i>=0) CRED_LIST.splice(i,1); toast("凭据「"+c.name+"」已删除（入审计，演示）"); renderCred(); credTab("c1"); },"确认删除");
+    <div class="note">请先在资产「身份适配 → 机器身份」中<b>解除引用</b>（改用其它凭据或切到「不注入」），再回到本页删除。</div>`); return; }
+  ask2FA("删除凭据「"+c.name+"」",
+    ()=>{ const i=CRED_LIST.indexOf(c); if(i>=0) CRED_LIST.splice(i,1); toast("凭据「"+c.name+"」已删除（入审计，演示）"); saveDemoState(); renderCred(); credTab("c1"); },
+    null, "删除后<b>不可恢复</b>；库中记录与历史引用一并清理。<b>该动作入审计</b>。");
 }
 /* 反向引用清单：三个分区（凭据 / 信任锚 / mTLS 客户端证书）共用同一套「只读弹窗」构造器，
    只在「摘要字段」与「挂载路径」上不同。kind: "cred" | "ca" | "mtls" 决定标题量词与路径。
@@ -6497,20 +6999,20 @@ function credDel(id){
 function refMount(kind){
   return kind==="ca" ? "上游 TLS 校验 → 自定义信任锚（根 CA）"
        : kind==="mtls" ? "上游 TLS 校验 → 客户端证书（mTLS）"
-       : "上游认证与凭据处理 → 托管凭据";
+       : "托管凭据";
 }
 function refNoun(kind){ return kind==="ca"?"信任锚":kind==="mtls"?"客户端证书":"凭据"; }
 function openRefDlg(kind, obj, meta){
-  const refs=refsOf(kind, obj.id); const cnt=refs.length, mount=refMount(kind);
+  const refs=refsOf(kind, obj.id); const cnt=refs.length, mount=refMount(kind); const where=(kind==="cred")?"身份适配 → 机器身份":"代理与上游";
   const body=cnt? `${meta}
     <div class="sec-t">引用资产</div>
     <div class="dlg-scroll"><div class="ref-list">
       ${refs.map(a=>`<div class="ref-item">
-        <div class="ri-main"><div class="ri-name">${esc(a)}</div><div class="ri-path">代理与上游 → ${mount}</div></div>
-        <button class="btn sm" onclick="refGo(this)" data-an="${esc(a)}">打开资产</button>
+        <div class="ri-main"><div class="ri-name">${esc(a)}</div><div class="ri-path">${where} → ${mount}</div></div>
+        <button class="btn link" onclick="refGo(this)" data-an="${esc(a)}">打开资产</button>
       </div>`).join("")}
     </div></div>
-    <div class="note blue">本清单为<b>反向引用</b>只读视图；解除引用需在对应资产的「代理与上游 → ${mount}」中操作。查看动作<b>入审计</b>。</div>`
+    <div class="note blue">本清单为<b>反向引用</b>只读视图；解除引用需在对应资产的「${where} → ${mount}」中操作。查看动作<b>入审计</b>。</div>`
   : `${meta}
     <div class="ref-empty"><div class="big">未被任何资产引用</div>该${refNoun(kind)}当前未挂载到任何资产，可安全删除。</div>
     <div class="note">本清单为<b>反向引用</b>只读视图。查看动作<b>入审计</b>。</div>`;
@@ -6548,7 +7050,7 @@ function mtlsRefs(id){
     <div class="rm"><span class="k">主体（Subject）</span><span class="v">${esc(c.subj)}</span></div>
     <div class="rm"><span class="k">颁发者</span><span class="v">${esc(c.issuer)}</span></div>
     <div class="rm"><span class="k">有效期至</span><span class="v">${esc(c.exp)}</span></div>
-    <div class="rm"><span class="k">最近轮换</span><span class="v">${esc(c.rot)}</span></div>
+    <div class="rm"><span class="k">最近轮换</span><span class="v">${c.rot?esc(c.rot):"—"}</span></div>
     <div class="rm"><span class="k">状态</span><span class="v">${stTag(c.st)}</span></div>
   </div>`;
   openRefDlg("mtls", c, meta);
@@ -6562,25 +7064,39 @@ function refGo(btn){
   else { toast("演示：未找到资产「"+an+"」，暂不跳转"); }
 }
 
+/* ★ 2026-10-10（R12）：DN（主体 Subject / 颁发者）的**语义断点** —— 与页④「登录入口」
+   host 列同体例：keep-all 禁止盲目断词，显式在 RDN 分隔符（`,`）与域名点（`.`）后插 `<wbr>`，
+   `overflow-wrap:anywhere` 仅作兜底。此前是 `word-break:break-all` ⇒ `CN=Bank Internal Issuing CA`
+   会断成 `...Issu` / `ing CA`，长标识的断点落在**词中间**，读起来像被截断。 */
+function dnWbr(s) {
+  return esc(String(s == null ? "" : s)).replace(/\./g, ".<wbr>").replace(/,/g, ",<wbr>");
+}
+
 /* —— CA 管理（信任锚） —— */
 function caRows(){
   const host=document.getElementById("pg-cred"); if(!host) return;
   const tb=host.querySelector("#caTbl tbody"); if(!tb) return;
-  tb.innerHTML = CA_LIST.length ? CA_LIST.map(c=>`<tr>
+  /* ★ 2026-10-10（R11）：c2 筛选（与 c1 同体例）—— 搜索名称 / 标识 / 类型 / 主体 / 指纹 / 引用资产 */
+  const _k=(host.querySelector("#caK")||{}).value||"", _ks=_k.trim().toLowerCase();
+  const _s=(host.querySelector("#caFSt")||{}).value||"";
+  const _all=CA_LIST.filter(c=>(!_ks||[c.name,c.code||"",c.type,c.subj||"",c.fp||""].concat(c.assets||[]).join(" ").toLowerCase().includes(_ks))&&(!_s||c.st===_s));
+  const cRows=credSlice(_all, "c2");
+  credPager("c2", "caPager", _all.length, "个信任锚", "分页只作用于本表");
+  tb.innerHTML = cRows.length ? cRows.map(c=>`<tr>
     <td><b>${esc(c.name)}</b><div class="muted">${esc(c.code)}</div></td>
     <td>${esc(c.type)}</td>
-    <td class="muted">${esc(c.subj)}</td>
+    <td class="muted">${dnWbr(c.subj)}</td>
     <td class="col-dt">${esc(c.exp)}</td>
     <td class="muted" title="SHA-256 指纹（演示截断）">${esc(c.fp)}</td>
     <td>${refCell(refsOf("ca", c.id), c.id, "ca")}</td>
     <td>${stTag(c.st)}</td>
     <td class="cell-op"><span class="opgrp">
-      <button class="btn sm" onclick="caView('${c.id}')">查看</button>
-      <button class="btn sm" onclick="caEdit('${c.id}')">编辑</button>
-      <button class="btn sm" onclick="caRotate('${c.id}')">轮换</button>
-      <button class="btn sm danger" onclick="caDel('${c.id}')">吊销</button>
+      <button class="btn link" id="caView_${c.id}" data-id="${c.id}" onclick="caView('${c.id}')">查看</button>
+      <button class="btn link" id="caEdit_${c.id}" data-id="${c.id}" onclick="caEdit('${c.id}')">编辑</button>
+      <button class="btn link" id="caRotate_${c.id}" data-id="${c.id}" onclick="caRotate('${c.id}')">轮换</button>
+      <button class="btn link danger" id="caDel_${c.id}" data-id="${c.id}" onclick="caDel('${c.id}')">删除</button>
     </span></td></tr>`).join("") :
-    `<tr><td colspan="8"><div class="empty"><div class="big">尚未上传信任锚</div>上传内网私有 PKI / 自签证书后，供上游 TLS 引用</div></td></tr>`;
+    idEmptyRow(8, (_ks || _s) ? "没有符合条件的信任锚" : "尚未上传信任锚 · 上传内网私有 PKI / 自签证书后，供上游 TLS 引用");
 }
 const caById = id => CA_LIST.find(c=>c.id===id);
 function caEdit(id){
@@ -6599,30 +7115,70 @@ function caEdit(id){
     const name=(document.getElementById("ceName").value||"").trim();
     if(!name){ markBad("ceName",true); toast("名称为必填"); return; }
     if(CA_LIST.some(x=>x!==c && x.name===name)){ markBad("ceName",true); toast("同名信任锚已存在："+name); return; }
+    /* ★ 资产侧「上游 TLS 校验 → 自定义信任锚」存的是**锚名**（a._tlsCa），不是 id ⇒
+       改名必须级联改引用，否则引用失联：本页「引用资产」列变空、caDel 的引用保护失效，
+       被在线资产使用的锚会被当成「未被引用」直接删除。 */
+    const oldName=c.name, oldWithCode=oldName+"（"+c.code+"）", newWithCode=name+"（"+c.code+"）";
+    if(name!==oldName){
+      ASSETS.forEach(function(a){
+        if(a._tlsCa===oldName) a._tlsCa=name;
+        else if(a._tlsCa===oldWithCode) a._tlsCa=newWithCode;
+      });
+      /* 跨对象改动：显式落盘，不等页面切换时的统一保存点。 */
+      if(typeof saveDemoState==="function") saveDemoState();
+    }
     c.name=name; c.type=document.getElementById("ceType").value;
+    /* ★ 2026-10-10（R14）：改**类型**此前不落盘（仅「改名」分支调了 saveDemoState）⇒ 硬刷新 /
+       直开新页后类型改动丢失；同页 c1 / c3 的编辑均显式落盘。改为无条件落盘。 */
+    if(typeof saveDemoState==="function") saveDemoState();
     closeDlg(); toast("信任锚「"+name+"」已更新（仅名称 / 类型；证书内容变更请用「轮换」，变更入审计）（演示）"); renderCred(); credTab("c2");
   };
 }
 
+/* ★ 2026-10-11（R17）：上传信任锚此前把**展示层缺省符「（上传）」**直接写进 `code`（标识）字段 ——
+   `code` 会被列表子行 / 编辑弹窗只读位 / 引用清单摘要渲染，并参与搜索；多条上传项的「标识」于是
+   全部相同、失去区分度（与 R14 裁决⑤「展示层缺省符不得当数据落库」同族）。
+   改为按名称派生一个稳定、唯一的标识（非 ASCII 名称退化为 `anchor-` 前缀 + 短后缀）。 */
+function caUploadCode(nm){
+  const s=String(nm||"").replace(/[^0-9A-Za-z]+/g,"-").replace(/^-+|-+$/g,"").toLowerCase();
+  return (s||"anchor")+"-"+Date.now().toString(36).slice(-4);
+}
 function caUp(){
   openDlg("上传信任锚","内网私有 PKI / 自签证书在此登记；仅托管公钥证书，不含私钥。",`
     <div class="form-grid">
       <div class="fld"><label>名称 <span class="req">*</span></label><input type="text" id="caName" placeholder="如：数据报送域根 CA"></div>
       <div class="fld"><label>类型 <span class="req">*</span></label><select id="caType"><option>根 CA</option><option>中间 CA</option><option>自签叶证书</option></select></div>
       <div class="fld full"><label>证书内容 <span class="req">*</span></label><textarea id="caPem" rows="5" placeholder="-----BEGIN CERTIFICATE-----&#10;…&#10;-----END CERTIFICATE-----" style="${taStyle}"></textarea>
-        <div class="help">粘贴 PEM，或上传 .pem / .crt / .cer 文件；入库时解析主体、有效期与 SHA-256 指纹。</div></div>
+        <div class="help">粘贴 PEM，或上传 .pem / .crt / .cer 文件。</div></div>
       <div class="fld full"><label>上传文件 <span class="muted">（可选）</span></label><input type="file" id="caFile" accept=".pem,.crt,.cer"></div>
+      <div class="fld full"><label>有效期至 <span class="req">*</span></label><input type="text" id="caExp" value="${addDays(AU_TS_STAMP.slice(0, 10), 365)}" placeholder="YYYY-MM-DD">
+        <div class="help">演示环境不解析 X.509：默认值按演示期预填（今日 + 365 天），请按证书实际「Not After」填写；主体与指纹留「待解析」由真实解析补齐。</div></div>
     </div>`,"lg");
   const f=document.getElementById("caFile");
-  if(f) f.addEventListener("change",()=>{ if(f.files&&f.files[0]) toast("已选择文件："+f.files[0].name+"（演示不解析）"); });
+  if(f) f.addEventListener("change",()=>{
+    if(!(f.files&&f.files[0])) return;
+    const fl=f.files[0];
+    if(typeof FileReader==="undefined"){ toast("当前环境不支持读取本地文件，请把 PEM 内容粘贴到上方文本框"); return; }
+    const rd=new FileReader();
+    rd.onload=()=>{ const ta=document.getElementById("caPem"); if(ta) ta.value=String(rd.result||""); toast("已读取 "+fl.name+"（"+Math.max(1,Math.round(fl.size/1024))+" KB）；本演示不解析证书内容，请确认「有效期至」按证书实际 Not After 填写"); try{ markBad("caPem", false); }catch(e){} };
+    rd.onerror=()=>{ toast("文件读取失败："+fl.name+"，请改为粘贴 PEM 内容"); };
+    rd.readAsText(fl);
+  });
   document.getElementById("dlg1Ok").onclick=()=>{
     const name=(document.getElementById("caName").value||"").trim();
     const type=document.getElementById("caType").value;
     const pem=(document.getElementById("caPem").value||"").trim();
     if(!name||!pem){ markBad("caName",!name); markBad("caPem",!pem); toast("名称与证书内容为必填"); return; }
+    /* ★ 2026-10-10（R14）：内容须是 PEM 证书 —— 此前接受任意串；主体 / 指纹一律落
+       「（已解析主体）」这类**占位串**，随后被当成证书真值在列表 / 查看弹窗 / 引用清单展示。
+       本演示不解析 X.509 ⇒ 至少校验 PEM 头，未解析字段落「待解析」（不冒充已解析值），
+       有效期由录入位提供（此前也无法录入真实值）。 */
+    if(!/-----BEGIN CERTIFICATE-----/.test(pem)){ markBad("caPem",true); toast("请粘贴 PEM 格式证书（须含 -----BEGIN CERTIFICATE-----）"); return; }
+    const exp=(document.getElementById("caExp").value||"").trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(exp)){ markBad("caExp",true); toast("有效期须为 YYYY-MM-DD 格式"); return; }
     if(CA_LIST.some(c=>c.name===name)){ markBad("caName",true); toast("同名信任锚已存在："+name); return; }
-    CA_LIST.push({ id:"ca-"+Date.now().toString(36), name, code:"（上传）", type, subj:"（已解析主体）", exp: addDays(nowD(), 365), fp:"（已解析指纹）", assets:[], st:"有效" });
-    closeDlg(); toast("已上传信任锚「"+name+"」：解析主体 / 有效期 / 指纹后入库，变更入审计（演示）"); renderCred(); credTab("c2");
+    CA_LIST.push({ id:"ca-"+Date.now().toString(36), name, code:caUploadCode(name), type, subj:"待解析", exp: exp, fp:"待解析", assets:[], st: credExpSt(exp) });
+    closeDlg(); toast("已上传信任锚「"+name+"」：主体 / 指纹待解析，变更入审计（演示）"); saveDemoState(); renderCred(); credTab("c2");
   };
 }
 function caView(id){
@@ -6634,52 +7190,71 @@ function caView(id){
     <div class="kv"><span class="k">有效期至</span><div>${esc(c.exp)}${c.st==="即将过期"?` <span class="tag t-warn">即将过期</span>`:""}</div></div>
     <div class="kv"><span class="k">指纹（SHA-256）</span><div class="muted">${esc(c.fp)}</div></div>
     <div class="kv"><span class="k">引用资产</span><div>${refCell(refsOf("ca", c.id))}</div></div>
-    ${c.transDays?`<div class="kv"><span class="k">双值过渡</span><div>上次轮换设过渡期 ${esc(String(c.transDays))} 天（到期停用旧锚）</div></div>`:""}
     <div class="note">此处仅托管<b>公钥证书</b>；私钥不在此库——mTLS 客户端证书的私钥在「mTLS 客户端证书」分区中托管，私钥不出平台。</div>`,"lg");
 }
 function caRotate(id){
   const c=caById(id); if(!c) return;
-  openDlg("轮换信任锚 · "+c.name,"为避免上游切换 CA 时断链，新旧信任锚并存过渡。",`
-    <div class="fld"><label>新证书内容 <span class="req">*</span></label><textarea id="crPem" rows="4" placeholder="-----BEGIN CERTIFICATE-----…" style="${taStyle}"></textarea></div>
-    <div class="fld"><label>过渡期</label><select id="crDays"><option value="7">7 天</option><option value="15">15 天</option><option value="30">30 天</option></select>
-      <div class="help">过渡期内新旧锚同时可信；过渡结束由管理员停用旧锚（演示按所选天数自动停用旧锚）。</div></div>
-    <div class="note">轮换<b>入审计</b>；被引用的信任锚在过渡期内不影响在线资产。</div>`,"lg");
+  openDlg("轮换信任锚 · "+c.name,"轮换<b>就地更新该锚的证书内容</b>（同一台账记录，不新增条目）。",`
+    <div class="fld"><label>新证书内容 <span class="req">*</span></label><textarea id="crPem" rows="4" placeholder="-----BEGIN CERTIFICATE-----…" style="${taStyle}"></textarea>
+      <div class="help">演示环境不解析 X.509：主体与指纹将置「待解析」，由真实解析补齐。</div></div>
+    <div class="fld"><label>有效期至 <span class="req">*</span></label><input type="text" id="crExp" value="${addDays(AU_TS_STAMP.slice(0, 10), 365)}" placeholder="YYYY-MM-DD">
+      <div class="help">默认值按演示期预填（今日 + 365 天），请按证书实际「Not After」填写。</div></div>
+    <div class="note">若上游切换 CA 期间需要<b>新旧并存过渡</b>（避免断链），先用<b>「上传信任锚」把新锚另存为一条</b>，待上游全部切换完成后再删除旧锚 —— 本动作<b>不做并存</b>。<b>轮换入审计</b>。</div>`,"lg");
   document.getElementById("dlg1Ok").onclick=()=>{
     const v=(document.getElementById("crPem").value||"").trim();
     if(!v){ markBad("crPem", true); toast("请粘贴新证书内容"); return; }
-    const d=document.getElementById("crDays").value;
-    c.exp=addDays(nowD(), 365); c.st="有效"; c.transDays=Number(d); closeDlg();
-    toast("信任锚「"+c.name+"」已轮换：新旧并存过渡 "+d+" 天，到期停用旧锚（入审计，演示）");
-    renderCred(); credTab("c2");
+    /* ★ 2026-10-10（R15）：轮换与上传同属 PEM 录入 —— 上传已校形态（caUp），轮换却只判非空
+       ⇒ 同一口径只闭合了一半。此处补齐（正则与 caUp 完全一致）。 */
+    if(!/-----BEGIN CERTIFICATE-----/.test(v)){ markBad("crPem", true); toast("请粘贴 PEM 格式证书（须含 -----BEGIN CERTIFICATE-----）"); return; }
+    const _cx=(document.getElementById("crExp").value||"").trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(_cx)){ markBad("crExp",true); toast("有效期须为 YYYY-MM-DD 格式"); return; }
+    /* ★ 2026-10-10（R16）：就地更新的是**证书内容** —— 旧证书的主体 / 指纹随之作废。
+       原实现两者原样保留（列表展示的是**旧证书**的主体与指纹，与「已轮换」自相矛盾），
+       有效期还写死「基准日 + 365」、不接受真实值。三处一并按 caUp 同口径处理。 */
+    /* ★ 2026-10-10（R19）：轮换改变信任锚证书内容（生效面）⇒ 走二次认证，与同页删除同档。 */
+    closeDlg();
+    ask2FA("轮换信任锚「"+c.name+"」", ()=>{
+      c.exp=_cx; c.subj="待解析"; c.fp="待解析"; c.st=credExpSt(_cx);
+      toast("信任锚「"+c.name+"」已轮换：证书内容就地更新（入审计，演示）");
+      saveDemoState(); renderCred(); credTab("c2");
+    }, null, "轮换后证书内容就地更新，引用该锚的上游 TLS 校验即刻改用新证书。");
   };
 }
 function caDel(id){
   const c=caById(id); if(!c) return;
-  if(refsOf("ca", c.id).length){ openDlg("无法吊销 · "+c.name,`该信任锚被 <b>${esc(refsOf("ca", c.id).join("、"))}</b> 引用，受引用保护。`,`
-    <div class="note">请先在资产「代理与上游 → 上游 TLS 校验 → 自定义信任锚」中改用其它锚或改回「平台 CA 校验」，再回到本页吊销。</div>`); return; }
-  confirmDlg("吊销信任锚 · "+c.name,`<div class="note red">吊销后引用该锚的上游链路将失去信任来源；该锚当前未被引用，可安全吊销。动作<b>入审计</b>。</div>`,
-    ()=>{ const i=CA_LIST.indexOf(c); if(i>=0) CA_LIST.splice(i,1); toast("信任锚「"+c.name+"」已吊销（入审计，演示）"); renderCred(); credTab("c2"); },"确认吊销");
+  /* 用词：本动作是**从平台信任库移除**（并非发布 CRL 的证书吊销），与 mTLS 分区统一为「删除」。 */
+  if(refsOf("ca", c.id).length){ openDlg("无法删除 · "+c.name,`该信任锚被 <b>${esc(refsOf("ca", c.id).join("、"))}</b> 引用，受引用保护。`,`
+    <div class="note">请先在资产「代理与上游 → 上游 TLS 校验 → 自定义信任锚」中改用其它锚或改回「平台 CA 校验」，再回到本页删除。</div>`); return; }
+  ask2FA("删除信任锚「"+c.name+"」",
+    ()=>{ const i=CA_LIST.indexOf(c); if(i>=0) CA_LIST.splice(i,1); toast("信任锚「"+c.name+"」已删除（入审计，演示）"); saveDemoState(); renderCred(); credTab("c2"); },
+    null, "删除后引用该锚的上游链路将失去信任来源；该锚当前未被引用，可安全删除。<b>该动作入审计</b>。");
 }
 
 /* —— mTLS 客户端证书 —— */
 function mtlsRows(){
   const host=document.getElementById("pg-cred"); if(!host) return;
   const tb=host.querySelector("#mtlsTbl tbody"); if(!tb) return;
-  tb.innerHTML = MTLS_LIST.length ? MTLS_LIST.map(c=>`<tr>
-    <td><b>${esc(c.name)}</b><div class="muted">${esc(c.id)}${c.keyEnc?" · 口令加密":" · 明文托管"}</div></td>
-    <td class="muted">${esc(c.subj)}</td>
-    <td class="muted">${esc(c.issuer)}</td>
+  /* ★ 2026-10-10（R11）：c3 筛选（与 c1 同体例） */
+  const _k=(host.querySelector("#mtlsK")||{}).value||"", _ks=_k.trim().toLowerCase();
+  const _s=(host.querySelector("#mtlsFSt")||{}).value||"";
+  const _all=MTLS_LIST.filter(c=>(!_ks||[c.name,c.id||"",c.subj||"",c.issuer||"",c.fp||""].concat(c.assets||[]).join(" ").toLowerCase().includes(_ks))&&(!_s||c.st===_s));
+  const mRows=credSlice(_all, "c3");
+  credPager("c3", "mtlsPager", _all.length, "份证书", "分页只作用于本表");
+  tb.innerHTML = mRows.length ? mRows.map(c=>`<tr>
+    <td><b>${esc(c.name)}</b><div class="muted">${esc(c.id)}${c.keyEnc?" · 口令加密":" · 明文托管"}${c.up?" · "+esc(c.up):""}</div></td>
+    <td class="muted">${dnWbr(c.subj)}</td>
+    <td class="muted">${dnWbr(c.issuer)}</td>
     <td class="col-dt">${esc(c.exp)}</td>
     <td class="muted" title="SHA-256 指纹（演示截断）">${esc(c.fp)}</td>
     <td>${refCell(refsOf("mtls", c.id), c.id, "mtls")}</td>
     <td>${stTag(c.st)}</td>
     <td class="cell-op"><span class="opgrp">
-      <button class="btn sm" onclick="mtlsView('${c.id}')">查看</button>
-      <button class="btn sm" onclick="mtlsEdit('${c.id}')">编辑</button>
-      <button class="btn sm" onclick="mtlsRotate('${c.id}')">轮换</button>
-      <button class="btn sm danger" onclick="mtlsDel('${c.id}')">删除</button>
+      <button class="btn link" id="mtlsView_${c.id}" data-id="${c.id}" onclick="mtlsView('${c.id}')">查看</button>
+      <button class="btn link" id="mtlsEdit_${c.id}" data-id="${c.id}" onclick="mtlsEdit('${c.id}')">编辑</button>
+      <button class="btn link" id="mtlsRotate_${c.id}" data-id="${c.id}" onclick="mtlsRotate('${c.id}')">轮换</button>
+      <button class="btn link danger" id="mtlsDel_${c.id}" data-id="${c.id}" onclick="mtlsDel('${c.id}')">删除</button>
     </span></td></tr>`).join("") :
-    `<tr><td colspan="8"><div class="empty"><div class="big">尚未上传客户端证书</div>上传证书与私钥后，供上游双向 TLS 握手引用</div></td></tr>`;
+    idEmptyRow(8, (_ks || _s) ? "没有符合条件的客户端证书" : "尚未上传客户端证书 · 上传证书与私钥后，供上游双向 TLS 握手引用");
 }
 const mtlsById = id => MTLS_LIST.find(c=>c.id===id);
 function mtlsEdit(id){
@@ -6699,7 +7274,7 @@ function mtlsEdit(id){
     if(!name){ markBad("ceName",true); toast("名称为必填"); return; }
     if(MTLS_LIST.some(x=>x!==c && x.name===name)){ markBad("ceName",true); toast("同名客户端证书已存在："+name); return; }
     c.name=name; c.up=(document.getElementById("ceUp").value||"").trim();
-    closeDlg(); toast("客户端证书「"+name+"」已更新（仅名称 / 适用上游；证书与私钥变更请用「轮换」，变更入审计）（演示）"); renderCred(); credTab("c3");
+    closeDlg(); toast("客户端证书「"+name+"」已更新（仅名称 / 适用上游；证书与私钥变更请用「轮换」，变更入审计）（演示）"); saveDemoState(); renderCred(); credTab("c3");
   };
 }
 
@@ -6714,6 +7289,8 @@ function mtlsUp(){
         <div class="help">私钥仅用于平台侧托管，<b>不落浏览器、不可回读、不可导出</b>。</div></div>
       <div class="fld full" id="muPassWrap"><label>私钥口令 <span class="muted">（选填，仅加密私钥需要）</span></label><input type="password" id="muPass" placeholder="私钥已加密时填写；明文私钥留空">
         <div class="help">口令仅用于平台侧解密私钥，<b>不落浏览器、不可回读</b>；与私钥同源托管。</div></div>
+      <div class="fld full"><label>有效期至 <span class="req">*</span></label><input type="text" id="muExp" value="${addDays(AU_TS_STAMP.slice(0, 10), 365)}" placeholder="YYYY-MM-DD">
+        <div class="help">演示环境不解析 X.509：默认值按演示期预填（今日 + 365 天），请按证书实际「Not After」填写；主体与指纹留「待解析」由真实解析补齐。</div></div>
     </div>`,"lg");
   document.getElementById("dlg1Ok").onclick=()=>{
     const name=(document.getElementById("muName").value||"").trim();
@@ -6725,8 +7302,13 @@ function mtlsUp(){
     if(MTLS_LIST.some(x=>x.name===name)){ markBad("muName",true); toast("同名客户端证书已存在："+name); return; }
     /* 私钥为加密格式却未给口令 ⇒ keyEnc 会记成「明文托管」，与实际不符（逻辑不一致）。 */
     if(/encrypted/i.test(key) && !(keyPass||"").trim()){ markBad("muKey", true); toast("私钥为加密格式（ENCRYPTED），请填写「私钥口令」"); return; }
-    MTLS_LIST.push({ id:"mtls-"+Date.now().toString(36), name, subj:"（已解析主体）", issuer:"（已解析颁发者）", exp: addDays(nowD(), 365), fp:"（已解析指纹）", up: up, keyEnc: !!keyPass, assets: [], rot: nowD(), st:"有效" });
-    closeDlg(); toast("已上传客户端证书「"+name+"」：私钥已托管且不出平台（"+(keyPass?"口令加密":"明文")+"），变更入审计（演示）"); renderCred(); credTab("c3");
+    /* ★ 2026-10-10（R14）：同 caUp —— 校验 PEM 形态，未解析字段落「待解析」，有效期由录入位提供。 */
+    if(!/-----BEGIN CERTIFICATE-----/.test(cert)){ markBad("muCert",true); toast("请粘贴 PEM 格式客户端证书（须含 -----BEGIN CERTIFICATE-----）"); return; }
+    if(!/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(key)){ markBad("muKey",true); toast("请粘贴 PEM 格式私钥（须含 -----BEGIN … PRIVATE KEY-----）"); return; }
+    const mExp=(document.getElementById("muExp").value||"").trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(mExp)){ markBad("muExp",true); toast("有效期须为 YYYY-MM-DD 格式"); return; }
+    MTLS_LIST.push({ id:"mtls-"+Date.now().toString(36), name, subj:"待解析", issuer:"待解析", exp: mExp, fp:"待解析", up: up, keyEnc: !!keyPass, assets: [], rot: "", st: credExpSt(mExp) });
+    closeDlg(); toast("已上传客户端证书「"+name+"」：私钥已托管且不出平台（"+(keyPass?"口令加密":"明文")+"），主体 / 指纹待解析，变更入审计（演示）"); saveDemoState(); renderCred(); credTab("c3");
   };
 }
 function mtlsView(id){
@@ -6736,39 +7318,51 @@ function mtlsView(id){
     <div class="kv"><span class="k">颁发者</span><div>${esc(c.issuer)}</div></div>
     <div class="kv"><span class="k">有效期至</span><div>${esc(c.exp)}${c.st==="即将过期"?` <span class="tag t-warn">即将过期</span>`:""}</div></div>
     <div class="kv"><span class="k">指纹（SHA-256）</span><div class="muted">${esc(c.fp)}</div></div>
-    <div class="kv"><span class="k">最近轮换</span><div class="muted">${esc(c.rot)}</div></div>
-    ${c.transDays?`<div class="kv"><span class="k">双值过渡</span><div>上次轮换设过渡期 ${esc(String(c.transDays))} 天（到期停用旧证书）</div></div>`:""}
+    ${c.up?`<div class="kv"><span class="k">适用上游</span><div>${esc(c.up)}</div></div>`:""}
+    <div class="kv"><span class="k">最近轮换</span><div class="muted">${c.rot?esc(c.rot):"—"}</div></div>
     <div class="kv"><span class="k">引用资产</span><div>${refCell(refsOf("mtls", c.id))}</div></div>
     <div class="kv"><span class="k">私钥</span><div><span class="tag t-ok">已托管</span> <span class="muted">不可回读 · 不可导出 · 不出平台</span>${c.keyEnc?' <span class="tag t-info">口令加密</span>':' <span class="muted">明文托管</span>'}</div></div>
     <div class="note">网关在<b>握手阶段自动出示</b>本证书完成双向 TLS；资产侧在「代理与上游 → 客户端证书（mTLS）」引用。</div>`,"lg");
 }
 function mtlsRotate(id){
   const c=mtlsById(id); if(!c) return;
-  openDlg("轮换 mTLS 客户端证书 · "+c.name,"为避免上游握手失败，新旧证书并存过渡。",`
+  openDlg("轮换 mTLS 客户端证书 · "+c.name,"轮换<b>就地更新该证书与私钥</b>（同一台账记录，不新增条目）。",`
     <div class="fld"><label>新客户端证书（PEM） <span class="req">*</span></label><textarea id="mrCert" rows="3" placeholder="-----BEGIN CERTIFICATE-----…" style="${taStyle}"></textarea></div>
     <div class="fld"><label>新私钥（PEM） <span class="req">*</span></label><textarea id="mrKey" rows="3" placeholder="-----BEGIN PRIVATE KEY-----…" style="${taStyle}"></textarea></div>
     <div class="fld" id="mrPassWrap"><label>新私钥口令 <span class="muted">（选填，仅加密私钥需要）</span></label><input type="password" id="mrPass" placeholder="新私钥已加密时填写；明文留空">
       <div class="help">口令仅用于平台侧解密私钥，<b>不落浏览器、不可回读</b>；与私钥同源托管。</div></div>
-    <div class="fld"><label>过渡期</label><select id="mrDays"><option value="7">7 天</option><option value="15">15 天</option><option value="30">30 天</option></select>
-      <div class="help">过渡期内网关按上游可接受的方式出示新旧证书，过渡结束停用旧证书（演示按所选天数停用）。</div></div>`,"lg");
+    <div class="fld"><label>新证书有效期至 <span class="req">*</span></label><input type="text" id="mrExp" value="${addDays(AU_TS_STAMP.slice(0, 10), 365)}" placeholder="YYYY-MM-DD">
+      <div class="help">演示环境不解析 X.509：默认值按演示期预填（今日 + 365 天），请按证书实际「Not After」填写；主体 / 颁发者 / 指纹将置「待解析」。</div></div>
+    <div class="note">若上游切换期间需要<b>新旧并存过渡</b>（避免握手失败），先用<b>「上传客户端证书」把新证另存为一条</b>，待切换完成后再删除旧证 —— 本动作<b>不做并存</b>。<b>轮换入审计</b>。</div>`,"lg");
   document.getElementById("dlg1Ok").onclick=()=>{
     const cert=(document.getElementById("mrCert").value||"").trim();
     const key=(document.getElementById("mrKey").value||"").trim();
     if(!cert||!key){ markBad("mrCert",!cert); markBad("mrKey",!key); toast("新客户端证书与私钥均为必填"); return; }
+    /* ★ 2026-10-10（R15）：同 mtlsUp —— 校 PEM 形态（证书与私钥各一）。 */
+    if(!/-----BEGIN CERTIFICATE-----/.test(cert)){ markBad("mrCert",true); toast("请粘贴 PEM 格式客户端证书（须含 -----BEGIN CERTIFICATE-----）"); return; }
+    if(!/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(key)){ markBad("mrKey",true); toast("请粘贴 PEM 格式私钥（须含 -----BEGIN … PRIVATE KEY-----）"); return; }
     const keyPass=((document.getElementById("mrPass")||{}).value||"");
     if(/encrypted/i.test(key) && !(keyPass||"").trim()){ markBad("mrKey", true); toast("私钥为加密格式（ENCRYPTED），请填写「新私钥口令」"); return; }
-    const d=document.getElementById("mrDays").value;
-    c.exp=addDays(nowD(), 365); c.st="有效"; c.rot=nowD(); c.transDays=Number(d); c.keyEnc=!!keyPass; closeDlg();
-    toast("客户端证书「"+c.name+"」已轮换：新旧并存过渡 "+d+" 天，到期停用旧证书（入审计，演示）");
-    renderCred(); credTab("c3");
+    const _mx=(document.getElementById("mrExp").value||"").trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(_mx)){ markBad("mrExp",true); toast("有效期须为 YYYY-MM-DD 格式"); return; }
+    /* ★ 2026-10-10（R16）：同 caRotate —— 新旧证书不同，旧证书的主体 / 颁发者 / 指纹随之作废，
+       须置「待解析」而非原样保留（否则列表展示的是**旧证书**的身份信息）。 */
+    /* ★ 2026-10-10（R19）：轮换改变证书与私钥（生效面）⇒ 走二次认证，与同页删除同档。 */
+    closeDlg();
+    ask2FA("轮换客户端证书「"+c.name+"」", ()=>{
+      c.exp=_mx; c.subj="待解析"; c.issuer="待解析"; c.fp="待解析"; c.st=credExpSt(_mx); c.rot=AU_TS_STAMP.slice(0, 10); c.keyEnc=!!keyPass;
+      toast("客户端证书「"+c.name+"」已轮换：证书与私钥就地更新（入审计，演示）");
+      saveDemoState(); renderCred(); credTab("c3");
+    }, null, "轮换后网关上游握手即刻改用新证书与私钥。");
   };
 }
 function mtlsDel(id){
   const c=mtlsById(id); if(!c) return;
   if(refsOf("mtls", c.id).length){ openDlg("无法删除 · "+c.name,`该客户端证书被 <b>${esc(refsOf("mtls", c.id).join("、"))}</b> 引用，受引用保护。`,
     `<div class="note">请先在资产「代理与上游 → 客户端证书（mTLS）」中改用其它证书或改为「不使用（单向 TLS）」，再回到本页删除。</div>`); return; }
-  confirmDlg("删除 mTLS 客户端证书 · "+c.name,`<div class="note red">删除后证书与托管的私钥一并清理，动作<b>入审计</b>；请确认无上游仍依赖该证书。</div>`,
-    ()=>{ const i=MTLS_LIST.indexOf(c); if(i>=0) MTLS_LIST.splice(i,1); toast("客户端证书「"+c.name+"」已删除（入审计，演示）"); renderCred(); credTab("c3"); },"确认删除");
+  ask2FA("删除 mTLS 客户端证书「"+c.name+"」",
+    ()=>{ const i=MTLS_LIST.indexOf(c); if(i>=0) MTLS_LIST.splice(i,1); toast("客户端证书「"+c.name+"」已删除（入审计，演示）"); saveDemoState(); renderCred(); credTab("c3"); },
+    null, "删除后证书与托管的私钥<b>一并清理</b>，<b>该动作入审计</b>；请确认无上游仍依赖该证书。");
 }
 
 /* 侧栏入口：宿主监听先执行（showPage + 面包屑），本监听随后渲染 */
@@ -6791,7 +7385,7 @@ $$("#side .mi").forEach(m=>{ if(m.dataset.pg==="pg-cred") m.addEventListener("cl
      · 「Web 防护」是**策略类型下拉值**，也是子页名；**侧栏菜单名 = Web 安全防护策略**（族名），两者是两个层面。
      · 术语表对「观察」有排他约束：观察档**只**用于 F7.1 WAF 检测模式（与健康检查被动观察）；
        越权处置不设观察档 —— 故「观察 / 阻断」开关**只出现在 Web 防护（WAF）子页**，不得进入限流 / 请求约束子页。
-     · 匿名与 public 只免裁决链第 ⑤~⑧ 环，① ② ③ 照常执行（本族三页均属前段，故永不豁免）。
+     · 匿名与 public 只免裁决链第 ⑤~⑦ 环，① ② ③ 与 ⑧ 均照常执行（本族三页均属前段，故永不豁免）。
      · 规则库管理属**二期 M8 口径**（一期 PRD 无「规则库」章节；归档页规原口径为「特征库版本只读」），
        已按新增需求口径于 2026-09-21 追认；导入 / 签名校验 / 灰度 / 回滚归安全管理员。
    ★ 2026-09-22 第二十一轮：本页精简重构为「版本库列表 + 生效规则列表」（页内 TAB + 两表分页）；
@@ -6820,7 +7414,7 @@ var WS_LP = 5;
 var WS_EP = 8;
 function wsLp(kind) { return kind === "e" ? WS_EP : WS_LP; }
 /* 裁决顺序 10 环（页级说明共用） */
-var WS_CHAIN = "① URI 规范化 / 方法 / 请求体约束 → ② WAF 与 Origin / 跳转校验、请求头清洗 → ③ 网关级 / 登录级 / 资产级全局限流 → ④ public 判定 → ⑤ 主体认证 → ⑥ 资产访问状态 → ⑦ 方法与路径授权 → ⑧ ABAC 属性策略 → ⑨ 行为策略 → ⑩ 上游认证注入与代理";
+var WS_CHAIN = "① URI 规范化 / 方法 / 请求体约束 → ② WAF 与 Origin / 跳转校验、请求头清洗 → ③ 网关级 / 登录级 / 资产级全局限流 → ④ public 判定 → ⑤ 主体认证 → ⑥ 资产访问状态 → ⑦ 访问对象准入（统一 ABAC 一次联合求值） → ⑧ 动态防护与行为处置 → ⑨ 上游认证注入与代理";
 
 /* 当前操作人**姓名**（不含角色前缀）—— 复用页面基座的 opUser()（承 PRD 一期 AC-F3.4-7：
    「安全管理员 张伟」只记「张伟」；字段只读、不可手改），与既有「负责人」列同口径。
@@ -6897,7 +7491,6 @@ function rlSeed() {
     hit: { preset: 87, custom: 12 },
     stage: 5,                                            /* 操作链进度：0 无 1 导入 2 验签 3 灰度 4 发布 5 全量下发 */
     pending: "",
-    autoRollback: 5,                                     /* 误报率阈值 % */
     versions: [
       { v: "2026.09.1", at: "2026-09-15 10:20", entries: 1420, state: "生效中", signed: true },
       { v: "2026.08.3", at: "2026-08-20 09:05", entries: 1388, state: "已归档", signed: true },
@@ -6948,7 +7541,22 @@ function wsLoad() {
      旧存档缺 rate 子键 ⇒ 页② 阈值表格渲染出 undefined；assetRate 为 null ⇒ Object.keys(null) 抛错 ⇒ **整页白屏**。
      此处按 req 同口径逐键补齐 + 对象兜底（真实旧存档不再失真）。 */
   if (!WS.rate || typeof WS.rate !== "object") WS.rate = d.rate;
-  else { for (var rt in d.rate) { if (WS.rate[rt] === undefined) WS.rate[rt] = d.rate[rt]; } }
+  else {
+    for (var rt in d.rate) { if (WS.rate[rt] === undefined) WS.rate[rt] = d.rate[rt]; }
+    /* ★ 2026-09-30：补缺键**不校额度关系** ⇒ 存量存档里的倒挂值被原样保留：页①「额度关系」
+       note 会渲染出「外层 ≥ 内层」与「外层的数 < 内层的数」并存的自相矛盾文案。
+       编辑路径的守卫（本文件 rate 分支）只拦**新写入**，Q35 只守**种子值** —— 都修不了存量。
+       故在此做**存量归一**：同为「来源 IP」计数依据的两维必须 外层 ≥ 内层
+       （账号维按失败计数、资产级按 IP/用户 × 资产，口径不同，不参与比较）。
+       另：网关 CC 恰为 1000 是 PRD v1.61 之前的旧出厂阈值（已改 20000）⇒ 升为现行默认，
+       而不是把它当「用户刻意配置」只抬到内层值。 */
+    var _rCc = Number(WS.rate.gatewayCc), _rIp = Number(WS.rate.loginIp);
+    if (!isFinite(_rCc) || _rCc < 1) _rCc = d.rate.gatewayCc;
+    if (!isFinite(_rIp) || _rIp < 1) _rIp = d.rate.loginIp;
+    if (_rCc === 1000) _rCc = d.rate.gatewayCc;
+    if (_rCc < _rIp) _rCc = _rIp;
+    WS.rate.gatewayCc = _rCc; WS.rate.loginIp = _rIp;
+  }
   if (!WS.baseline || typeof WS.baseline !== "object") WS.baseline = d.baseline;
   else { for (var bl in d.baseline) { if (WS.baseline[bl] === undefined) WS.baseline[bl] = d.baseline[bl]; } }
   ["modeOverride", "assetRate", "assetRateAnon"].forEach(function (dk2) {
@@ -7012,7 +7620,6 @@ function rlLoad() {
   if (typeof RL.pending !== "string") RL.pending = d.pending;
   if (typeof RL.publishedAt !== "string") RL.publishedAt = d.publishedAt;
   if (typeof RL.signed !== "boolean") RL.signed = d.signed;
-  if (RL.autoRollback == null) RL.autoRollback = d.autoRollback;
   if (!RL.current) RL.current = d.current;
   (RL.rules || []).forEach(function (r) {
     if (r.on === undefined) r.on = true;
@@ -7473,7 +8080,7 @@ function wsActions(pre) {
 /* 页级只读说明：只讲本页所在环节 + 匿名豁免口径；完整 10 环放在可折叠里（默认收起，不占高度） */
 function wsPosNote(ring, desc) {
   return '<div class="note blue" style="margin-bottom:14px"><b>执行时序</b>：本页 = 第 <b>' + ring + '</b> 环（' + desc + '），<b>先于任何身份判定</b>。' +
-    "全流量生效，含<b>未开通资产</b>与<b>匿名流量</b>；匿名 / public 只免第 <b>⑤~⑧</b> 环，<b>本环照常执行</b>。" +
+    "全流量生效，含<b>未开通资产</b>与<b>匿名流量</b>；匿名 / public 只免第 <b>⑤~⑦</b> 环，<b>本环照常执行</b>。" +
     '<details class="rb-fold"><summary>查看完整裁决顺序（10 环）</summary><div class="mini" style="margin-top:6px;line-height:1.7">' + WS_CHAIN + "</div></details></div>";
 }
 
@@ -7539,7 +8146,7 @@ var TAB_GROUPS = {
   /* 规则库页：复用同一份 TAB 实现（继承 aria 同步 / roving tabindex）。
      mount 为空 —— 本页两表在渲染时用 pgmk 直接写入隐藏面板，切 TAB 只切显隐即可。 */
   rulelib: {
-    navId: "rlTabs", host: "pg-rulelib", navNodeId: "RlTabsNodeId000001", aria: "规则库管理分区",
+    navId: "rlTabs", host: "pg-rulelib", navNodeId: "RlTabsNodeId000001", aria: "WAF 规则库管理分区",
     tabs: RL_TABS, mount: [],
     get: function () { return RLTAB; }, set: function (v) { RLTAB = v; }
   }
@@ -7684,7 +8291,7 @@ function wsPaneDetect() {
       '<div class="note">当前特征库版本：<b>' + esc(wsFeatureVer()) + "</b>（随平台版本交付 · SM2 签名下发；与「规则库管理」页<b>同源</b>）。上方<b>自定义 PCRE 为站点自有规则</b>，<b>与特征库互相独立</b>、<b>不随库下发</b>（F7.1 规则 2）　" +
       /* ★ 2026-09-23 第十七轮：关闭的内置基线须**在规则库页同源可见**（否则两页对同一规则的状态自相矛盾）。 */
       (function () { var off = ["sqli", "xss", "scanner"].filter(function (k) { return WS.baseline[k] === false; }); return off.length ? '<b class="red">已关闭基线：' + off.map(function (k) { return k.toUpperCase(); }).join(" / ") + "</b>（该类规则在规则库页同步标「基线已关」）　" : ""; })() +
-      '<button class="btn link" type="button" data-ws="wsGotoLib">前往规则库管理 →</button></div>' +
+      '<button class="btn link" type="button" data-ws="wsGotoLib">前往 WAF 规则库管理 →</button></div>' +
     "</div></div>";
 }
 /* TAB④ 命中与观测：只读（「命中了记什么、去哪查」）—— 与「可配置的检测规则」不同层，故单列一 TAB */
@@ -8130,7 +8737,7 @@ function rlHtml() {
   }).join("");
 
   return '<div class="title-row">' +
-    '<div><h2>规则库管理</h2><div class="muted" style="margin-top:4px">统一安全规则库（本期 WAF 特征库 / 语义检测规则集实装）· 特征库版本化 · SM2 签名下发</div></div>' +
+    '<div><h2>WAF 规则库管理</h2><div class="muted" style="margin-top:4px">WAF 特征库与语义检测规则集 · 特征库版本化 · SM2 签名下发</div></div>' +
     '<div class="toolbar"><button class="btn primary" type="button" data-rl="rlImport">导入规则包</button></div></div>' +
     '<div class="muted" style="margin:-6px 0 12px;font-size:12.5px">当前生效 <b>' + esc(RL.current) + '</b> · ' + esc(RL.publishedAt) + ' 发布 · ' + (RL.signed ? "SM2 验签通过" : "未验签") + ' · 条目 ' + RL.entries + ' · 近 7 日命中 预置 ' + RL.hit.preset + ' / 自定义覆盖 ' + RL.hit.custom + '</div>' +
     wsTabsNav("rulelib") +
@@ -8151,13 +8758,12 @@ function rlHtml() {
       "</div></div>") +
     /* ── 面板 ③ 设置与回滚 ─────────────────────────────────────── */
     wsTabPane("rulelib", "r3",
-      '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px">' +
+      '<div style="display:grid;gap:14px">' +
         '<div class="card"><div class="card-h"><h3>库分区<span class="sub">本库两类构成（WAF 域 · 均本期实装）</span></h3></div><div class="card-b">' + libs +
           '<div class="note">本库只承载<b>库</b>（特征库版本 / 签名 / 回滚）；管理员在 Web 安全防护策略页自建的正则规则（<b>自定义 PCRE</b>）属<b>站点自有规则</b>，<b>与特征库互相独立</b>，<b>不在本库、不随库下发</b>。<br><b>「客户端真实性判定特征集」「推理与基线规则」属其他安全域，各自独立成库（独立版本线 / 独立承载页），不在本库；本期仅登记，不实现。</b><br>库内规则的<b>状态</b>与 Web 安全防护策略页的<b>内置基线开关同源</b>：关闭某类基线后，该类规则在本页同步标「基线已关」。</div>' +
         "</div></div>" +
-        '<div class="card"><div class="card-h"><h3>自动回滚<span class="sub">失败 / 误报率超阈自动回滚 + 告警</span></h3></div><div class="card-b">' +
-          '<div class="kv" style="grid-template-columns:180px auto 1fr"><span class="k">误报率阈值</span><input type="number" min="1" step="1" max="100" style="width:100px" aria-label="误报率阈值（%）" data-rl-auto="1" value="' + RL.autoRollback + '"><span class="mini">%　超阈自动回滚以更高版本号重签，并推送高危告警</span></div>' +
-          '<div class="note">无有效版本时网关按<b>原样放行</b> + 告警；连续中断达阈值自动<b>熔断</b>。规则库不替代一期裁决链，也不改变其 fail-closed 语义。</div>' +
+        '<div class="card"><div class="card-h"><h3>失败自动回滚<span class="sub">验签 / 下发失败自动回滚 + 高危告警</span></h3></div><div class="card-b">' +
+          '<div class="note">网关<b>能自证</b>的情形仅限自身的执行结果：<b>验签失败</b> · <b>下发失败</b> · <b>节点确认超时</b> ⇒ 自动回滚上一版本、以更高版本号重签，并推送高危告警；无有效版本时按<b>原样放行</b> + 告警；连续中断达阈值自动<b>熔断</b>。规则库不替代一期裁决链，也不改变其 fail-closed 语义。</div>' +
         "</div></div>" +
       "</div>");
 }
@@ -8321,11 +8927,11 @@ function wsAct(a, el) {
 /* ---------- 2026-09-21 第十四轮：二次认证 / 防护体检（对齐参考页 ask2FA / polCheck） ---------- */
 
 /* 二次认证：敏感变更（恢复出厂默认 / 规则库全量下发）的身份再确认。
-   认证方式取自「认证方式字典」（默认口令再认证 L2）；凭据仅用于本次身份确认、不落库、不记审计明细；
+   安全设置模块的二次认证统一为口令再认证（L2）—— 本模块动作均为平台管理动作，不随资产级策略变档；凭据仅用于本次身份确认、不落库、不记审计明细；
    取消不产生任何变更。演示环境：凭据非空即通过（与参考页同口径）。 */
 function wsAsk2FA(op, note, ok) {
   var html = '<div class="fld" style="margin-bottom:10px"><label>认证方式</label>' +
-    '<div class="note" style="margin:0">口令再认证（L2）· 取自「认证方式字典」</div></div>' +
+    '<div class="note" style="margin:0">口令再认证（L2）· 本模块统一口径（平台管理动作，不随资产策略变档）</div></div>' +
     '<div class="fld"><label>再认证口令 <span class="req">*</span></label><input type="password" id="ws2faPwd" placeholder="输入口令以确认身份">' +
     '<div class="help">凭据仅用于本次身份确认，<b>不落库、不记入审计明细</b>；演示环境非空即通过。</div></div>' +
     (note ? '<div class="note">' + note + '</div>' : '');
@@ -8813,13 +9419,10 @@ function rlOnClick(e) {
   var act = e.target.closest ? e.target.closest("[data-rl]") : null;
   if (act) rlAct(act.getAttribute("data-rl"), act);
 }
-function rlOnChange(e) {
-  var t = e.target;
-  if (t && t.getAttribute && t.getAttribute("data-rl-auto")) {
-    if (!wsIntOk(t.value) || Number(t.value) > 100) { markBad(t, true); t.value = RL.autoRollback; toast("阈值须为 1~100 的整数"); return; }   /* ★ 第十八轮：非法输入**复位为原值**（旧实现不复位 ⇒ 展示与状态分叉） */
-    RL.autoRollback = Math.floor(Number(t.value)); rlSaveStore(); toast("自动回滚阈值已更新为 " + RL.autoRollback + "%（演示）");
-  }
-}
+/* 2026-10-09：原「误报率告警阈值」输入项已随「误报率监控」卡移除（用户裁定：误报率不能
+   由网关自证 ⇒ 不在规则库呈现）⇒ 本页暂无 change 型控件。保留空实现以维持接线契约
+   （第 6 节 `rlEl.addEventListener("change", rlOnChange)` 未动）。 */
+function rlOnChange(e) {}
 
 /* ---------- 6. 首次接线（仅在承载页生效） ---------- */
 (function () {
@@ -8836,9 +9439,11963 @@ function rlOnChange(e) {
 })();
 
 /* ==========================================================================
+   身份模块 · 6 页（2026-09-29 新增）
+   --------------------------------------------------------------------------
+   页面与对象（一页一对象，不设总览 / 工作台）：
+     identity-user.html      用户管理        pg-iduser
+     identity-terminal.html  终端管理        pg-idterm
+     identity-clientsw.html  客户端软件管理  pg-idcsw
+     identity-clientinst.html 客户端实例管理 pg-idcin
+     identity-agentsw.html   智能体软件管理  pg-idagsw
+     identity-agentinst.html 智能体实例管理  pg-idagin
+
+   ★★ 两条硬口径（写代码前先读，避免实现时走形）：
+     ① 「软件 / 实例」两层 —— 软件级（登记 / 版本 / 支持的认证方式）与
+        实例级（终端级注册 / License 证书）各自独立成页，不靠下钻区分。
+     ② 「智能体」不是客户端软件的一种 —— 客户端软件的定义要件是**集成 SDK**；
+        AI agent **不集成 SDK**，判定依据是**受 AI 安全 agent 监管**，两条平行线。
+        ⚠ AI 安全 agent 本身**是**特殊客户端软件（它集成 SDK），标特殊。
+
+   ★ 三处「证书」不混：客户端 License 证书（身份侧 · 本模块）/ mTLS 客户端证书
+     （认证侧 · 网关凭据托管 c3）/ TLCP 证书对（协议层）。
+     License 证书 = 自定义封装容器（授权信息 + CA 证书链），**只含公钥**。
+
+   ★ 页面不出现任何租户信息；作用域用业务词（全局默认 / 按客户端覆写 / 按接入方式）。
+
+   ★★ 2026-10-09（第一轮评审）落定的六条实现口径：
+     ① **宿主链**：智能体实例的宿主**必须是 AI 安全 agent 的客户端实例**
+        （方案 §1.1：AI 安全 agent 实例负责监管本终端的 AI agent）；
+        终端字段由宿主实例派生，不由人工另填 —— 两者不一致即自相矛盾。
+     ② **运行时刻唯一**：模块内所有「现在」取 ID_NOW（与认证模块 AU_TS_STAMP 同源）；
+        「凭据是否过期」「License 处哪个阶段」一律**按有效期推导**，不写死状态字。
+     ③ **状态维度不混**：客户端实例（与终端同口径）拆「生命周期状态」与「在线状态」两列 ——
+        方案 §2.4 列的五值本属两个维度，混在一列会让筛选项与数据取值对不上。
+     ④ **时间基准不写死**：自增对象（续发凭据 / 签发证书 / 新增终端）的时间一律由
+        ID_NOW 派生，禁止在代码里散落字面量时刻。
+     ⑤ **弹窗分档**（与认证模块 auConfirmEff 同档）：改变**生效面**的动作
+        （启停 / 注销 / 吊销 / 轮换 / 签发 / 续发 / 绑定关系变更）一律**二次认证**；
+        只改配置内容的保存走普通确认。
+     ⑥ **跨页深链走查询参数**：goPage 是整页跳转，页内变量必然丢失 ⇒
+        用 ?cur= / ?asw= 承载目标，由 idDeepLink() 在一次装载内施加一次。
+   ========================================================================== */
+
+/* ---------- 0. 演示数据（与其余页面同构：seed + localStorage 合并） ---------- */
+var ID_KEY = "baize.assetmgmt.identity.v1";
+var ID = null;
+
+/* 模块运行时刻（单一出处）—— 与认证模块同源。
+   两模块共用同一份身份数据（认证侧的「签发凭据管理」按 l.no 回写 License 状态），
+   各自写一个「现在」会让同一张证书在两侧得出「有效 / 已过期」两种结论。 */
+var ID_NOW = (typeof AU_TS_STAMP === "string" && AU_TS_STAMP) ? AU_TS_STAMP : "2026-09-30 09:14";
+function idDay() { return String(ID_NOW).slice(0, 10); }
+function idPad2(n) { return (n < 10 ? "0" : "") + n; }
+/* 时间戳位移（分钟级）—— 短时凭据的有效期一律由 ID_NOW 推出，不写字面量。 */
+function idShift(ts, mins) {
+  var d = new Date(String(ts).replace(/-/g, "/"));
+  d.setMinutes(d.getMinutes() + mins);
+  return d.getFullYear() + "-" + idPad2(d.getMonth() + 1) + "-" + idPad2(d.getDate()) +
+    " " + idPad2(d.getHours()) + ":" + idPad2(d.getMinutes());
+}
+/* 日期位移（年 / 日级）—— License 证书的生效日与有效期由前一份证书推出。 */
+function idYmdShift(ymd, days, years) {
+  var d = new Date(String(ymd).replace(/-/g, "/"));
+  if (years) d.setFullYear(d.getFullYear() + years);
+  if (days) d.setDate(d.getDate() + days);
+  return d.getFullYear() + "-" + idPad2(d.getMonth() + 1) + "-" + idPad2(d.getDate());
+}
+/* License 阶段**派生**（不读种子里的状态字）：
+   待生效 = 生效日在运行时刻之后；已过期 = 有效期至在运行时刻之前；否则当前。
+   ⚠ 「已吊销」是**显式状态**（认证侧「吊销凭据」会按 l.no 回写此标记），优先于派生结果。 */
+function idLicTagOf(l) {
+  if (!l) return "—";
+  if (l.tag === "已吊销") return "已吊销";
+  var today = idDay();
+  if (l.issued && String(l.issued).slice(0, 10) > today) return "待生效";
+  if (l.exp && String(l.exp).slice(0, 10) < today) return "已过期";
+  return "当前";
+}
+/* 智能体实例状态**派生**：显式状态优先（已终止 > 已吊销），其次按短时凭据有效期判「已过期 / 运行中」。 */
+function idAgInSt(a) {
+  if (!a) return "—";
+  if (a.st === "已终止") return "已终止";
+  if (a.cred && a.cred.st === "已吊销") return "已吊销";
+  /* 无短时凭据 ⇒ 不构成「运行中」：此前会伪判为运行中，而同行「凭据有效期至」显示「—」，
+     同页两处结论相反。凭据缺失（旧快照 / 异常档）一律按「—（无凭据）」处置，不伪造运行态。 */
+  if (!a.cred || !a.cred.exp) return "—";
+  /* ★ R20：边界对齐认证侧 `auIssueSt`（`mins <= 0` ⇒ 已过期）—— 此前本侧用严格小于，
+     恰好到期的那一刻两模块结论相反（本侧「运行中」/ 认证侧「已过期」）。 */
+  return (a.cred.exp <= ID_NOW) ? "已过期" : "运行中";
+}
+function idLicNo() { return "LC-" + idDay().slice(0, 4) + "-" + String(Math.floor(Math.random() * 900000) + 100000); }
+function idCredNo(pid) { return "AT-" + Math.random().toString(16).slice(2, 6).toUpperCase() + "-" + String(pid); }
+function idMaskPhone(p) {
+  var s = String(p || "").replace(/\D/g, "");
+  if (!s) return "—";
+  if (s.length < 7) return s;
+  return s.slice(0, 3) + "****" + s.slice(s.length - 4);
+}
+/* 使用记录 IP：由终端 ID 确定性派生（同一终端恒得同一私网地址）。
+   不用固定字面量 —— 否则每台终端的使用记录都显示同一个 IP，一眼即假。 */
+function idTermIp(id) {
+  var h = 5381, s = String(id || "");
+  for (var i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) % 999983;
+  return "10.20." + (1 + (h % 220)) + "." + (1 + ((h >> 5) % 250));
+}
+function idUserByName(n) { return (ID.users || []).filter(function (u) { return u.name === n; })[0] || null; }
+function idUserOf(term) {
+  return (ID.users || []).filter(function (u) { return u.id === term.ownerId; })[0] || idUserByName(term.owner);
+}
+function idSwOf(id) { return (ID.csw || []).filter(function (s) { return s.id === id; })[0] || {}; }
+function idCinOf(id) { return (ID.cin || []).filter(function (c) { return c.id === id; })[0] || {}; }
+function idIsSafeHost(cin) { return !!(cin && idSwOf(cin.sw).agent); }
+/* 绑定关系**唯一权威面**是关系表：用户侧 bound / allow 为同一份数据的两处投影。
+   任一处写入都经这里，避免「终端侧加了设备、用户侧看不见」。 */
+function idBindWrite(u, termId, drop) {
+  if (!u) return;
+  u.bound = Array.isArray(u.bound) ? u.bound : []; u.allow = Array.isArray(u.allow) ? u.allow : [];
+  if (drop) {
+    u.bound = u.bound.filter(function (x) { return x !== termId; });
+    u.allow = u.allow.filter(function (x) { return x !== termId; });
+    return;
+  }
+  if (u.bound.indexOf(termId) < 0) u.bound.push(termId);
+  if (u.allow.indexOf(termId) < 0) u.allow.push(termId);
+}
+
+function idSeed() {
+  return {
+    schema: "id-9",
+    /* 用户：台账 + 归属组织 + 角色 + 状态 + 手机号（首次登录短信验证）+ 绑定终端
+       （关系表视图，与终端侧同一份数据） */
+    users: [
+      { id: "u_wangfang",  name: "王芳",   acct: "wangfang",  org: "信贷管理部",   role: "安全管理员", st: "已启用", phone: "13857412306", fail: 0, bound: ["t_pc_0012", "t_nb_0042"],  allow: ["t_pc_0012", "t_nb_0042", "t_nb_0031"] },
+      { id: "u_lijun",     name: "李俊",   acct: "lijun",     org: "电子银行部",   role: "操作员",     st: "已启用", phone: "13905748812", fail: 0, bound: ["t_nb_0031"],  allow: ["t_nb_0031"] },
+      { id: "u_zhangwei",  name: "张伟",   acct: "zhangwei",  org: "科技管理部",   role: "系统管理员", st: "已启用", phone: "13738952140", fail: 0, bound: ["t_pc_0007"],  allow: ["t_pc_0007", "t_pc_0012", "t_nb_0031"] },
+      { id: "u_chenli",    name: "陈丽",   acct: "chenli",    org: "数据管理部",   role: "审计管理员", st: "已启用", phone: "13606551299", fail: 0, bound: ["t_srv_0002"], allow: ["t_srv_0002"] },
+      { id: "u_sunhao",    name: "孙浩",   acct: "sunhao",    org: "信贷管理部",   role: "操作员",     st: "已锁定", phone: "15857203355", fail: 5, bound: [],             allow: [] },
+      { id: "u_zhouqin",   name: "周琴",   acct: "zhouqin",   org: "综合管理部",   role: "操作员",     st: "已禁用", phone: "13588120076", fail: 0, bound: ["t_pc_0021"],  allow: ["t_pc_0021"] },
+      { id: "u_zhaomin",   name: "赵敏",   acct: "zhaomin",   org: "信贷管理部",   role: "操作员",     st: "已启用", phone: "13675842931", fail: 0, bound: [],             allow: [] }
+    ],
+    /* 终端：宿主侧入口，串联客户端实例与智能体实例两条线。
+       ⚠ ownerId 是归属的**关联键**（owner 只是随动的展示名）：按姓名耦合会在改名后断开归属。 */
+    terms: [
+      { id: "t_pc_0007", name: "科技管理部-张伟-PC", sn: "PC7F3A2C91E004B7", mac: "00-1A-2B-3C-4D-5E", os: "Windows 11 专业版", type: "桌面终端", owner: "张伟", ownerId: "u_zhangwei", org: "科技管理部", st: "已激活", online: "在线", reg: "2026-03-14 09:22", regway: "在线注册 · 管理员审核" },
+      { id: "t_pc_0012", name: "信贷管理部-王芳-PC", sn: "PC1D8E44A0F22C93", mac: "3C-7A-8B-11-9F-20", os: "Windows 10 企业版", type: "桌面终端", owner: "王芳", ownerId: "u_wangfang", org: "信贷管理部", st: "已激活", online: "在线", reg: "2026-04-02 14:05", regway: "在线注册 · 自动审核" },
+      { id: "t_nb_0031", name: "电子银行部-李俊-NB", sn: "NB9A2C77B1155E08", mac: "A4-5E-60-C1-22-08", os: "macOS 14.5", type: "笔记本", owner: "李俊", ownerId: "u_lijun", org: "电子银行部", st: "已激活", online: "离线", reg: "2026-05-19 10:55", regway: "离线注册 · 管理员审核" },
+      { id: "t_srv_0002", name: "数据管理部-审计终端", sn: "SV3E6B10C7A44D2F", mac: "8C-16-45-AB-70-D1", os: "Windows Server 2022", type: "服务器终端", owner: "陈丽", ownerId: "u_chenli", org: "数据管理部", st: "已激活", online: "在线", reg: "2026-02-08 16:30", regway: "在线注册 · 管理员审核" },
+      { id: "t_pc_0021", name: "综合管理部-周琴-PC", sn: "PC5C0F93D2B661A4", mac: "2C-8A-F7-0B-44-63", os: "Windows 11 家庭版", type: "桌面终端", owner: "周琴", ownerId: "u_zhouqin", org: "综合管理部", st: "已禁用", online: "离线", reg: "2026-01-08 09:26", regway: "在线注册 · 管理员审核" },
+      /* 一个用户可同时拥有多台终端（王芳：PC + NB）—— 此前种子恒为 1:1，未体现该基数。 */
+      { id: "t_nb_0042", name: "信贷管理部-王芳-NB", sn: "NB7B31D9E4F0A6C2", mac: "7C-4F-2A-19-8B-30", os: "Windows 11 专业版", type: "笔记本", owner: "王芳", ownerId: "u_wangfang", org: "信贷管理部", st: "已激活", online: "离线", reg: "2026-06-15 13:40", regway: "在线注册 · 管理员审核" }
+    ],
+    /* 客户端软件（软件级 · 集成 SDK）—— AI 安全 agent 在列并标特殊。
+       唯一序列号口径：16 位字母 + 8 位数字（与新建弹窗的校验一致）。
+       版本与校验码按**操作系统**分列（osver）—— 同一款软件在不同 OS 上版本号与 SHA256 各自独立；
+       软件级的版本列表由 idSwVers() 从 osver 派生，不另存一份（消除同字段两处口径）。 */
+    csw: [
+      { id: "sw_baize_pc",  name: "白泽客户端（PC）",     sn: "BAIZEPCCLIENTAAA20260001", kind: "白泽官方客户端", agent: false, regway: "在线注册 · 管理员审核", bind: true, cert: "自有证书", proto: "TLCP", vsig: "哈希值校验 + 客户端签名校验", osver: [
+          { os: "Windows", ver: "3.2.1", size: "98.4 MB", sha256: "6f8a1c47d2e95b30a7c418fe6d2b9a53c07e14bd8a3f26519ec7d40b31fa8d62", sig: "已签名 · 白泽代码签名 CA（RSA-2048）", at: "2026-05-12", pub: true },
+          { os: "Windows", ver: "3.1.8", size: "96.1 MB", sha256: "1c3d9b0a75ef2468c4108fd7ab62e95370cf8a41d2b6e08735f9a4c1de70b28f", sig: "已签名 · 白泽代码签名 CA（RSA-2048）", at: "2026-03-28", pub: true },
+          { os: "macOS", ver: "3.2.1", size: "112.6 MB", sha256: "a9084fd21b6c73e05fa2d8c4917be3067da5f2019c8e4b37f06a1d95e2c3b708", sig: "已签名 · 白泽代码签名 CA（RSA-2048）", at: "2026-05-12", pub: true },
+          { os: "Linux", ver: "3.2.0", size: "104.2 MB", sha256: "b4710e9a3c8d562f1a09b7e4d5c283f619a4e7b3d0f582c91e63b4a7d05f8c21", sig: "已签名 · 白泽代码签名 CA（SM2）", at: "2026-04-20", pub: true }
+        ], assets: ["核心网银门户", "信贷审批系统", "手机银行后台", "对公客户影像库", "报表中心", "报表导出网关"], ameth: ["pwd", "otp", "fp", "usbkey", "face"] },
+      { id: "sw_baize_mb",  name: "白泽客户端（移动）",   sn: "BAIZEMOBILEAPPXX20260002", kind: "白泽官方客户端", agent: false, regway: "在线注册 · 自动审核", bind: true, cert: "自有证书", proto: "TLCP", vsig: "哈希值校验", osver: [
+          { os: "Android", ver: "3.2.1", size: "42.7 MB", sha256: "2d7c0b83e51a94f6204cd8b17e3fa5960c84d2a7b1e93f5608ac47d2e1b90f35", sig: "已签名 · 白泽代码签名 CA（RSA-2048）", at: "2026-05-12", pub: true },
+          { os: "iOS", ver: "3.2.1", size: "51.3 MB", sha256: "9e40d17c3b825a6f041ed9c2785b3fa601c94e2d7b8a3506f1e2c4d90a7b6385", sig: "已签名 · 白泽代码签名 CA（RSA-2048）", at: "2026-05-12", pub: true },
+          { os: "HarmonyOS", ver: "3.2.0", size: "45.9 MB", sha256: "507ba2e14c96d380f1a27ce5b4d0963817e5ac2f9b0d4761c3e8a52f70b4d9e6", sig: "未签名", at: "2026-06-30", pub: false }
+        ], assets: ["核心网银门户", "信贷审批系统", "手机银行后台", "报表中心", "报表导出网关"], ameth: ["pwd", "otp", "fp", "face"] },
+      { id: "sw_csii_oa",   name: "客户集成 OA 插件",     sn: "CSIISDKOAPLUGXYZ20260003", kind: "客户 SDK 集成", agent: false, regway: "在线注册 · 管理员审核", bind: false, cert: "CA 机构签发", proto: "TLS", vsig: "客户端签名校验", osver: [
+          { os: "Windows", ver: "2.4.0", size: "18.2 MB", sha256: "4a1f8c02d7e3b569f04a27c1e85d3b9072fa641d0c3e8b57a291f4d6c05b3e78", sig: "已签名 · 外购 CA（CFCA）", at: "2026-02-11", pub: true },
+          { os: "macOS", ver: "2.4.0", size: "20.5 MB", sha256: "7c2e4905b1a683d4f5029e7c3b4d81560da9e2f4c7b13085a6d92e4f018b7c39", sig: "已签名 · 外购 CA（CFCA）", at: "2026-02-11", pub: true }
+        ], assets: ["统一身份门户", "报表中心", "报表导出网关"], ameth: ["pwd", "otp"] },
+      { id: "sw_aiagent",   name: "AI 安全 agent",        sn: "BAIZEAISECAGENTX20260004", kind: "AI 安全 agent", agent: true, regway: "在线注册 · 管理员审核", bind: false, cert: "自有证书", proto: "TLCP", vsig: "哈希值校验 + 客户端签名校验", osver: [
+          { os: "Windows", ver: "1.6.0", size: "64.8 MB", sha256: "d83f5a19c47b0e62a1d904f7b8c23e5610fa7d4b9e83c26051fab9d3e7046c82", sig: "已签名 · 白泽代码签名 CA（RSA-2048）", at: "2026-06-01", pub: true },
+          { os: "Windows", ver: "1.5.2", size: "62.1 MB", sha256: "0b6e2d7f94a1c385e04d27b6f8a53c19607e4b2d9f8a3c15062dbe79a4c3f015", sig: "已签名 · 白泽代码签名 CA（RSA-2048）", at: "2026-03-05", pub: true },
+          { os: "Windows", ver: "1.4.0", size: "60.4 MB", sha256: "3a7f0c91b2d46e5804c1a7e9f3d26b805a1c4e7d9b0f3286a5d1c7e40b9f6382", sig: "已签名 · 白泽代码签名 CA（RSA-2048）", at: "2025-12-18", pub: true },
+          { os: "Linux", ver: "1.6.0", size: "68.3 MB", sha256: "e91c47b30a6d582f14c097e2d3b86a450f1c7d92b4e06a3587c1e9d40b26f7a3", sig: "已签名 · 白泽代码签名 CA（SM2）", at: "2026-06-01", pub: true }
+        ], assets: ["核心网银门户", "信贷审批系统", "客户数据仓库", "监管报送接口", "反洗钱报送门户"], ameth: ["pwd", "fp"] }
+    ],
+    /* 客户端实例（终端级注册）—— License 证书在此页看与改。
+       ⚠ st = 生命周期（已激活 / 禁用 / 已卸载）；online = 在线状态（在线 / 离线），两维分列。
+       ⚠ ver = **客户端最近一次成功上报的版本**（平台不推断）；verlog = 版本变更与下发记录。
+         **平台推送升级 / 用户自行升级 / 离线安装包安装**三条路径一律经 idCinVerUpd 登记 ——
+         口径是「无论怎么升，升完必须回采并更新实例版本号」，不能只认平台下发那条路。
+         ⚠ **下发 ≠ 回采**：平台把升级推给**离线**客户端，客户端既收不到也来不及上报 ⇒
+           该条只记「待生效」且 **ver 不变**，等客户端上线回采后才更新；否则就是平台推断版本。 */
+    cin: [
+      { id: "ci_001", sw: "sw_baize_pc", term: "t_pc_0007", cidseq: "BZPC-0007-3A2C", ver: "3.2.1", st: "已激活", online: "在线", lic: [
+          { id: "lic_001a", no: "LC-2026-000701", issued: "2026-03-14", exp: "2027-03-13", tag: "当前", ca: "白泽内网 CA", scope: "信贷核心系统 / 客户管理平台" },
+          { id: "lic_001b", no: "LC-2027-000702", issued: "2027-03-14", exp: "2028-03-13", tag: "待生效", ca: "白泽内网 CA", scope: "信贷核心系统 / 客户管理平台" } ],
+          /* 两条记录＝一次**失败后重试成功**：升级的「下发」与「回采」是两件事 ——
+             5-11 下发后客户端签名校验未通过，版本**停在 3.1.8**（result 标失败、ver 不得前进）；
+             5-12 重试成功，客户端上线回采后版本才变为 3.2.1。 */
+          verlog: [
+            { at: "2026-05-11 17:22", from: "3.1.8", to: "3.2.1", way: "平台推送升级", result: "失败·签名校验未通过" },
+            { at: "2026-05-12 09:41", from: "3.1.8", to: "3.2.1", way: "平台推送升级", result: "成功" }] },
+      { id: "ci_002", sw: "sw_baize_pc", term: "t_pc_0012", cidseq: "BZPC-0012-1D8E", ver: "3.2.1", st: "已激活", online: "在线", lic: [
+          { id: "lic_002a", no: "LC-2026-001201", issued: "2026-04-02", exp: "2027-04-01", tag: "当前", ca: "白泽内网 CA", scope: "信贷核心系统 / 客户管理平台 / 报表分析平台" } ],
+          verlog: [{ at: "2026-05-12 14:22", from: "3.1.8", to: "3.2.1", way: "用户手动升级", result: "成功" }] },
+      /* 电子银行部-李俊-NB 是 **macOS 笔记本** ⇒ 应装 PC 客户端，不是「移动」客户端。
+         原种子挂 sw_baize_mb（Android / iOS / HarmonyOS）属跨端矛盾，本次按终端操作系统归正。 */
+      { id: "ci_003", sw: "sw_baize_pc", term: "t_nb_0031", cidseq: "BZPC-0031-9A2C", ver: "3.2.1", st: "已禁用", online: "离线", lic: [
+          { id: "lic_003a", no: "LC-2026-003101", issued: "2026-05-19", exp: "2027-05-18", tag: "当前", ca: "白泽内网 CA", scope: "信贷核心系统 / 报表分析平台" } ] },
+      { id: "ci_004", sw: "sw_aiagent", term: "t_pc_0007", cidseq: "BZAI-0007-3A2C", ver: "1.6.0", st: "已激活", online: "在线", lic: [
+          { id: "lic_004a", no: "LC-2026-004001", issued: "2026-06-01", exp: "2027-05-31", tag: "当前", ca: "白泽内网 CA", scope: "信贷核心系统 / 数据中台" } ] },
+      { id: "ci_005", sw: "sw_csii_oa", term: "t_pc_0021", cidseq: "CSOA-0021-5C0F", ver: "2.4.0", st: "已卸载", online: "离线", lic: [
+          { id: "lic_005a", no: "LC-2026-005101", issued: "2026-01-11", exp: "2027-01-10", tag: "已吊销", ca: "外购 CA（CFCA）", scope: "办公自动化平台" } ] },
+      { id: "ci_006", sw: "sw_aiagent", term: "t_pc_0012", cidseq: "BZAI-0012-1D8E", ver: "1.5.2", st: "已激活", online: "在线", lic: [
+          { id: "lic_006a", no: "LC-2026-006001", issued: "2026-08-18", exp: "2027-08-17", tag: "当前", ca: "白泽内网 CA", scope: "信贷核心系统 / 客户管理平台 / 数据中台" } ],
+          verlog: [{ at: "2026-08-19 09:12", from: "1.4.0", to: "1.5.2", way: "离线安装包升级", result: "成功" }] },
+      { id: "ci_007", sw: "sw_baize_pc", term: "t_nb_0042", cidseq: "BZPC-0042-7B31", ver: "3.2.1", st: "已激活", online: "离线", lic: [
+          { id: "lic_007a", no: "LC-2026-004201", issued: "2026-06-15", exp: "2027-06-14", tag: "当前", ca: "白泽内网 CA", scope: "信贷核心系统 / 客户管理平台" } ] }
+    ],
+    /* 智能体软件（受 AI 安全 agent 监管 · 不集成 SDK） */
+    asw: [
+      { id: "asw_code",  name: "代码助手 Agent",   vendor: "内部自研",  proc: "code-agent.exe",       ver: ["2.1.0", "2.0.4"], guardian: "sw_aiagent", policy: "仅可访问代码库与需求库；禁止访问信贷核心系统", st: "受管" },
+      { id: "asw_rep",   name: "报表生成 Agent",   vendor: "星环科技",  proc: "report-agent.exe",     ver: ["1.4.2"],          guardian: "sw_aiagent", policy: "仅可访问报表分析平台（只读）", st: "受管" },
+      { id: "asw_risk",  name: "风控建模 Agent",   vendor: "内部自研",  proc: "riskmodel-agent.exe",  ver: ["0.9.7"],          guardian: "sw_aiagent", policy: "沙箱环境内运行；禁止连接生产数据源", st: "受管" },
+      { id: "asw_cust",  name: "客服对话 Agent",   vendor: "科大讯飞",  proc: "cs-agent.exe",         ver: ["3.0.1"],          guardian: "",           policy: "待指定监管 agent", st: "待纳管" }
+    ],
+    /* 智能体实例（终端上的落地 · 短时凭据）
+       ⚠ host 必须是 **AI 安全 agent 的客户端实例**；term 由 host 派生（两者不一致即自相矛盾）。
+       ⚠ st **只承载显式终止**（"已终止"）；运行中 / 已过期一律由短时凭据有效期派生
+         （idAgInSt）—— 种子不再写 "运行中"，否则「快照说运行中、派生说已过期」两处自相矛盾。
+       ⚠ 短时凭据被认证侧「吊销凭据」吊销后，cred.st 置 "已吊销"（认证侧按 cred.no 回写），
+         idAgInSt 据此返回「已吊销」—— 与 License 证书侧 l.tag 同构（见 idLicTagOf）。 */
+    ain: [
+      { id: "ai_01", asw: "asw_code", term: "t_pc_0007", host: "ci_004", pid: "4821", cred: { no: "AT-3A2C-7F19", issued: "2026-09-30 09:05", exp: "2026-09-30 09:35" } },
+      { id: "ai_02", asw: "asw_rep",  term: "t_pc_0007", host: "ci_004", pid: "5187", cred: { no: "AT-3A2C-5187", issued: "2026-09-30 08:20", exp: "2026-09-30 08:50" } },
+      { id: "ai_03", asw: "asw_code", term: "t_pc_0012", host: "ci_006", pid: "2210", cred: { no: "AT-1D8E-2210", issued: "2026-09-30 09:02", exp: "2026-09-30 09:32" } },
+      { id: "ai_04", asw: "asw_risk", term: "t_pc_0012", host: "ci_006", pid: "9034", cred: { no: "AT-1D8E-9034", issued: "2026-09-30 07:55", exp: "2026-09-30 08:25" }, st: "已终止" }
+    ],
+    /* 注册申请（审核对象是**安装在终端上的客户端实例**；通过后自动生成证书并下发） */
+    apps: [
+      { id: "ap_001", term: "", name: "信贷管理部-赵敏-PC", sn: "PC4A71B2E6D0C8F3", os: "Windows 11 专业版", type: "桌面终端", owner: "赵敏", org: "信贷管理部", sw: "sw_baize_pc", cidseq: "BZPC-0104-4A71", way: "在线注册 · 管理员审核", at: "2026-09-30 08:52", st: "待审核" },
+      { id: "ap_002", term: "t_nb_0031", name: "电子银行部-李俊-NB", sn: "NB9A2C77B1155E08", os: "macOS 14.5", type: "笔记本", owner: "李俊", org: "电子银行部", sw: "sw_csii_oa", cidseq: "CSOA-0031-9A2C", way: "在线注册 · 管理员审核", at: "2026-09-30 09:06", st: "待审核" },
+      { id: "ap_003", term: "t_nb_0031", name: "电子银行部-李俊-NB", sn: "NB9A2C77B1155E08", os: "macOS 14.5", type: "笔记本", owner: "李俊", org: "电子银行部", sw: "sw_baize_pc", cidseq: "BZPC-0031-9A2C", way: "离线注册 · 管理员审核", at: "2026-05-19 10:41", done: "2026-05-19 10:55", reviewer: "admin_dev", st: "已通过" },
+      { id: "ap_005", term: "t_pc_0021", name: "综合管理部-周琴-PC", sn: "PC5C0F93D2B661A4", os: "Windows 11 家庭版", type: "桌面终端", owner: "周琴", org: "综合管理部", sw: "sw_csii_oa", cidseq: "CSOA-0021-5C0F", way: "在线注册 · 管理员审核", at: "2026-01-08 09:04", done: "2026-01-08 09:26", reviewer: "admin_dev", st: "已通过" },
+      { id: "ap_004", term: "t_pc_0021", name: "综合管理部-周琴-PC", sn: "PC5C0F93D2B661A4", os: "Windows 11 家庭版", type: "桌面终端", owner: "周琴", org: "综合管理部", sw: "sw_baize_pc", cidseq: "BZPC-0021-5C0F", way: "在线注册 · 管理员审核", at: "2026-01-11 08:40", done: "2026-01-11 09:12", reviewer: "admin_dev", st: "已拒绝", reason: "设备未通过合规基线检查（缺少指定安全补丁）" },
+      { id: "ap_006", term: "t_nb_0042", name: "信贷管理部-王芳-NB", sn: "NB7B31D9E4F0A6C2", os: "Windows 11 专业版", type: "笔记本", owner: "王芳", org: "信贷管理部", sw: "sw_baize_pc", cidseq: "BZPC-0042-7B31", way: "在线注册 · 管理员审核", at: "2026-06-15 13:22", done: "2026-06-15 13:40", reviewer: "admin_dev", st: "已通过" }
+    ]
+  };
+}
+
+function idLoad() {
+  var d = idSeed();
+  ID = null;
+  try {
+    var s = JSON.parse(localStorage.getItem(ID_KEY) || "null");
+    /* 口径版号一致才沿用旧快照：数据模型变了却继续合并旧值，
+       会把「新口径的字段」与「旧口径的状态字」拼成一份自相矛盾的台账。 */
+    if (s && typeof s === "object" && s.schema === d.schema) ID = s;
+  } catch (e) { /* 忽略 */ }
+  if (!ID || typeof ID !== "object") ID = d;
+  ["users", "terms", "csw", "cin", "asw", "ain", "apps"].forEach(function (k) {
+    if (!Array.isArray(ID[k])) ID[k] = d[k];
+  });
+  /* 用 Array.isArray 而非真值兜底：非数组真值（字符串等）会绕过 `|| []`，使下游 .map 抛错崩页。 */
+  (ID.users || []).forEach(function (u) { u.bound = Array.isArray(u.bound) ? u.bound : []; u.allow = Array.isArray(u.allow) ? u.allow : []; });
+  (ID.terms || []).forEach(function (t) {
+    /* 旧快照无 ownerId：按姓名回填一次，此后归属只认 id（改名不再断开归属）。 */
+    if (!t.ownerId) { var o = idUserByName(t.owner); if (o) t.ownerId = o.id; }
+  });
+  /* 注册申请：st 缺失会使 idPendingApps 漏计、idStTag 落灰，静默作废待审计数 ⇒ 入口兜底
+     （已决申请按 done 有无回填为已通过 / 待审核）。 */
+  (ID.apps || []).forEach(function (p) { if (!p.st) p.st = p.done ? "已通过" : "待审核"; });
+  /* 客户端软件的「支持认证方式」回归 PRD 口径：旧内码 webauthn / bio / facial 折算为
+     指纹识别 / USB Key 硬件令牌 / 活体人脸识别，并丢弃已不在字典内的内码。 */
+  (ID.csw || []).forEach(function (s) {
+    /* 版本列表兜底：pre-id-7 快照只有软件级 ver、没有按操作系统分列的 osver。
+       两类消费点已统一走派生出口 idSwVers(s)（osver 优先、无 osver 时退回 ver），
+       此处仅保证退回路径有值 —— 非数组 / 空数组一律补一条。
+       **不在此处伪造 osver 行**：伪造校验码等于把「未登记」写成「已登记」。 */
+    if (!Array.isArray(s.ver) || !s.ver.length) s.ver = ["1.0.0"];
+    if (!Array.isArray(s.ameth)) return;
+    var out = [];
+    s.ameth.forEach(function (k) {
+      var nk = (typeof AU_MID_LEGACY !== "undefined" && AU_MID_LEGACY[k]) || k;
+      if (ID_AMETH_DEF.some(function (m) { return m.k === nk; }) && out.indexOf(nk) < 0) out.push(nk);
+    });
+    s.ameth = out;
+  });
+  (ID.asw || []).forEach(function (s) {
+    if (!Array.isArray(s.ver) || !s.ver.length) s.ver = ["1.0.0"];
+  });
+  /* 客户端实例（cin）此前零字段级归一化：lic 数组与 online 入口兜底（online 缺失按 fail-safe 离线）；
+     st 与 cidseq 为业务语义值，缺失时由展示层兜底，不在此伪造。 */
+  (ID.cin || []).forEach(function (c) {
+    if (!Array.isArray(c.lic)) c.lic = [];
+    if (!c.online) c.online = "离线";
+    /* 版本变更记录（verlog）兜底：pre-id-7 快照无此字段 ⇒ 空数组表示「首次安装注册时上报、
+       期间无版本变更」，页面据此渲染退化行。**不伪造历史**（伪造等于把「没采集到」写成「采集到了」）。 */
+    if (!Array.isArray(c.verlog)) c.verlog = [];
+  });
+  /* 智能体实例的宿主若指向非 AI 安全 agent 实例（旧快照 / 手工改档），按终端就近归正到
+     AI 安全 agent 实例；找不到宿主时保留原值，交由页面提示，不做静默丢弃。 */
+  (ID.ain || []).forEach(function (a) {
+    var h = idCinOf(a.host);
+    if (idIsSafeHost(h)) { a.term = h.term; return; }
+    var alt = (ID.cin || []).filter(function (c) { return idIsSafeHost(c) && c.term === a.term; })[0];
+    if (alt) { a.host = alt.id; a.term = alt.term; }
+  });
+  ID.schema = d.schema;
+}
+function idSave() { if (!ID) return; try { localStorage.setItem(ID_KEY, JSON.stringify(ID)); } catch (e) { /* 忽略 */ } }
+function idAsk(title, msg, cb, ok) { confirmDlg(title, msg, cb, ok); }
+/* 生效面动作的统一入口（与认证模块 auConfirmEff 同档：ask2FA 二次认证）。
+   判据是「认的是改变生效面，不是动作名称」：启停 / 注销 / 吊销 / 轮换 / 签发 / 续发 /
+   绑定关系变更 一律二次认证；只改配置内容的保存走普通确认 idAsk。 */
+function idAskEff(title, msg, cb) { ask2FA(title, cb || null, null, msg); }
+
+/* ---------- 1. 通用小件 ---------- */
+function idStTag(st) {
+  var m = { "已启用": "t-ok", "已激活": "t-ok", "在线": "t-ok", "运行中": "t-ok", "受管": "t-ok", "当前": "t-ok",
+            "已锁定": "t-warn", "待纳管": "t-warn", "待生效": "t-warn", "待审核": "t-warn", "已通过": "t-ok", "成功": "t-ok", "失败": "t-err",
+            "离线": "t-gray", "未激活": "t-gray", "已注销": "t-gray",
+            "已禁用": "t-err", "禁用": "t-err", "已过期": "t-err", "已终止": "t-err", "已卸载": "t-err", "已吊销": "t-err", "已拒绝": "t-err" };
+  return '<span class="tag ' + (m[st] || "t-gray") + '">' + esc(st) + "</span>";
+}
+function idName(arr, id, key, nk) {
+  key = key || "id"; nk = nk || "name";
+  for (var i = 0; i < arr.length; i++) if (arr[i][key] === id) return arr[i][nk];
+  return "—";
+}
+function idTbl(head, body, cols, attrs) {
+  var cg = cols ? "<colgroup>" + cols.map(function (w) { return w ? '<col style="width:' + w + '">' : "<col>"; }).join("") + "</colgroup>" : "";
+  return '<div class="tbl-wrap"><table class="mtx lst"' + (attrs || "") + ">" + cg +
+    "<thead><tr>" + head.map(function (h) { return '<th scope="col">' + h + "</th>"; }).join("") + "</tr></thead>" +
+    "<tbody>" + body + "</tbody></table></div>";
+}
+function idEmptyRow(n, txt) { return '<tr><td colspan="' + n + '" class="cell-dim" style="text-align:center;padding:22px">' + esc(txt) + "</td></tr>"; }
+function idTitle(h2, sub, right) {
+  return '<div class="title-row"><div><h2>' + esc(h2) + "</h2>" +
+    (sub ? '<div class="muted" style="margin-top:4px">' + sub + "</div>" : "") +
+    "</div>" + (right || "") + "</div>";
+}
+/* 跨模块只读引用横幅（方案 §八 第 2 条：跨模块只读引用须显式标注） */
+function idRefNote(txt) { return '<div class="hint-row"><i class="ic" aria-hidden="true">引用</i><div>' + txt + "</div></div>"; }
+/* 业务说明块：区分边界，不写租户/作用域词 */
+function idScopeNote(txt) { return '<div class="hint-row"><i class="ic" aria-hidden="true">边界</i><div>' + txt + "</div></div>"; }
+/* 行内按钮：形态统一口径 —— 进入下一层用 .btn.sm，就地动作（状态 / 危险 / 串联）用 .btn.link */
+function idBtn(act, id, label, cls, extra) {
+  return '<button class="btn ' + (cls || "link") + '" data-idact="' + act + '" data-id="' + esc(id) + '"' +
+    (extra || "") + ">" + esc(label) + "</button>";
+}
+function idKvLeft(t) { return '<span class="k">' + esc(t) + "</span>"; }
+function idKvVal(html) { return '<span class="mini">' + html + "</span>"; }
+/* ---------- 页内 TAB（长详情页分区）----------
+   · 复用既有 .tabs / .tbp 两条样式，不自造外观；
+   · 切 TAB **只切显隐、不重渲染** —— 保住各分区内的滚动位置与控件态；
+   · `aria-selected` / `aria-hidden` / `tabindex` 必须与 `.on` **同步**：只切 class 会让读屏与
+     断言都拿到**陈旧**值（动态防护模块 Q7d 实测过该缺陷），此处按同一条纪律实现；
+   · roving tabindex（WAI-ARIA tabs 模式）：整条 TAB 条在 Tab 键序里只占 1 个停靠点，其内用 ← / → 移动。 */
+function idTabBar(navId, items, cur) {
+  return '<div class="tabs" id="' + navId + '" role="tablist" data-idtab="1" aria-label="详情分区">' +
+    items.map(function (x) {
+      var on = x[0] === cur;
+      return '<button type="button" role="tab" id="' + navId + '-tab-' + x[0] + '"' +
+        ' data-idact="idTab" data-nav="' + navId + '" data-t="' + x[0] + '"' +
+        ' aria-controls="' + navId + '-p-' + x[0] + '" aria-selected="' + on + '"' +
+        ' tabindex="' + (on ? "0" : "-1") + '"' + (on ? ' class="on"' : "") + ">" + x[1] + "</button>";
+    }).join("") + "</div>";
+}
+function idTabPane(navId, k, on, inner) {
+  return '<div class="tbp' + (on ? " on" : "") + '" id="' + navId + '-p-' + k + '"' +
+    ' role="tabpanel" aria-labelledby="' + navId + '-tab-' + k + '"' +
+    ' aria-hidden="' + (on ? "false" : "true") + '" style="padding-top:16px">' + inner + "</div>";
+}
+function idTabShow(navId, which) {
+  var nav = document.getElementById(navId); if (!nav) return;
+  var host = (nav.closest && nav.closest(".pg")) || nav.parentNode; if (!host) return;
+  var panes = host.querySelectorAll(".tbp");
+  for (var i = 0; i < panes.length; i++) {
+    var p = panes[i], on = p.id === navId + "-p-" + which;
+    p.classList.toggle("on", on);
+    p.setAttribute("aria-hidden", on ? "false" : "true");
+  }
+  var bs = nav.querySelectorAll('button[role="tab"]');
+  for (var j = 0; j < bs.length; j++) {
+    var b = bs[j], on2 = b.getAttribute("data-t") === which;
+    b.classList.toggle("on", on2);
+    b.setAttribute("aria-selected", on2 ? "true" : "false");
+    b.setAttribute("tabindex", on2 ? "0" : "-1");
+  }
+}
+/* TAB 条键盘可达：← / → 循环切换，Home / End 跳首末；切换后焦点跟随新选中项。 */
+function idOnKey(e) {
+  var t = e.target; if (!t || !t.closest) return;
+  var bar = t.closest('[role="tablist"][data-idtab]'); if (!bar) return;
+  var k = e.key;
+  if (k !== "ArrowLeft" && k !== "ArrowRight" && k !== "Home" && k !== "End") return;
+  var bs = [].slice.call(bar.querySelectorAll('button[role="tab"]'));
+  var i = bs.indexOf(t); if (i < 0) return;
+  var j = k === "Home" ? 0 : (k === "End" ? bs.length - 1
+    : (k === "ArrowRight" ? (i + 1) % bs.length : (i - 1 + bs.length) % bs.length));
+  e.preventDefault();
+  bs[j].focus(); bs[j].click();
+}
+
+/* ---------- 2. 页① 用户管理（pg-iduser） ---------- */
+var IDU = { f: { k: "", org: "", role: "", st: "" }, pg: 1, cur: "" };
+
+function idUserFiltered() {
+  var f = IDU.f;
+  return ID.users.filter(function (u) {
+    if (f.k && (u.name + u.acct).toLowerCase().indexOf(f.k.toLowerCase()) < 0) return false;
+    if (f.org && u.org !== f.org) return false;
+    if (f.role && u.role !== f.role) return false;
+    if (f.st && u.st !== f.st) return false;
+    return true;
+  });
+}
+/* 状态动作文案：锁定是「多次失败」的系统处置，出口是**解锁**，与启停不是同一动作。 */
+function idUserToggleLabel(u) {
+  if (u.st === "已锁定") return "解锁";
+  return u.st === "已启用" ? "禁用" : "启用";
+}
+function idUserRow(u) {
+  var tms = (u.bound || []).map(function (t) { return idName(ID.terms, t, "id", "name"); });
+  return "<tr>" +
+    "<td><b>" + esc(u.name) + '</b><div class="mini muted">' + esc(u.acct) + "</div></td>" +
+    "<td>" + esc(u.org) + "</td>" +
+    "<td>" + esc(u.role) + "</td>" +
+    "<td>" + idStTag(u.st) + "</td>" +
+    '<td class="cell-cov">' + (tms.length ? esc(tms.join("、")) : '<span class="muted">—</span>') + "</td>" +
+    '<td class="cell-cov">' + ((u.allow || []).length ? "<b>" + (u.allow || []).length + "</b> 台" : '<span class="muted">—</span>') + "</td>" +
+    "<td>" + idBtn("userView", u.id, "详情", "sm") + idBtn("userEdit", u.id, "编辑") +
+      idBtn("userToggle", u.id, idUserToggleLabel(u)) + "</td></tr>";
+}
+function idUserPage() {
+  if (IDU.cur) { var u = ID.users.filter(function (x) { return x.id === IDU.cur; })[0]; if (u) return idUserDetail(u); }
+  var rows = idUserFiltered();
+  var size = LIST_PAGE, pg = Math.max(1, Math.min(IDU.pg, Math.ceil(rows.length / size) || 1));
+  IDU.pg = pg;
+  var slice = rows.slice((pg - 1) * size, pg * size);
+  var orgs = [], roles = [];
+  ID.users.forEach(function (u) { if (orgs.indexOf(u.org) < 0) orgs.push(u.org); if (roles.indexOf(u.role) < 0) roles.push(u.role); });
+  return idTitle("用户管理", "平台用户账号台账 · 含<b>用户 ↔ 终端绑定</b>关系（双向视图，与「终端管理」侧为同一份数据）",
+      '<div class="toolbar"><button class="btn" data-idact="userImport">Excel 批量导入</button>' +
+      '<button class="btn primary" data-idact="userNew">新建用户</button></div>') +
+    idRefNote("本页为访问主体中的<b>「人」</b>。角色模型按等保 2.0 三权分立：<b>系统管理员 / 安全管理员 / 审计管理员两两互斥</b>；操作员为基础角色，不在三权分立范围内。") +
+    '<div class="card"><div class="card-b">' +
+    '<div class="toolbar" style="margin-bottom:12px">' +
+      '<div class="input-w"><input type="search" id="iduK" aria-label="搜索用户" placeholder="搜索姓名 / 账号" style="width:210px" value="' + esc(IDU.f.k) + '"><i aria-hidden="true">搜索</i></div>' +
+      '<select id="iduOrg" aria-label="按归属组织筛选"><option value="">全部组织</option>' + orgs.map(function (o) { return "<option" + (IDU.f.org === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") + "</select>" +
+      '<select id="iduRole" aria-label="按角色筛选"><option value="">全部角色</option>' + roles.map(function (o) { return "<option" + (IDU.f.role === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") + "</select>" +
+      '<select id="iduSt" aria-label="按账号状态筛选"><option value="">全部状态</option>' + ["已启用", "已锁定", "已禁用"].map(function (o) { return "<option" + (IDU.f.st === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") + "</select>" +
+    "</div>" +
+    idTbl(["用户", "归属组织", "角色", "状态", "归属终端", "有权使用的终端", "操作"],
+      slice.length ? slice.map(idUserRow).join("") : idEmptyRow(7, "没有符合条件的用户"),
+      /* R19（实测）：归属终端需 281px（原 221px ⇒ 姓名稍长即折行）；
+         「有权使用的终端」只显示台数，按表头（需 116px）定宽，余量交给自动列「用户」。 */
+      [null, "96px", "96px", "90px", "300px", "124px", "152px"]) +
+    '<div class="lst-foot"><div id="iduPager" role="navigation" aria-label="用户列表分页" style="flex:1"></div></div>' +
+    '<div class="mini" style="margin-top:8px">批量导入的用户<b>无初始密码</b>，首次登录须经<b>手机号短信验证</b>后<b>自助设置密码</b>；禁用用户时<b>正在使用的会话会被强制下线</b>；连续输错密码达设定次数后<b>账号自动锁定</b>，须管理员手动<b>解锁</b>（解锁与启停同属敏感变更，走<b>二次认证</b>）。</div>' +
+    "</div></div>";
+}
+function idUserDetail(u) {
+  var boundRows = (u.bound || []).map(function (t) {
+    var tm = ID.terms.filter(function (x) { return x.id === t; })[0]; if (!tm) return "";
+    return "<tr><td><b>" + esc(tm.name) + "</b></td><td>" + esc(tm.sn) + "</td><td>" + esc(tm.os) + "</td><td>" + idStTag(tm.st) + "</td><td>" + idStTag(tm.online) + "</td></tr>";
+  }).join("");
+  var allowRows = (u.allow || []).map(function (t) {
+    var tm = ID.terms.filter(function (x) { return x.id === t; })[0]; if (!tm) return "";
+    var own = (tm.ownerId ? tm.ownerId === u.id : (tm.owner || "") === u.name);
+    return "<tr><td><b>" + esc(tm.name) + "</b></td><td>" + esc(tm.owner) + "</td>" +
+      "<td>" + (own ? '<span class="tag t-info">本人归属</span>' : '<span class="tag t-gray">授权使用</span>') + "</td>" +
+      "<td>" + idBtn(own ? "unbindOwn" : "unbind", u.id, own ? "解除归属" : "解除授权", "link", ' data-t="' + esc(tm.id) + '"') + "</td></tr>";
+  }).join("");
+  var toggle = idBtn("userToggle", u.id, idUserToggleLabel(u), "sm");
+  return idTitle("用户详情 · " + u.name,
+      "账号 <b>" + esc(u.acct) + "</b> · 归属 " + esc(u.org) + " · 角色 " + esc(u.role),
+      '<div class="toolbar"><button class="btn" data-idact="userBack">← 返回列表</button>' +
+      toggle +
+      '<button class="btn" data-idact="userReset">重置密码</button>' +
+      '<button class="btn primary" data-idact="userEdit" data-id="' + u.id + '">编辑</button></div>') +
+    '<div class="card"><div class="card-h"><h3>基础信息</h3></div><div class="card-b">' +
+      '<div class="kv" style="grid-template-columns:150px 1fr 150px 1fr">' +
+      idKvLeft("姓名") + idKvVal(esc(u.name)) +
+      idKvLeft("账号") + idKvVal(esc(u.acct)) +
+      idKvLeft("归属组织") + idKvVal(esc(u.org)) +
+      idKvLeft("角色") + idKvVal(esc(u.role)) +
+      idKvLeft("账号状态") + idKvVal(idStTag(u.st)) +
+      idKvLeft("手机号") + idKvVal(esc(idMaskPhone(u.phone))) +
+      idKvLeft("连续登录失败") + idKvVal((u.fail || 0) + " 次" + (u.st === "已锁定" ? ' <span class="mini muted">（达阈值已自动锁定，须管理员解锁）</span>' : "")) +
+      "</div>" +
+      '<div class="mini" style="margin-top:8px">手机号用于<b>首次登录的短信验证</b>与<b>账号找回</b>；列表与详情等<b>只读展示面只显示掩码</b>，完整号码可在「编辑」中查看与修改。</div>' +
+      "</div></div>" +
+    '<div class="card"><div class="card-h"><h3>名下终端<span class="sub">该用户<b>归属</b>的终端（终端侧同一份数据）</span></h3>' +
+      '<div class="toolbar"><button class="btn" data-idact="bindTerm" data-id="' + u.id + '">绑定终端</button></div></div>' +
+      '<div class="card-b">' + idTbl(["终端名称", "硬件序列号", "操作系统", "终端状态", "在线状态"],
+        boundRows || idEmptyRow(5, "该用户名下暂无终端"), [null, "180px", "170px", "100px", "100px"]) + "</div></div>" +
+    '<div class="card"><div class="card-h"><h3>有权使用的终端<span class="sub">含本人归属与经授权的终端</span></h3></div>' +
+      '<div class="card-b">' + idTbl(["终端名称", "归属用户", "权限来源", "操作"],
+        allowRows || idEmptyRow(4, "暂无有权使用的终端"), [null, "110px", "130px", "120px"]) +
+        '<div class="mini" style="margin-top:8px">归属与授权是<b>同一张关系表</b>的两个字段：<b>解除归属</b>会同时取消归属与使用权限；<b>解除授权</b>只取消使用权限，归属不变。两处在「终端详情 · 绑定信息」同样可改，改任一处另一处同步。</div>' +
+      "</div></div>";
+}
+
+/* ---------- 3. 页② 终端管理（pg-idterm）三层下钻 ---------- */
+/* ★ R20：`online` / `regFrom` / `regTo` 为手册 §4.4.2「按状态、**在线状态、注册时间范围**筛选」的载体。 */
+var IDT = { f: { k: "", org: "", st: "", online: "", regFrom: "", regTo: "" }, pg: 1, cur: "", inst: "", tab: "t1" };
+
+function idTermFiltered() {
+  var f = IDT.f;
+  return ID.terms.filter(function (t) {
+    /* ★ R20：手册 §4.4.2「搜索筛选：支持按**终端 ID、硬件指纹**搜索，按状态、在线状态、
+       注册时间范围筛选」。此前搜索域只有 名称 / 序列号 / 归属人 / 操作系统 —— **终端 ID 未入搜索域**
+       （列表第一列就在展示它），MAC 同属设备标识却搜不到；「在线状态」「注册时间范围」两项筛选整项缺失。
+       ⚠ 「硬件指纹」在本产品的承载即**硬件序列号 + MAC**（认证侧 `AU.issue[].fp` 记的也正是终端序列号），
+       故两者一并纳入搜索域，不另造第三个设备标识字段。 */
+    if (f.k && (t.name + t.id + t.sn + t.mac + t.owner + " " + (t.os || "")).toLowerCase().indexOf(f.k.toLowerCase()) < 0) return false;
+    if (f.org && t.org !== f.org) return false;
+    if (f.st && t.st !== f.st) return false;
+    if (f.online && t.online !== f.online) return false;
+    /* 注册时间按**日期**比较（`reg` 为「YYYY-MM-DD HH:mm」）—— 取前 10 位，避免时分参与区间判定。 */
+    var rg = String(t.reg || "").slice(0, 10);
+    if (f.regFrom && (!rg || rg < f.regFrom)) return false;
+    if (f.regTo && (!rg || rg > f.regTo)) return false;
+    return true;
+  });
+}
+function idPendingApps() { return (ID.apps || []).filter(function (x) { return x.st === "待审核"; }); }
+function idTermPage() {
+  if (IDT.inst) {
+    var ci = ID.cin.filter(function (x) { return x.id === IDT.inst; })[0];
+    if (ci) return idTermInstDetail(ci);
+  }
+  if (IDT.cur) { var t = ID.terms.filter(function (x) { return x.id === IDT.cur; })[0]; if (t) return idTermDetail(t); }
+  var rows = idTermFiltered();
+  var size = LIST_PAGE, pg = Math.max(1, Math.min(IDT.pg, Math.ceil(rows.length / size) || 1));
+  IDT.pg = pg;
+  var slice = rows.slice((pg - 1) * size, pg * size);
+  var orgs = []; ID.terms.forEach(function (t) { if (orgs.indexOf(t.org) < 0) orgs.push(t.org); });
+  var body = slice.map(function (t) {
+    var nci = ID.cin.filter(function (c) { return c.term === t.id; }).length;
+    var nai = ID.ain.filter(function (a) { return a.term === t.id; }).length;
+    return "<tr><td><b>" + esc(t.name) + '</b><div class="mini muted">' + esc(t.id) + "</div></td>" +
+      '<td><span class="kr">' + esc(t.sn) + "</span>" +
+        '<div class="mini muted" style="font-family:ui-monospace,Consolas,monospace">' + esc(t.mac || "—") + "</div></td>" +
+      "<td>" + esc(t.os) + "</td>" +
+      "<td>" + esc(t.owner) + "</td>" +
+      "<td>" + idStTag(t.st) + "</td>" +
+      "<td>" + idStTag(t.online) + "</td>" +
+      '<td class="cell-cov">客户端实例 <b>' + nci + "</b> · 智能体实例 <b>" + nai + "</b></td>" +
+      "<td>" + idBtn("termView", t.id, "详情", "sm") + idBtn("termEdit", t.id, "编辑") + "</td></tr>";
+  }).join("");
+  var pend = idPendingApps().length;
+  return idTitle("终端管理", "终端设备登记 · 终端是<b>实例的宿主</b>，同时串联「客户端实例」与「智能体实例」两条线",
+      '<div class="toolbar"><button class="btn" data-idact="termApply">注册申请审核' + (pend ? "（" + pend + "）" : "") + "</button>" +
+      '<button class="btn primary" data-idact="termNew">新增终端</button></div>') +
+    idScopeNote("注册审核对象是<b>安装在终端上的客户端实例</b>：一台终端可安装多个实例，<b>每个实例均需独立注册与审核</b>。该系统部署中注册的首个实例由系统管理员在 <b>WEB 通道</b>审核，后续实例在<b>客户端</b>审核。") +
+    '<div class="card"><div class="card-b">' +
+    '<div class="toolbar" style="margin-bottom:12px">' +
+      '<div class="input-w"><input type="search" id="idtK" aria-label="搜索终端" placeholder="搜索终端名称 / ID / 序列号 / MAC / 归属人 / 操作系统" style="width:300px" value="' + esc(IDT.f.k) + '"><i aria-hidden="true">搜索</i></div>' +
+      '<select id="idtOrg" aria-label="按归属组织筛选"><option value="">全部组织</option>' + orgs.map(function (o) { return "<option" + (IDT.f.org === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") + "</select>" +
+      '<select id="idtSt" aria-label="按终端状态筛选"><option value="">全部状态</option>' + ["未激活", "已激活", "已禁用", "已注销"].map(function (o) { return "<option" + (IDT.f.st === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") + "</select>" +
+      '<select id="idtOn" aria-label="按在线状态筛选"><option value="">全部在线状态</option>' + ["在线", "离线"].map(function (o) { return "<option" + (IDT.f.online === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") + "</select>" +
+      '<label class="mini" style="display:flex;align-items:center;gap:6px;white-space:nowrap">注册时间<input type="date" id="idtFrom" aria-label="注册时间起" style="width:132px" value="' + esc(IDT.f.regFrom) + '">～<input type="date" id="idtTo" aria-label="注册时间止" style="width:132px" value="' + esc(IDT.f.regTo) + '"></label>' +
+    "</div>" +
+    idTbl(["终端名称 / ID", "硬件序列号 / MAC", "操作系统", "归属用户", "终端状态", "在线状态", "串联实例", "操作"],
+      body || idEmptyRow(8, "没有符合条件的终端"),
+      /* R19（实测）：终端名称/ID 需 235px（原 234px，差 1px 即折行）、操作系统需 164px（原 150px）。
+         ⚠ 终端名称/ID 是**自动列**（两行结构：名称 + ID），须留 ≥5px 余量 —— 差 1px 就会被压成三行。 */
+      [null, "164px", "170px", "84px", "90px", "90px", "194px", "114px"]) +
+    '<div class="lst-foot"><div id="idtPager" role="navigation" aria-label="终端列表分页" style="flex:1"></div></div>' +
+    '<div class="mini" style="margin-top:8px">终端被禁用后<b>无法登录、在线用户强制下线</b>（适用设备丢失或离职）；注销后需<b>重新注册</b>才能使用（适用设备更换或重装系统）。<b>设备指纹与 MAC 由客户端在注册时上报</b>，此处录入的是台账信息。</div>' +
+    "</div></div>";
+}
+/* 使用记录：由终端与归属用户**派生**（时间基准取 ID_NOW，不写字面量时刻）。
+   此前本表只有「注册」一条 —— 标题写「使用记录」却只有注册痕迹，业务上下文不完备。 */
+function idTermLogRows(t, owner) {
+  var acct = (owner && owner.acct) || t.owner || "—";
+  var ip = idTermIp(t.id);
+  /* 访问对象由该终端已装客户端实例的软件**授权资产**派生（去重；无实例 / 无资产时退化为
+     通用兜底）——各终端软件构成不同 ⇒ 使用记录互不相同，不再是全终端同一份字面量。 */
+  var assets = [];
+  (ID.cin || []).forEach(function (c) {
+    if (c.term !== t.id) return;
+    (idSwOf(c.sw).assets || []).forEach(function (a) { if (assets.indexOf(a) < 0) assets.push(a); });
+  });
+  /* ★ R20：**无在用实例即无授权资产 ⇒ 无访问可言**。此前兜底成 `["统一门户","办公自动化平台"]`，
+     于是「一个客户端实例都没装」的终端（如数据管理部-审计终端）也显示访问轨迹，甚至带一条
+     「登录失败（证书过期）」—— 把「没采集到」写成了「有访问」。空集就是空集，直接返回空态行的
+     内容（与 verlog「不伪造历史」同一条纪律）。 */
+  if (!assets.length) return '<tr><td colspan="4" class="cell-dim">该终端暂无在用客户端实例，未产生访问记录</td></tr>';
+  var what = function (i) { return "访问" + assets[i % assets.length]; };
+  /* 记录时间不得早于终端注册时间：新建 / 审核通过的新终端 reg=ID_NOW，而位移基准取 ID_NOW
+     ⇒ 会出现「注册前已有使用记录」（09:10 早于 09:14）。按 reg 取下界夹取。 */
+  var rg0 = t.reg || "";
+  /* 注册前不可能有使用记录：位移早于 reg 的记录直接剔除（新终端刚注册 ⇒ 仅剩注册历史）。 */
+  return [
+    { ts: idShift(ID_NOW, -4), what: what(0) },
+    { ts: idShift(ID_NOW, -950), what: what(1) },
+    { ts: idShift(ID_NOW, -2920), ok: "失败", what: "登录失败（证书过期）" }
+  ].filter(function (r) { return !rg0 || r.ts >= rg0; }).map(function (r) {
+    return "<tr><td>" + esc(r.ts) + "</td><td>" + esc(acct) + '</td><td><span class="kr">' + ip + "</span></td>" +
+      "<td>" + idStTag(r.ok || "成功") + '<div class="mini muted">' + esc(r.what) + "</div></td></tr>";
+  }).join("");
+}
+/* 注册历史：由**注册申请台账**派生（按 term / sn 匹配，含审核结果与拒绝原因）；
+   无申请记录的存量终端退化为字面行（早期接入、先于台账）。写死「审核 通过」会与
+   台账中的「已拒绝」同页矛盾（实测 ap_004 ↔ t_pc_0021）。 */
+function idTermRegRows(t) {
+  /* 注册历史只记**已决**申请（已通过 / 已拒绝）—— 待审核申请尚未成立、不作为注册历史展示，
+     否则「审核中」与「已在册」同页打架（实测 t_nb_0031 混入待审 ap_002）。 */
+  var apps = (ID.apps || []).filter(function (a) { return (a.term === t.id || a.sn === t.sn) && a.st !== "待审核"; });
+  if (!apps.length) {
+    /* ★ R20：**不得伪造审核结论** —— 无申请记录的终端是「接入早于审核台账建立」，不是「审核已通过」。
+       写死「已通过」等于把「未留档」写成「留档且通过」，与 §4.4.1「历次审核记录均可追溯」相悖；
+       也与本函数上方注释自述的「写死审核结论会与台账同页矛盾」自相打架。 */
+    return '<tr><td colspan="4" class="cell-dim">注册历史：申请人 ' + esc(t.owner) + " · 方式 " + esc(t.regway) + " · <b>审核记录未留档</b>（接入早于审核台账建立）</td></tr>";
+  }
+  return apps.map(function (a) {
+    /* 结论直接取状态值（已通过 / 已拒绝）：此前把「已通过」改写成「通过」，
+       与审核弹窗经 idStTag 显示的「已通过」同页两词。 */
+    var verdict = a.st;
+    if (a.st === "已拒绝" && a.reason) verdict += "（" + a.reason + "）";
+    return '<tr><td colspan="4" class="cell-dim">注册历史：申请人 ' + esc(a.owner) +
+      " · 原因 新设备接入 · 方式 " + esc(a.way) + " · 审核 " + esc(verdict) +
+      (a.at ? " · 申请时间 " + esc(a.at) : "") + "</td></tr>";
+  }).join("");
+}
+/* 终端侧「客户端版本号」（手册 §4.4.2 终端详情字段）—— 由该终端上的客户端实例**派生**，不另存一份：
+   一台终端可装多个实例、各自版本不同，故按「软件 版本」枚举；版本仍是**客户端上报值**。 */
+function idTermCliVer(t) {
+  var cis = (ID.cin || []).filter(function (c) { return c.term === t.id && c.st !== "已卸载"; });
+  if (!cis.length) return '<span class="mini muted">—（该终端暂无在用客户端实例）</span>';
+  return cis.map(function (c) { return esc(idName(ID.csw, c.sw)) + " " + esc(c.ver || "—"); }).join("、") +
+    ' <span class="mini muted">（客户端上报值）</span>';
+}
+/* 终端「激活时间」（手册 §4.4.2 终端详情字段）—— 按**可追溯来源**逐级派生，不伪造：
+   ① 注册审核通过记录的时间（§4.4.1：审核通过 → 生成终端信息 + 签发 License 证书）；
+   ② 无审核记录时取该终端上**最早一份 License 证书的签发日期**（同一条业务链的另一端）；
+   ③ 仍无则按注册时间；三者皆无则「—」。 */
+function idTermActiveAt(t) {
+  var a = (ID.apps || []).filter(function (p) { return p.term === t.id && p.st === "已通过"; })[0];
+  if (a && a.done) return esc(a.done) + ' <span class="mini muted">（注册审核通过）</span>';
+  var lis = [];
+  (ID.cin || []).forEach(function (c) {
+    if (c.term !== t.id) return;
+    (c.lic || []).forEach(function (l) { if (l.issued) lis.push(l.issued); });
+  });
+  if (lis.length) { lis.sort(); return esc(lis[0]) + ' <span class="mini muted">（按最早签发证书日期）</span>'; }
+  if (t.reg) return esc(t.reg) + ' <span class="mini muted">（按注册时间）</span>';
+  return '<span class="mini muted">—</span>';
+}
+function idTermDetail(t) {
+  var idtTab = (IDT.tab === "t2" || IDT.tab === "t3") ? IDT.tab : "t1";
+  var cis = ID.cin.filter(function (c) { return c.term === t.id; });
+  var ais = ID.ain.filter(function (a) { return a.term === t.id; });
+  var ciRows = cis.map(function (c) {
+    var sw = idSwOf(c.sw);
+    return "<tr><td><b>" + esc(sw.name || "—") + "</b>" + (sw.agent ? ' <span class="tag t-info">AI 安全 agent</span>' : "") + "</td>" +
+      '<td><span class="kr">' + esc(c.cidseq) + "</span></td>" + "<td>" + idStTag(c.st) + "</td>" + "<td>" + idStTag(c.online) + "</td>" +
+      "<td>" + (c.lic || []).length + " 份</td>" +
+      "<td>" + idBtn("instLic", c.id, "证书列表") + idBtn("cinGoto", c.id, "去实例管理") + "</td></tr>";
+  }).join("");
+  var aiRows = ais.map(function (a) {
+    return "<tr><td><b>" + esc(idName(ID.asw, a.asw)) + "</b></td>" +
+      '<td><span class="kr">' + esc(a.cred ? a.cred.no : "—") + "</span></td>" +
+      "<td>" + esc(a.pid) + "</td>" + "<td>" + idStTag(idAgInSt(a)) + "</td>" +
+      "<td>" + idBtn("ainGoto", a.asw, "去实例管理", "", ' data-t="' + esc(a.term) + '"') + "</td></tr>";
+  }).join("");
+  var owner = idUserOf(t);
+  var allowU = ID.users.filter(function (u) { return (u.allow || []).indexOf(t.id) >= 0; });
+  var allowRows = allowU.map(function (u) {
+    var own = (u.bound || []).indexOf(t.id) >= 0;
+    return "<tr><td><b>" + esc(u.name) + "</b></td><td>" + esc(u.acct) + "</td><td>" + esc(u.org) + "</td>" +
+      "<td>" + (own ? '<span class="tag t-info">本人归属</span>' : '<span class="tag t-gray">授权使用</span>') + "</td>" +
+      "<td>" + idBtn(own ? "unbindOwn" : "unbind", u.id, own ? "解除归属" : "解除授权", "link", ' data-t="' + esc(t.id) + '"') + "</td></tr>";
+  }).join("");
+  var btns = "";
+  if (t.st === "已激活") btns += '<button class="btn" data-idact="termDisable" data-id="' + t.id + '">禁用</button>';
+  else if (t.st === "已禁用") btns += '<button class="btn" data-idact="termDisable" data-id="' + t.id + '">激活</button>';
+  if (t.st !== "已注销") btns += '<button class="btn danger" data-idact="termLogout" data-id="' + t.id + '">注销</button>';
+  var stNote = "";
+  if (t.st === "未激活") stNote = idScopeNote("该终端<b>尚未完成注册审核</b>：通过「注册申请审核」放行其上的客户端实例后转为<b>已激活</b>。未激活终端<b>不允许提交注册申请</b>，也不参与隧道建立。");
+  else if (t.st === "已注销") stNote = idScopeNote("该终端<b>已注销</b>，须<b>重新注册</b>后方可使用；历史使用记录与审核记录仍可追溯。");
+  else if (t.st === "已禁用") stNote = idScopeNote("该终端<b>已被禁用</b>：可登录性已被收回，其上的客户端实例<b>不参与隧道建立</b>；激活后即刻恢复。");
+  return idTitle("终端详情 · " + t.name,
+      "终端 ID <b>" + esc(t.id) + "</b> · 硬件序列号 " + esc(t.sn),
+      '<div class="toolbar"><button class="btn" data-idact="termList">← 返回列表</button>' +
+      btns +
+      '<button class="btn" data-idact="termEdit" data-id="' + t.id + '">编辑</button></div>') +
+    stNote +
+    idTabBar("idTermTabs", [["t1", "基础信息"], ["t2", "实例"], ["t3", "使用记录"]], idtTab) +
+    idTabPane("idTermTabs", "t1", idtTab === "t1",
+      '<div class="card"><div class="card-h"><h3>基础信息</h3></div><div class="card-b">' +
+      '<div class="kv" style="grid-template-columns:150px 1fr 150px 1fr">' +
+      idKvLeft("终端名称") + idKvVal(esc(t.name)) +
+      idKvLeft("终端状态") + idKvVal(idStTag(t.st)) +
+      idKvLeft("硬件序列号") + idKvVal(esc(t.sn)) +
+      idKvLeft("MAC 地址") + idKvVal(esc(t.mac || "—") + ' <span class="mini muted">（客户端注册时上报）</span>') +
+      idKvLeft("设备类型") + idKvVal(esc(t.type)) +
+      idKvLeft("操作系统") + idKvVal(esc(t.os)) +
+      idKvLeft("在线状态") + idKvVal(idStTag(t.online)) +
+      idKvLeft("归属用户 / 组织") + idKvVal(esc(t.owner) + " · " + esc(t.org)) +
+      idKvLeft("客户端版本号") + idKvVal(idTermCliVer(t)) +
+      idKvLeft("激活时间") + idKvVal(idTermActiveAt(t)) +
+      idKvLeft("注册方式 / 时间") + idKvVal(esc(t.regway) + " · " + esc(t.reg)) + idKvLeft("备注") + idKvVal(esc(t.note || "—")) +
+      "</div></div></div>" +
+    '<div class="card"><div class="card-h"><h3>绑定信息<span class="sub">终端是谁的、谁有权使用（与「用户管理」同一份数据）</span></h3>' +
+      (t.st === "已注销" ? "" : '<div class="toolbar"><button class="btn" data-idact="termOwn" data-id="' + t.id + '">变更归属用户</button></div>') + "</div>" +
+      '<div class="card-b">' +
+      '<div class="kv" style="grid-template-columns:150px 1fr;margin-bottom:10px">' + idKvLeft("归属用户") + idKvVal(
+        owner ? "<b>" + esc(owner.name) + "</b>（" + esc(owner.acct) + "）　" + idBtn("userGoto", owner.id, "查看用户") : esc(t.owner || "—")) + "</div>" +
+      idTbl(["有权使用的用户", "账号", "归属组织", "权限来源", "操作"],
+        allowRows || idEmptyRow(5, "暂无有权使用的用户"), [null, "130px", "130px", "130px", "120px"]) +
+      '<div class="mini" style="margin-top:8px">绑定关系是<b>一份数据</b>，用户侧与终端侧是<b>两个入口</b>（关系表为唯一权威面，两页均为其视图）——两侧的<b>建立、解除、变更归属</b>结果完全一致。</div>' +
+      "</div></div>") +
+    idTabPane("idTermTabs", "t2", idtTab === "t2",
+      '<div class="card"><div class="card-h"><h3>客户端实例列表<span class="sub">该终端上安装的客户端实例 · 下钻可看证书列表</span></h3></div>' +
+      '<div class="card-b">' + idTbl(["客户端软件", "客户端序列号", "状态", "在线状态", "License 证书", "操作"],
+        ciRows || idEmptyRow(6, "该终端上暂无客户端实例"), [null, "160px", "88px", "92px", "110px", "170px"]) +
+        '<div class="mini" style="margin-top:8px">License 证书的<b>实际管理面在「客户端实例管理」页</b>，本页只做<b>串联入口</b>；一个实例下可挂<b>多份</b>证书（轮换过渡期新旧共存）。</div>' +
+      "</div></div>" +
+    '<div class="card"><div class="card-h"><h3>智能体实例列表<span class="sub">该终端上的智能体实例（含已终止，供追溯）· 改动入口在「智能体实例管理」</span></h3></div>' +
+      '<div class="card-b">' + idTbl(["智能体软件", "短时凭据", "进程号", "状态", "操作"],
+        aiRows || idEmptyRow(5, "该终端上暂无智能体实例"), [null, "180px", "80px", "92px", "140px"]) + "</div></div>") +
+    idTabPane("idTermTabs", "t3", idtTab === "t3",
+      '<div class="card"><div class="card-h"><h3>使用记录 / 注册历史</h3></div><div class="card-b">' +
+      idTbl(["时间", "用户账号", "IP", "结果"], idTermLogRows(t, owner) + idTermRegRows(t), [null, "150px", "150px", "170px"]) +
+      '<div class="mini" style="margin-top:8px">使用记录为<b>最近若干次</b>访问痕迹（时间 / 账号 / 来源 IP / 结果），IP 由终端<b>确定性派生</b>，同一终端恒为同一私网地址；完整访问明细见<b>审计</b>。</div>' +
+      "</div></div>");
+}
+function idTermInstDetail(ci) {
+  var sw = idSwOf(ci.sw);
+  var licRows = (ci.lic || []).map(function (l) {
+    var tg = idLicTagOf(l);
+    var dead = ci.st === "已卸载" && (tg === "当前" || tg === "待生效");
+    return "<tr><td>" + idStTag(tg) + (dead ? ' <span class="mini muted">实例已卸载·不生效</span>' : "") + "</td><td><b>" + esc(l.no) + "</b></td>" +
+      '<td><span class="kr">' + esc(l.ca) + "</span></td>" +
+      "<td>" + esc(l.issued) + "</td><td>" + esc(l.exp) + "</td>" +
+      '<td class="cell-cov">' + esc(l.scope) + "</td></tr>";
+  }).join("");
+  return idTitle("证书列表 · " + (sw.name || "") + " 实例",
+      "客户端序列号 <b>" + esc(ci.cidseq) + "</b> · 所在终端 " + esc(idName(ID.terms, ci.term, "id", "name")),
+      '<div class="toolbar"><button class="btn" data-idact="termBack" data-id="' + ci.term + '">← 返回终端详情</button>' +
+      '<button class="btn primary" data-idact="licGoto" data-id="' + ci.id + '">去「客户端实例管理」维护</button></div>') +
+    idRefNote("License 证书属<b>客户端实例</b>层级 ⇒ 看与改<b>都在「客户端实例管理」</b>，本页（终端侧）只做<b>串联展示</b>。") +
+    '<div class="card"><div class="card-h"><h3>License 证书<span class="sub">一个实例下可挂多份（轮换过渡期新旧共存）</span></h3></div>' +
+      '<div class="card-b">' + idTbl(["阶段", "证书编号", "签发 CA", "生效日期", "有效期至", "授权范围"],
+        licRows || idEmptyRow(6, "该实例暂无证书"), ["92px", "170px", "140px", "110px", "110px", null]) +
+      '<div class="mini" style="margin-top:8px">License 证书是<b>平台自定义封装的 License 容器</b>（非 X.509 证书），内封<b>授权信息</b>（客户端序列号 / 终端序列号 / 授权范围 / 有效期）与建立 TLCP 隧道所需的 <b>CA 证书链</b>；<b>只含公钥、不含私钥</b>。阶段按<b>有效期自动推导</b>（当前 / 待生效 / 已过期），吊销为显式状态。</div>' +
+      "</div></div>";
+}
+
+/* ---------- 3.1 注册申请审核（终端管理的入口，通过后建终端 + 建实例 + 签发证书） ---------- */
+function idApplyRow(p) {
+  var acts = p.st === "待审核"
+    ? '<button class="btn sm" data-ap="ok" data-id="' + p.id + '">通过</button><button class="btn link" data-ap="no" data-id="' + p.id + '">拒绝</button>'
+    : '<span class="mini muted">已处理</span>';
+  var result = idStTag(p.st) + (p.reason ? '<div class="mini muted">' + esc(p.reason) + "</div>" : "") +
+    (p.done ? '<div class="mini muted">' + esc(p.done) + (p.reviewer ? " · " + esc(p.reviewer) : "") + "</div>" : "");
+  return "<tr><td><b>" + esc(p.name) + '</b><div class="mini muted">' + esc(p.sn) + " · " + (p.term ? "已有终端" : "新建终端") + "</div>" +
+      '<div class="mini muted">' + esc(p.way) + " · 提交 " + esc(p.at) + "</div></td>" +
+    '<td><span class="kr">' + esc(p.cidseq) + "</span></td>" +
+    "<td>" + esc(idName(ID.csw, p.sw)) + "</td>" +
+    "<td>" + esc(p.owner || "—") + "</td>" +
+    "<td>" + result + "</td>" +
+    "<td>" + acts + "</td></tr>";
+}
+function idOpenApply() {
+  var list = ID.apps || [];
+  var pend = idPendingApps().length;
+  openDlg("注册申请审核",
+    "审核对象是<b>安装在终端上的客户端实例</b> —— 一台终端可安装多个实例，<b>每个实例均需独立注册与审核</b>。通过后系统<b>自动生成并下发 License 证书</b>；配置了<b>自动审核</b>的申请无人工介入（通过后消息通知管理员）。",
+    idTbl(["终端名称 / 序列号", "客户端序列号", "客户端软件", "归属用户", "审核结果", "操作"],
+      list.length ? list.map(idApplyRow).join("") : idEmptyRow(6, "暂无注册申请"),
+      [null, "145px", "115px", "70px", "155px", "120px"],
+      /* 页内列表的 .lst 带 min-width:1160px（横向可滚），弹窗内容宽仅 840px ——
+         不解除该下限，表格会整块溢出弹窗、右侧列被裁掉。 */
+      ' style="min-width:0"') +
+    '<div class="mini" style="margin-top:8px">当前待审 <b>' + pend + "</b> 条。历次审核记录（审核人 / 时间 / 结果 / 备注）<b>均可追溯</b>；<b>拒绝须填写原因</b>，用户可调整后重新提交。<b>终端未激活 / 已禁用 / 已注销，或归属用户账号已禁用 / 已锁定时，不允许提交注册申请。</b></div>",
+    "xl");
+  var body = document.getElementById("dlg1Body");
+  if (body) body.onclick = idApplyClick;
+}
+function idApplyClick(e) {
+  var b = e.target && e.target.closest ? e.target.closest("[data-ap]") : null;
+  if (!b) return;
+  var p = (ID.apps || []).filter(function (x) { return x.id === b.getAttribute("data-id"); })[0];
+  if (!p || p.st !== "待审核") return;
+  if (b.getAttribute("data-ap") === "ok") idApplyPass(p); else idApplyReject(p);
+}
+function idApplyPass(p) {
+  var sw = idSwOf(p.sw);
+  var owner = idUserByName(p.owner);
+  var tid = p.term;
+  /* ★ R20：补**归属账号**侧校验 —— 手册 §2.2「账号校验规则」三行表：账号不存在 ⇒ 拒绝注册；
+     账号存在但被禁用或锁定 ⇒ 拒绝注册（在线 / 离线均拒绝）；§4.4.1 同义（「用户账号被禁用 /
+     封禁时不允许提交注册申请」）。本页页脚（`idOpenApply`）也自述了该规则，但**此前只实现了
+     终端侧校验、账号侧一行未落** ⇒ 对已禁用 / 已锁定的账号点「通过」，仍会凭空建出终端 + 实例
+     + 证书，并把归属绑到一个不能再登录的账号上（关系表出现「幽灵归属」）。 */
+  if (p.owner) {
+    if (!owner) { toast("申请人账号「" + p.owner + "」不存在，不可通过（手册 §2.2：账号不存在 ⇒ 拒绝注册）"); return; }
+    if (owner.st !== "已启用") { toast("申请人账号「" + owner.name + "」当前为「" + owner.st + "」，不可通过（手册 §2.2：被禁用或锁定 ⇒ 拒绝注册）"); return; }
+  }
+  /* ★ R20：客户端序列号全局唯一（手册 §4.6.1「每个客户端有全局唯一的序列号」）——
+     `cinNew` 已查重，审核通过路径未查 ⇒ 同一 cidseq 可出现两条实例，
+     之后按序列号定位 / 吊销证书会命中错行。两入口判据对齐。 */
+  if (p.cidseq && (ID.cin || []).some(function (x) { return x.cidseq === p.cidseq; })) {
+    toast("客户端序列号 " + p.cidseq + " 已存在（序列号全局唯一），不可重复通过"); return;
+  }
+  /* 存量终端（p.term 非空）：通过审核须校验目标终端状态 —— 与「未激活终端不允许提交申请」口径对称。
+     已注销须重新注册、已禁用须先激活；未激活则通过即转「已激活」（与终端详情状态说明一致）。 */
+  if (tid) {
+    var tgt0 = ID.terms.filter(function (x) { return x.id === tid; })[0];
+    if (!tgt0) { toast("目标终端不存在，无法通过该申请"); return; }
+    if (tgt0.st === "已注销") { toast("该终端已注销，须重新注册为新终端后方可通过"); return; }
+    if (tgt0.st === "已禁用") { toast("该终端已禁用，请先在终端详情激活后再通过其注册申请"); return; }
+    if (tgt0.st === "未激活") tgt0.st = "已激活";
+  }
+  if (!tid) {
+    tid = "t_" + Date.now();
+    ID.terms.unshift({
+      id: tid, name: p.name, sn: p.sn, os: p.os || "—", type: p.type || "桌面终端",
+      owner: p.owner, ownerId: owner ? owner.id : "", org: p.org || "—",
+      st: "已激活", online: "在线", reg: ID_NOW, regway: p.way, mac: "", fp: ""
+    });
+  }
+  /* 绑定关系写关系表：审核通过即建立归属，避免「终端建好了、用户侧看不见」。
+     目标终端若已有归属用户，一并收回后再建立 —— 否则用户侧会出现「一台终端两个归属用户」。 */
+  var tgtTerm = ID.terms.filter(function (x) { return x.id === tid; })[0];
+  if (owner) {
+    var prevOwn = idUserOf(tgtTerm || {});
+    if (prevOwn && prevOwn.id !== owner.id) idBindWrite(prevOwn, tid, true);
+    idBindWrite(owner, tid);
+    if (tgtTerm) { tgtTerm.ownerId = owner.id; tgtTerm.owner = owner.name; }
+  }
+  ID.cin.unshift({
+    id: "ci_" + Date.now(), sw: p.sw, term: tid, cidseq: p.cidseq, st: "已激活", online: "在线",
+    /* 实例版本不再取「软件级首个版本」，而取**该终端操作系统**下已发布的最新版本 ——
+       否则同一软件在 macOS 终端上会装出 Windows 侧的版本号（跨端矛盾）。
+       ★ R20：判据提为共享助手 `idCinNewVer`，与「管理员直接登记」入口同源（此前两处各写一遍）。 */
+    ver: idCinNewVer(sw, tgtTerm),
+    lic: [{ id: "lic_" + Date.now(), no: idLicNo(), issued: idDay(), exp: idYmdShift(idDay(), 0, 1), tag: "当前",
+      ca: sw.cert === "CA 机构签发" ? "外购 CA（CFCA）" : "白泽内网 CA", scope: (sw.assets || []).join(" / ") || "—" }]
+  });
+  p.term = tid; p.st = "已通过"; p.done = ID_NOW; p.reviewer = "admin_dev";
+  idSave(); closeDlg(); idRerender();
+  toast("已通过：终端与客户端实例已登记，License 证书已签发（演示）");
+  /* ★ R21（I6）：与「拒绝」路径对称 —— 后者收尾 `idOpenApply()` 重开审核队列，
+     前者此前只 `closeDlg()`。批量审核时「拒绝完能接着审、通过完要重新开窗」，一正一反两套节奏。 */
+  idOpenApply();
+  /* ★ R21（组 5）：审核通过会在表首 unshift 一条新终端 + 一条新实例 ⇒ 复位两处分页，
+     否则管理员停在第 N 页点通过，新建出来的条目就在表首却看不见。 */
+  IDT.pg = 1; IDC.pg = 1;
+}
+function idApplyReject(p) {
+  openDlg("拒绝注册申请",
+    "拒绝 <b>" + esc(p.owner || "") + "</b> 的注册申请（" + esc(p.name) + "）。<b>须填写拒绝原因</b>；用户可调整后重新提交，历次审核记录可追溯。",
+    '<div class="fld"><label>拒绝原因 <span class="req">*</span></label><input id="aprReason" placeholder="如 设备未通过合规基线检查"></div>');
+  $("#dlg1Ok").onclick = function () {
+    var rs = ($("#aprReason").value || "").trim();
+    if (!rs) { markBad($("#aprReason"), true); toast("请填写拒绝原因"); return; }
+    p.st = "已拒绝"; p.reason = rs; p.done = ID_NOW; p.reviewer = "admin_dev";
+    idSave(); closeDlg(); idRerender(); idOpenApply();
+    toast("已拒绝（演示）");
+  };
+}
+
+/* ---------- 4. 页③ 客户端软件管理（pg-idcsw） ---------- */
+var IDS = { cur: "", tab: "t1", pg: 1, f: { k: "", agent: "", os: "" } };
+/* 客户端软件登记的「支持认证方式」—— 名字与档位一律**取自认证方式字典**（唯一取值域），
+   本页只做子集勾选，不新增方式名；**字典 ∩ 客户端软件登记 = 该客户端实际可选的方式**。
+   ⚠ 「无感代填」由**平台自身**完成（会话身份 + 托管凭据代填 / 出站 token 注入），
+     **不依赖任何客户端软件的承载能力**，故不在本登记范围内。
+   ⚠ 本清单**不带级别字段** —— 强度级别挂在「认证源 × 认证方式」上；
+     本页（客户端软件）只回答「某方式能否在该客户端上用」，标级别会越权表述效力。
+   ⚠ L4 / L5 的实现口径是 WebAuthn（FIDO2）—— WebAuthn 是**承载协议**，不是方式名，
+     故不在本清单内；「这款软件能否承载 WebAuthn」由所选 L4 / L5 方式间接体现。 */
+var ID_AMETH_DEF = (typeof AU_SRC_METHODS !== "undefined" ? AU_SRC_METHODS : []).filter(function (m) { return m.interactive; }).map(function (m) {
+  return { k: m.id, name: m.name, note: m.inherent };
+});
+function idSWName(k) { for (var i = 0; i < ID_AMETH_DEF.length; i++) if (ID_AMETH_DEF[i].k === k) return ID_AMETH_DEF[i].name; return k; }
+/* 可访问资产的可选项来源 = 管理员维护的「资产列表」（只读引用，见手册 §4.6.6：资产数据来源＝资产列表）。
+   客户端软件管理只做**子集勾选**，限定的是**客户端侧可见范围**；
+   用户最终能否访问某个资产，还取决于该资产自身的**访问策略**（本页不承载策略裁决）。 */
+/* 取值域＝资产台账（权威源）的资产名集合，**由台账派生**，不另立一套命名；
+   台账未就绪（脚本段未加载）时回落到与其一致的静态清单。 */
+var ID_ASSET_DEF = (function () {
+  try { if (typeof ASSETS !== "undefined" && ASSETS && ASSETS.length) return ASSETS.map(function (a) { return a.name; }); }
+  catch (e) { /* 资产段不可用：回落静态清单 */ }
+  return ["核心网银门户", "信贷审批系统", "客户数据仓库", "报表中心", "统一身份门户",
+    "监管报送接口", "运维审计堡垒机", "对公客户影像库", "手机银行后台", "报表导出网关",
+    "生产区运维桌面", "行情推送 TCP 通道", "反洗钱报送门户", "对公网银体验门户",
+    "对外行情资讯门户", "运维堡垒机 Web 控制台"];
+})();
+/* 适用操作系统的取值域 —— 与「终端」的 os 字段**不同层级**：
+   终端 os 是具体版本（Windows 11 专业版 / macOS 14.5），此处取**操作系统族**，
+   用于把「同一款客户端的版本与校验码」按族分列（手册 §4.6.5：版本签名校验按客户端版本发布）。
+   同一款软件在不同操作系统上的**版本号与校验码各自独立**（构建产物不同），不共用一行登记。 */
+var ID_OS_DEF = ["Windows", "macOS", "Linux", "Android", "iOS", "HarmonyOS"];
+/* 签名取值域 —— 与「版本签名校验」策略配套：策略含「客户端签名校验」时，签名不得为「未签名」。 */
+var ID_SIG_DEF = ["已签名 · 白泽代码签名 CA（RSA-2048）", "已签名 · 白泽代码签名 CA（SM2）",
+  "已签名 · 外购 CA（CFCA）", "未签名"];
+function idOsFamily(os) {
+  var s = String(os || "");
+  if (/windows/i.test(s)) return "Windows";
+  if (/mac\s*os|macos|osx|darwin/i.test(s)) return "macOS";
+  if (/android/i.test(s)) return "Android";
+  if (/harmony|鸿蒙/i.test(s)) return "HarmonyOS";
+  if (/ios|iphone|ipad/i.test(s)) return "iOS";
+  if (/linux|kylin|麒麟|统信|uos/i.test(s)) return "Linux";
+  return "";
+}
+function idVerCmp(a, b) {
+  var x = String(a || "").split("."), y = String(b || "").split(".");
+  var n = Math.max(x.length, y.length);
+  for (var i = 0; i < n; i++) {
+    var u = parseInt(x[i] || "0", 10) || 0, v = parseInt(y[i] || "0", 10) || 0;
+    if (u !== v) return u - v;
+  }
+  return 0;
+}
+/* 软件级版本列表 —— **由 osver 派生**（单一来源）。
+   此前 csw 另存一份 `ver` 数组，与 osver 必然出现「改了 osver、ver 没改」的漂移；
+   本次统一为派生：无 osver 的老快照（pre-id-7）退回软件级 ver，页面显示「—」。 */
+function idSwVers(s) {
+  if (s && Array.isArray(s.osver) && s.osver.length) {
+    var seen = {}, out = [];
+    s.osver.forEach(function (r) { if (!seen[r.ver]) { seen[r.ver] = 1; out.push(r.ver); } });
+    out.sort(function (a, b) { return idVerCmp(b, a); });
+    return out;
+  }
+  return (s && Array.isArray(s.ver)) ? s.ver : [];
+}
+/* 新实例的初始版本 = **该终端操作系统下已发布的最新版本**（R20）。
+   此前 `case "cinNew"` 取 `idSwOf(sid).ver[0]` —— `ver` 是 pre-id-7 的**软件级死字段**
+   （R15 已统一为「从 osver 派生」），新种子快照里根本没有 ⇒ 恒落占位 `"1.0.0"`，
+   于是**管理员刚登记的实例一建即显示「可升级至 3.2.1」**；且与「注册审核通过」的派生
+   口径不一致（同一字段两处判据）。⇒ 提为单一实现，两个入口共用。
+   兜底也不再用 `"1.0.0"` 伪造：退而取该软件任一**已发布**最高版；一个都没有时记 `"—"`
+   （尚未登记可用版本），由展示层兜底 —— 与「凭据编号缺失不落 `—`」相反，此处 `—` 表示
+   「软件确实还没有任何已发布版本」，是**事实**而非缺省符。 */
+function idCinNewVer(sw, term) {
+  var fam = idOsFamily((term || {}).os);
+  var pubs = ((sw || {}).osver || []).filter(function (r) { return r.pub; })
+    .sort(function (a, b) { return idVerCmp(b.ver, a.ver); });
+  var same = pubs.filter(function (r) { return r.os === fam; })[0];
+  if (same) return same.ver;
+  return pubs.length ? pubs[0].ver : "—";
+}
+/* 该实例是否已有「待生效」证书 —— 单一判据，供「轮换」与「签发证书」两个入口共用。
+   此前只有轮换侧判重（`licRotate`），签发侧只挡「已有当前证书」⇒ 可连开多份待生效证书，
+   与「轮换过渡期新旧证书并存（＝最多一份待生效）」的页内自述冲突。 */
+function idLicPending(c) {
+  return ((c || {}).lic || []).filter(function (l) { return idLicTagOf(l) === "待生效"; })[0] || null;
+}
+/* 适用操作系统列表（按 ID_OS_DEF 序去重）—— 列表页「适用操作系统」列与筛选共用。 */
+function idSwOsList(s) {
+  var hit = {};
+  (s && Array.isArray(s.osver) ? s.osver : []).forEach(function (r) { hit[r.os] = 1; });
+  return ID_OS_DEF.filter(function (o) { return hit[o]; });
+}
+/* 某操作系统 × 版本的**在用实例数**（st ≠ 已卸载）—— 取消发布的拦截依据（手册 §4.7.5）。
+   实例的操作系统由**所在终端**派生，不另存一份 —— 否则同一事实两个出口。 */
+function idSwVerUseCount(s, os, ver) {
+  return (ID.cin || []).filter(function (c) {
+    if (c.sw !== s.id || c.st === "已卸载") return false;
+    var tm = (ID.terms || []).filter(function (t) { return t.id === c.term; })[0] || {};
+    return idOsFamily(tm.os) === os && c.ver === ver;
+  }).length;
+}
+function idShaFmt(h) { return h ? (h.length > 16 ? h.slice(0, 8) + "…" + h.slice(-4) : h) : "—"; }
+/* 版本行式编辑器（编辑 / 新建弹窗内）—— 一行 = 操作系统 × 版本。
+   行内不改数据，只在保存时由 idSwVerCollect 一次性收口。 */
+function idSwVerRows(rows, cls) {
+  return (rows || []).map(function (r, i) {
+    return '<div class="osver-row" data-at="' + esc(r.at || idDay()) + '" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px">' +
+      '<select class="osver-os" aria-label="操作系统" style="width:116px">' +
+        ID_OS_DEF.map(function (o) { return "<option" + (r.os === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") + "</select>" +
+      '<input class="osver-ver" aria-label="版本号" placeholder="版本号" value="' + esc(r.ver || "") + '" style="width:86px">' +
+      '<input class="osver-size" aria-label="安装包大小" placeholder="安装包" value="' + esc(r.size || "") + '" style="width:84px">' +
+      '<input class="osver-sha" aria-label="SHA256 校验码" placeholder="SHA256 校验码（64 位十六进制）" value="' + esc(r.sha256 || "") + '" style="width:300px">' +
+      '<select class="osver-sig" aria-label="签名" style="width:236px">' +
+        ID_SIG_DEF.map(function (o) { return "<option" + (r.sig === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") + "</select>" +
+      '<select class="osver-pub" aria-label="发布状态" style="width:96px">' +
+        [["1", "已发布"], ["0", "未发布"]].map(function (o) { return '<option value="' + o[0] + '"' + ((r.pub === false ? "0" : "1") === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select>" +
+      '<button type="button" class="btn link" data-idact="swOsDel" data-cls="' + cls + '" data-i="' + i + '">移除</button>' +
+      "</div>";
+  }).join("");
+}
+function idSwVerCollect(cls) {
+  var box = document.getElementById("swOsver");
+  if (!box) return [];
+  return Array.prototype.slice.call(box.querySelectorAll(".osver-row")).map(function (r) {
+    var g = function (sel) { var el = r.querySelector(sel); return el ? String(el.value) : ""; };
+    return { os: g(".osver-os"), ver: g(".osver-ver").trim(), size: g(".osver-size").trim(),
+      sha256: g(".osver-sha").trim().toLowerCase(), sig: g(".osver-sig"),
+      at: r.getAttribute("data-at") || idDay(), pub: g(".osver-pub") === "1" };
+  });
+}
+/* 校验：判据只认正面标记（不写「不含 X」），逐条给出可执行的修正话术。 */
+function idSwVerValid(rows, vsig) {
+  if (!rows.length) return "请至少登记一个操作系统版本";
+  var vs = String(vsig || ""), seen = [];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i], key = r.os + "|" + r.ver;
+    if (seen.indexOf(key) >= 0) return "「" + r.os + " · " + r.ver + "」重复登记（同一操作系统下的同一版本只能有一行）";
+    seen.push(key);
+    if (!r.ver) return "请填写 " + r.os + " 的版本号";
+    if (!/^\d+(\.\d+){1,3}$/.test(r.ver)) return r.os + " 的版本号格式应为「数字.数字」（如 3.2.1）";
+    if (vs.indexOf("哈希值校验") >= 0 && !/^[0-9a-f]{64}$/.test(r.sha256)) return r.os + " · " + r.ver + " 的 SHA256 校验码须为 64 位十六进制";
+    if (vs.indexOf("客户端签名校验") >= 0 && r.sig === "未签名") return r.os + " · " + r.ver + " 未登记签名（「版本签名校验」含签名校验时必填）";
+  }
+  return "";
+}
+function idSwVerWrite(sw, rows) {
+  sw.osver = rows.map(function (r) {
+    return { os: r.os, ver: r.ver, size: r.size || "—", sha256: String(r.sha256 || "").toLowerCase(),
+      sig: r.sig, at: r.at || idDay(), pub: !!r.pub };
+  });
+}
+/* 行标识＝「操作系统 | 版本号」（同软件下唯一，由 idSwVerValid 保证）—— 与 swVerPub 同口径。 */
+function idSwVerRowFound(sw, os, ver) {
+  return (sw.osver || []).filter(function (r) { return r.os === os && r.ver === ver; })[0] || null;
+}
+/* R19 单行版本登记弹窗 —— 台账行级 CRUD 共用：row 为空 = 新增，否则 = 编辑该行。
+   与「新建软件」弹窗里的行式编辑器（idSwVerRows）分工不同：这里**只承担一行**，行数再多也只是多开几次。
+   重复登记校验复用同一个 idSwVerValid（判据一处实现，不在两处各写一遍）。 */
+function openSwVerRow(sw, row) {
+  var isNew = !row;
+  var cur = row || { os: ID_OS_DEF[0], ver: "", size: "", sha256: "", sig: ID_SIG_DEF[0], pub: false };
+  var opts = function (list, sel) {
+    return list.map(function (o) { return "<option" + (o === sel ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("");
+  };
+  openDlg(isNew ? "添加操作系统版本" : "编辑操作系统版本",
+    "<b>" + esc(sw.name) + "</b> · 按操作系统分别登记；<b>同一操作系统下的同一版本只能有一行</b>。",
+    '<div class="fld"><label>操作系统</label><select id="swvOs">' + opts(ID_OS_DEF, cur.os) + "</select></div>" +
+    '<div class="fld" style="margin-top:10px"><label>版本号 <span class="req">*</span></label><input id="swvVer" value="' + esc(cur.ver || "") + '" placeholder="如 3.2.1">' +
+      '<div class="help" style="margin-top:6px">格式为「数字.数字」。</div></div>' +
+    '<div class="fld" style="margin-top:10px"><label>安装包</label><input id="swvSize" value="' + esc(cur.size || "") + '" placeholder="如 86.4 MB"></div>' +
+    '<div class="fld" style="margin-top:10px"><label>SHA256 校验码</label><input id="swvSha" value="' + esc(cur.sha256 || "") + '" placeholder="安装包的 64 位十六进制校验码">' +
+      '<div class="help" style="margin-top:6px">「版本签名校验」含<b>哈希值校验</b>时必填；取安装包的 SHA256。</div></div>' +
+    '<div class="fld" style="margin-top:10px"><label>签名</label><select id="swvSig">' + opts(ID_SIG_DEF, cur.sig) + "</select>" +
+      '<div class="help" style="margin-top:6px">「版本签名校验」含<b>客户端签名校验</b>时必填。</div></div>' +
+    '<div class="fld" style="margin-top:10px"><label>发布状态</label><select id="swvPub">' +
+      [["1", "已发布"], ["0", "未发布"]].map(function (o) { return '<option value="' + o[0] + '"' + ((cur.pub === false ? "0" : "1") === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select>" +
+      '<div class="help" style="margin-top:6px">已发布方可下载并参与升级提示；未发布不可下载、不可用（手册 §4.7.5）。</div></div>');
+  $("#dlg1Ok").onclick = function () {
+    var rd = { os: $("#swvOs").value, ver: ($("#swvVer").value || "").trim(), size: ($("#swvSize").value || "").trim(),
+      sha256: ($("#swvSha").value || "").trim().toLowerCase(), sig: $("#swvSig").value, pub: $("#swvPub").value === "1" };
+    var others = (sw.osver || []).filter(function (x) { return !(row && x.os === row.os && x.ver === row.ver); });
+    var bad = idSwVerValid(others.concat([rd]), sw.vsig);
+    if (bad) { toast(bad); return; }
+    var changed = isNew || rd.os !== row.os || rd.ver !== row.ver || rd.size !== (row.size || "") ||
+      rd.sha256 !== String(row.sha256 || "").toLowerCase() || rd.sig !== row.sig || !!row.pub !== rd.pub;
+    var apply = function () {
+      if (isNew) {
+        sw.osver = (sw.osver || []).concat([{ os: rd.os, ver: rd.ver, size: rd.size || "—", sha256: rd.sha256, sig: rd.sig, at: idDay(), pub: rd.pub }]);
+      } else {
+        row.os = rd.os; row.ver = rd.ver; row.size = rd.size || "—"; row.sha256 = rd.sha256; row.sig = rd.sig; row.pub = rd.pub;
+      }
+      idSave(); closeDlg(); idRerender(); toast("已保存（演示）");
+    };
+    if (!changed) { apply(); return; }
+    idAskEff(isNew ? "添加操作系统版本" : "变更版本与校验码",
+      (isNew ? "将新增 " : "将变更 ") + "<b>" + esc(sw.name) + "</b> 的 <b>" + esc(rd.os) + " · " + esc(rd.ver) + "</b> 登记" +
+      "（版本号 / 安装包 / SHA256 校验码 / 签名 / 发布状态）。本表是客户端<b>建连校验的唯一依据</b>：变更后客户端<b>须重新通过版本校验方可与网关建立通信</b>（校验不通过即拒绝，手册 §4.6.5）。<b>本次变更入审计</b>。",
+      apply);
+  };
+}
+/* 详情页「版本与校验码」卡片 —— 按操作系统分组、版本降序。 */
+/* 在用实例的版本分布 —— 升级推进情况的**唯一可见口径**（版本值是客户端上报值，见实例详情）。
+   未登记版本（客户端上报了某个本页未登记的版本）也要**显形**：否则分布看起来是满的、
+   实际存在「校验码查无此版本」的缺口。 */
+function idSwVerDist(s) {
+  var parts = [];
+  (s.osver || []).forEach(function (r) {
+    var n = idSwVerUseCount(s, r.os, r.ver);
+    if (n) parts.push(esc(r.os) + " " + esc(r.ver) + " ×" + n);
+  });
+  var un = [], nopub = [];
+  (ID.cin || []).forEach(function (c) {
+    if (c.sw !== s.id || c.st === "已卸载") return;
+    var fam = idOsFamily((ID.terms.filter(function (t) { return t.id === c.term; })[0] || {}).os);
+    var k = fam + " " + c.ver;
+    var row = (s.osver || []).filter(function (r) { return r.os === fam && r.ver === c.ver; })[0];
+    if (!row) { if (un.indexOf(k) < 0) un.push(k); }
+    /* 已登记但**未发布**：手册 §4.7.5「未发布不可用」。与「未登记」是两种不同缺口 ——
+       前者校验码查得到、看起来正常；后者连校验码都没有。分列才不会互相遮蔽。 */
+    else if (row.pub !== true && nopub.indexOf(k) < 0) nopub.push(k);
+  });
+  un.forEach(function (k) { parts.push("<b>" + esc(k) + "（未登记版本 · 不通过签名校验）</b>"); });
+  nopub.forEach(function (k) { parts.push("<b>" + esc(k) + "（未发布版本 · 按手册 §4.7.5 不可用）</b>"); });
+  return parts.length ? parts.join(" · ") : "暂无在用实例";
+}
+function idSwVerCard(s) {
+  var rows = (s.osver || []).slice().sort(function (a, b) {
+    if (a.os !== b.os) return ID_OS_DEF.indexOf(a.os) - ID_OS_DEF.indexOf(b.os);
+    return idVerCmp(b.ver, a.ver);
+  });
+  /* R19：版本与校验码是**集合型台账**（一行 = 操作系统 × 版本）⇒ 行级 CRUD：
+     表外「＋ 添加操作系统版本」、行内「发布 / 取消发布 · 编辑 · 删除」；每行只编一行，行数再多也不挤在一个弹窗里。
+     同时把原总弹窗里的**单值策略**「版本签名校验」提为卡头独立入口（一个弹窗只承担一类语义，R17 判据）。 */
+  var body = rows.map(function (r) {
+    var used = idSwVerUseCount(s, r.os, r.ver);
+    var rk = ' data-os="' + esc(r.os) + '" data-ver="' + esc(r.ver) + '"';
+    return "<tr><td>" + esc(r.os) + "</td>" +
+      '<td><span class="kr">' + esc(r.ver) + "</span></td>" +
+      "<td>" + esc(r.size || "—") + "</td>" +
+      '<td title="' + esc(r.sha256) + '"><span class="kr">' + esc(idShaFmt(r.sha256)) + "</span></td>" +
+      "<td>" + esc(r.sig || "—") + "</td>" +
+      "<td>" + esc(r.at || "—") + "</td>" +
+      "<td>" + (r.pub ? '<span class="tag t-ok">已发布</span>' : '<span class="tag t-gray">未发布</span>') + "</td>" +
+      "<td>" + used + " 个</td>" +
+      "<td>" + idBtn("swVerPub", s.id, r.pub ? "取消发布" : "发布", "link", rk) +
+        idBtn("swVerRowEdit", s.id, "编辑", "link", rk) +
+        idBtn("swVerDel", s.id, "删除", "link", rk) + "</td></tr>";
+  }).join("");
+  return '<div class="card"><div class="card-h"><h3>版本与校验码<span class="sub">按操作系统分别登记 · 校验不通过不得与网关建立通信</span></h3>' +
+    '<div class="toolbar">' + idBtn("swVerVsig", s.id, "版本签名校验", "sm") + idBtn("swVerAdd", s.id, "＋ 添加操作系统版本", "sm") + "</div></div>" +
+    '<div class="card-b">' +
+    idTbl(["操作系统", "版本号", "安装包", "SHA256 校验码", "签名", "发布时间", "发布状态", "在用实例", "操作"],
+      body || idEmptyRow(9, "尚未登记操作系统版本 · 点右上「＋ 添加操作系统版本」"),
+      ["106px", "84px", "90px", "176px", "226px", "106px", "96px", "82px", "152px"]) +
+    '<div class="mini" style="margin-top:8px"><b>同一款软件在不同操作系统上的版本号与校验码各自独立</b> —— Windows / macOS / Linux 的构建产物不同，不共用一行登记。校验码取安装包的 <b>SHA256</b>（64 位十六进制）；<b>签名</b>由「版本签名校验」策略决定是否强制：策略含<b>哈希值校验</b>则校验码必填，含<b>客户端签名校验</b>则签名必填。<b>任一校验不通过，客户端不得与网关建立通信</b>（手册 §4.6.5）。</div>' +
+    '<div class="mini" style="margin-top:6px"><b>已发布</b>方可下载并参与升级提示；<b>未发布</b>不可下载、<b>不可用</b>（手册 §4.7.5「未发布不可用」）—— 若实例上报了未发布版本，按<b>非受控版本</b>显性标注。<b>已有客户端注册成功（即「在用实例」不为 0）的版本不可取消发布</b> —— 否则在用客户端在下次校验时会被拒（手册 §4.7.5）。签名失效后可重新发布版本，校验码与签名须同步更新。</div>' +
+    '<div class="mini" style="margin-top:6px"><b>本页职责</b>：维护各操作系统的<b>版本与校验码登记</b>与<b>发布状态</b>（手册 §4.6.1「客户端软件版本列表」/ §4.6.5「版本签名校验」）。手册 §4.7.5 的「设置默认下载版本」属 <b>WEB 运维通道 → 版本管理</b>，该通道<b>不在本原型范围内</b> ⇒ 本页升级提示以「<b>该操作系统下已发布的最新版本</b>」为参照（本模块可自证的事实），<b>不代为设置默认版本</b>。</div>' +
+    '<div class="mini" style="margin-top:6px"><b>在用实例版本分布</b>：' + idSwVerDist(s) + '</div>' +
+    "</div></div>";
+}
+function idSwPage() {
+  if (IDS.cur) { var s = ID.csw.filter(function (x) { return x.id === IDS.cur; })[0]; if (s) return idSwDetail(s); }
+  var pool = idSwFiltered();
+  var size = LIST_PAGE, pg = Math.max(1, Math.min(IDS.pg, Math.ceil(pool.length / size) || 1));
+  IDS.pg = pg;
+  var body = pool.slice((pg - 1) * size, pg * size).map(function (s) {
+    var ninst = ID.cin.filter(function (c) { return c.sw === s.id; }).length;
+    var osList = idSwOsList(s);
+    /* R19（实测驱动 · 列表精简）：认证方式在本表只给**数量**，完整名单走 title 提示。
+       实测「账号密码、动态口令、指纹识别、USB Key 硬件令牌、活体人脸识别」单行需 422px，
+       而该列只有 176px —— 它是把行高顶到 98px 的唯一来源；芯片形态只留在详情页。
+       同一轮把「通信协议」「证书签发机制」两列整体移出列表：二者属手册 §4.6.4 一个条目、
+       均为**详情页配置面**（协议只读展示 / 签发机制可编），列表只留识别信息与规模信息。 */
+    var amethNames = (s.ameth || []).map(idSWName);
+    return "<tr><td><b>" + esc(s.name) + "</b></td>" +
+      "<td>" + esc(s.kind) + "</td>" +
+      '<td><span class="kr">' + esc(s.sn) + "</span></td>" +
+      '<td class="cell-cov">' + esc(osList.join("、") || "—") + "</td>" +
+      "<td>" + esc(idSwVers(s).join(" / ")) + "</td>" +
+      '<td title="' + esc(amethNames.join("、") || "未勾选") + '">' +
+        (amethNames.length ? amethNames.length + " 种" : '<span class="muted">—</span>') + "</td>" +
+      "<td>" + ninst + " 个</td>" +
+      "<td>" + idBtn("swView", s.id, "详情", "sm") + idBtn("swEdit", s.id, "编辑") + "</td></tr>";
+  }).join("");
+  return idTitle("客户端软件管理", "登记<b>集成 SDK 的</b>客户端软件（软件级）· 含 AI 安全 agent（标特殊）· 本页是「某方式能否在该客户端上用」的标记处",
+      '<div class="toolbar"><button class="btn" data-idact="swNew">新建客户端软件</button></div>') +
+    idRefNote("<b>种类判定依据＝是否集成 SDK</b>：白泽官方客户端、客户经 SDK 集成的客户端、以及 <b>AI 安全 agent</b>（它本身集成 SDK，故在这一类里，标特殊）均在此页登记；受 AI 安全 agent 监管的 <b>AI agent 不集成 SDK</b>，归「智能体软件管理」，<b>不在此页</b>。") +
+    '<div class="card"><div class="card-b">' +
+    '<div class="toolbar" style="margin-bottom:12px">' +
+      '<div class="input-w"><input type="search" id="idswK" aria-label="搜索客户端软件" placeholder="搜索软件名称 / 序列号 / 操作系统 / 版本" style="width:270px" value="' + esc(IDS.f.k) + '"><i aria-hidden="true">搜索</i></div>' +
+      '<select id="idswAgent" aria-label="按类别筛选"><option value="">全部类别</option>' +
+        ['客户端软件', 'AI 安全 agent'].map(function (o) { return "<option" + (IDS.f.agent === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") +
+      "</select>" +
+      '<select id="idswOs" aria-label="按操作系统筛选"><option value="">全部操作系统</option>' +
+        ID_OS_DEF.map(function (o) { return "<option" + (IDS.f.os === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") +
+      "</select>" +
+    "</div>" +
+    /* R19（实测驱动）：8 列全部单行。自动列「软件名称」原只分到 68px（十列争宽），
+       连表头（需 78px）都放不下；撤两列后得 176px（内容需 146px）。其余列一律按实测自然宽度给值。 */
+    idTbl(["软件名称", "类别", "唯一序列号", "适用操作系统", "版本", "支持的认证方式", "实例数", "操作"],
+      body || idEmptyRow(8, "没有符合条件的客户端软件"), [null, "120px", "208px", "206px", "144px", "120px", "70px", "116px"]) +
+    '<div class="lst-foot"><div id="idswPager" role="navigation" aria-label="客户端软件列表分页" style="flex:1"></div></div>' +
+    '<div class="mini" style="margin-top:8px">唯一序列号<b>全局唯一</b>（16 位字母 + 8 位数字），用于 SDK 打包时识别；<b>支持的认证方式</b>在本表只示<b>数量</b>（悬停可见名单）；<b>通信协议与证书签发机制</b>见详情页「登记信息」与「客户端策略与授权」。</div>' +
+    '<div class="mini" style="margin-top:6px"><b>版本与校验码按操作系统分别登记</b> —— 同一款客户端在 Windows / macOS / Linux 上的<b>版本号与 SHA256 校验码各自独立</b>。完整清单（含签名与发布状态）见软件详情的「版本与校验码」。</div>' +
+    "</div></div>";
+}
+function idSwFiltered() {
+  var f = IDS.f;
+  return (ID.csw || []).filter(function (s) {
+    if (f.k) {
+      /* 搜索面须覆盖**操作系统**（手册 §4.6.1：支持按客户端名称、操作系统等筛选）——
+         此前只搜 名称 / 序列号 / 版本，输入「macOS」筛不出任何结果。 */
+      var hay = (s.name + " " + s.sn + " " + idSwVers(s).join(" ") + " " + idSwOsList(s).join(" ")).toLowerCase();
+      if (hay.indexOf(String(f.k).toLowerCase()) < 0) return false;
+    }
+    if (f.agent) {
+      var isAgent = !!s.agent;
+      if ((f.agent === "AI 安全 agent") !== isAgent) return false;
+    }
+    if (f.os && idSwOsList(s).indexOf(f.os) < 0) return false;
+    return true;
+  });
+}
+function idSwDetail(s) {
+  var idsTab = (IDS.tab === "t2" || IDS.tab === "t3" || IDS.tab === "t4") ? IDS.tab : "t1";
+  var insts = ID.cin.filter(function (c) { return c.sw === s.id; });
+  var aRows = insts.map(function (c) {
+    return "<tr><td>" + esc(idName(ID.terms, c.term, "id", "name")) + '</td><td><span class="kr">' + esc(c.cidseq) + "</span></td><td>" + idStTag(c.st) + "</td><td>" + (c.lic || []).length + " 份</td>" +
+      "<td>" + idBtn("cinGoto", c.id, "去实例管理") + "</td></tr>";
+  }).join("");
+  var amethRows = ID_AMETH_DEF.map(function (m) {
+    var on = (s.ameth || []).indexOf(m.k) >= 0;
+    return '<label class="chip' + (on ? " on" : "") + '" style="margin:4px 6px 4px 0"><input type="checkbox" data-idact="swAmeth" data-k="' + m.k + '"' + (on ? " checked" : "") + ">" +
+      esc(m.name) + "</label>";
+  }).join("");
+  return idTitle("客户端软件详情 · " + s.name,
+      "类别 " + esc(s.kind) + " · 唯一序列号 <b>" + esc(s.sn) + "</b>",
+      '<div class="toolbar"><button class="btn" data-idact="swList">← 返回列表</button>' +
+      '<button class="btn" data-idact="swEdit" data-id="' + s.id + '">编辑</button>' +
+      '<button class="btn danger" data-idact="swDel" data-id="' + s.id + '">删除</button></div>') +
+    (s.agent ? '<div class="hint-row"><i class="ic">特殊</i><div>本软件是 <b>AI 安全 agent</b> —— 它是<b>集成 SDK 的特殊客户端软件</b>，负责<b>监管本终端上的 AI agent</b>（被监管的 AI agent 不集成 SDK，归「智能体软件 / 实例管理」）。</div></div>' : "") +
+    idTabBar("idSwTabs", [["t1", "登记信息"], ["t2", "策略与授权"], ["t3", "版本与校验码"], ["t4", "客户端实例"]], idsTab) +
+    idTabPane("idSwTabs", "t1", idsTab === "t1",
+      '<div class="card"><div class="card-h"><h3>登记信息<span class="sub">软件级登记属性 · 重配置项已拆为下方独立入口</span></h3></div><div class="card-b">' +
+      '<div class="kv" style="grid-template-columns:150px 1fr 150px 1fr">' +
+      idKvLeft("软件名称") + idKvVal(esc(s.name)) +
+      idKvLeft("类别") + idKvVal(esc(s.kind)) +
+      idKvLeft("唯一序列号") + idKvVal(esc(s.sn)) +
+      idKvLeft("适用操作系统") + idKvVal(esc(idSwOsList(s).join("、") || "—")) +
+      idKvLeft("版本列表") + idKvVal(esc(idSwVers(s).join(" / ")) || "—") +
+      idKvLeft("通信协议") + idKvVal(esc(s.proto) + (s.proto === "TLCP"
+        ? "（国密标准 · 双证书：认证证书 + 加密证书）" : "（通用标准 · 单证书）") + " · 登记时选定后不可切换") +
+      idKvLeft("注册 / 审核方式") + idKvVal(esc(s.regway) + "（用户注册时自动遵循，无需选择）") +
+      "</div>" +
+      '<div class="mini" style="margin-top:8px">本卡为<b>软件级登记属性</b>（编辑在右上角）。<b>客户端策略与授权</b>与<b>版本与校验码</b>已拆为各卡片右上角的独立入口 —— 每项配置只改自己那一块，变更面与二次认证范围一一对应。</div>' +
+    "</div></div>") +
+    idTabPane("idSwTabs", "t2", idsTab === "t2",
+      '<div class="card"><div class="card-h"><h3>客户端策略与授权<span class="sub">软件级策略 · 三项均改变客户端生效面</span></h3><div class="toolbar">' + idBtn("swPolicyEdit", s.id, "修改", "sm") + '</div></div>' +
+      '<div class="card-b">' +
+      idTbl(["配置项", "当前值", "说明"], [
+        "<tr><td>证书签发机制</td><td>" + esc(s.cert) + "</td><td>软件级<b>策略选择</b>，非为某个客户端签发证书；仅影响此后新签 / 轮换的证书，存量不追溯重签</td></tr>",
+        "<tr><td>客户端绑定与静默登录</td><td>" + (s.bind ? "已开启" : "未开启") + "</td><td>开启后可静默登录（有效期取客户端证书有效期，默认 30 天）；绑定关系变化自动通知管理员</td></tr>",
+        "<tr><td>可访问资产</td><td>" + esc((s.assets || []).join("、") || "—") + "</td><td>取自管理员维护的「资产列表」（只读引用）</td></tr>"
+      ].join(""), ["190px", "230px", null]) +
+      '<div class="mini" style="margin-top:8px"><b>可访问资产限定客户端侧可见范围</b> —— 用户最终能否访问某个资产，还取决于该资产自身的<b>访问策略</b>。</div>' +
+      '<div class="mini" style="margin-top:6px">证书机制只影响此后新签 / 轮换的证书；绑定关系变化自动通知管理员；资产收窄后用户即使有权限也无法访问 —— 三项均属<b>客户端生效面</b> ⇒ 变更走<b>二次认证</b>。</div>' +
+    "</div></div>" +
+    '<div class="card"><div class="card-h"><h3>支持的认证方式<span class="sub">本页最要紧的一块 · 只做减法（从字典选子集）</span></h3></div>' +
+      '<div class="card-b">' +
+      '<div style="display:flex;flex-wrap:wrap;margin:-4px 0 6px">' + amethRows + "</div>" +
+      '<div class="mini" style="margin-top:8px">取值范围取自<b>认证方式字典</b>（认证模块）—— 字典是<b>唯一取值域</b>，本页<b>只做子集勾选、不新增字典里没有的方式名</b>。新建时<b>不预勾</b>（避免误开放）；取消某方式<b>不清除用户已登记的凭据</b>。</div>' +
+      '<div class="mini" style="margin-top:6px">本页只回答<b>「这个方式能不能在这款软件上用」</b>，<b>不标级别</b> —— 强度级别挂在<b>「认证源 × 认证方式」</b>（认证模块「认证源」页），同一方式在不同源下级别可以不同。</div>' +
+      '<div class="mini" style="margin-top:6px">与其他三处的关系：<b>认证方式字典</b>（平台有哪些方式）∩ <b>认证源登记</b>（这个身份体系能提供哪些）∩ <b>本页</b>（这款软件能承载哪些）∩ <b>资产访问策略要求</b> ⇒ 登录 / 追加认证时<b>实际下发的选项集合</b>。该软件登录页按本清单<b>收窄呈现</b>。</div>' +
+      '<div class="mini" style="margin-top:6px">禁用某方式<b>改变生效面</b>（登录与追加认证时不再下发该选项）⇒ 走<b>二次认证</b>；已为该方式登记过凭据的用户按 <b>fail-closed</b> 处置（策略要求而该软件不承载时<b>拒绝</b>，不静默回退到低级别方式）。</div>' +
+    "</div></div>") +
+    idTabPane("idSwTabs", "t3", idsTab === "t3",
+      idSwVerCard(s)) +
+    idTabPane("idSwTabs", "t4", idsTab === "t4",
+      '<div class="card"><div class="card-h"><h3>该软件下的客户端实例<span class="sub">实例台账在「客户端实例管理」· 此处只读串联</span></h3><div class="toolbar"><button class="btn" data-idact="swToCin" data-id="' + s.id + '">查看全部实例</button></div></div>' +
+      '<div class="card-b">' + idTbl(["所在终端", "客户端序列号", "状态", "License 证书", "操作"],
+        aRows || idEmptyRow(5, "该软件暂无客户端实例"), [null, "170px", "92px", "110px", "150px"]) + "</div></div>");
+}
+
+/* ---------- 5. 页④ 客户端实例管理（pg-idcin） ---------- */
+var IDC = { f: { k: "", sw: "", st: "" }, pg: 1, cur: "", tab: "t1" };
+function idCinFiltered() {
+  var f = IDC.f;
+  return (ID.cin || []).filter(function (c) {
+    var sw = idSwOf(c.sw);
+    /* 搜索须覆盖**所在终端**：终端详情按该终端汇总实例数，用户会到实例页按终端名反查 ——
+       此前只匹配软件名 + 序列号，无法互推（终端 t_pc_0007 有 2 条实例，搜终端名命中 0）。 */
+    if (f.k && (sw.name + " " + c.cidseq + " " + idName(ID.terms, c.term, "id", "name")).toLowerCase().indexOf(f.k.toLowerCase()) < 0) return false;
+    if (f.sw && c.sw !== f.sw) return false;
+    if (f.st && c.st !== f.st) return false;
+    return true;
+  });
+}
+function idCinPage() {
+  if (IDC.cur) { var c = ID.cin.filter(function (x) { return x.id === IDC.cur; })[0]; if (c) return idCinDetail(c); }
+  var rows = idCinFiltered();
+  var size = LIST_PAGE, pg = Math.max(1, Math.min(IDC.pg, Math.ceil(rows.length / size) || 1));
+  IDC.pg = pg;
+  var slice = rows.slice((pg - 1) * size, pg * size);
+  var body = slice.map(function (c) {
+    var sw = idSwOf(c.sw);
+    var cur = (c.lic || []).filter(function (l) { return idLicTagOf(l) === "当前"; })[0] || {};
+    return "<tr><td><b>" + esc(sw.name || "—") + "</b>" + (sw.agent ? ' <span class="tag t-info">AI 安全 agent</span>' : "") + "</td>" +
+      "<td>" + esc(idName(ID.terms, c.term, "id", "name")) + "</td>" +
+      '<td><span class="kr">' + esc(c.cidseq) + "</span></td>" +
+      "<td>" + idStTag(c.st) + "</td>" +
+      "<td>" + idStTag(c.online) + "</td>" +
+      "<td>" + (c.lic || []).length + " 份</td>" +
+      "<td>" + (cur.exp ? esc(cur.exp) : '<span class="muted">—</span>') + "</td>" +
+      "<td>" + idBtn("cinView", c.id, "详情", "sm") + idBtn("cinLic", c.id, "证书") + "</td></tr>";
+  }).join("");
+  return idTitle("客户端实例管理", "客户端<b>实例</b>（软件装在具体终端上的实例）台账 · <b>License 证书的看与改均在此页</b>",
+      '<div class="toolbar"><button class="btn primary" data-idact="cinNew">登记客户端实例</button></div>') +
+    idRefNote("本页是 <b>License 证书的实际管理面</b>（终端管理只做串联入口）；一个实例下可挂<b>多份</b>证书（轮换过渡期新旧共存）。") +
+    '<div class="card"><div class="card-b">' +
+    '<div class="toolbar" style="margin-bottom:12px">' +
+      '<div class="input-w"><input type="search" id="idcK" aria-label="搜索客户端实例" placeholder="搜索客户端软件 / 序列号 / 所在终端" style="width:240px" value="' + esc(IDC.f.k) + '"><i aria-hidden="true">搜索</i></div>' +
+      '<select id="idcSw" aria-label="按客户端软件筛选"><option value="">全部客户端软件</option>' + ID.csw.map(function (s) { return "<option value=\"" + s.id + "\"" + (IDC.f.sw === s.id ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("") + "</select>" +
+      '<select id="idcSt" aria-label="按状态筛选"><option value="">全部状态</option>' + ["已激活", "已禁用", "已卸载"].map(function (o) { return "<option" + (IDC.f.st === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") + "</select>" +
+    "</div>" +
+    idTbl(["客户端软件", "所在终端", "客户端序列号", "状态", "在线状态", "证书", "当前证书有效期", "操作"],
+      body || idEmptyRow(8, "没有符合条件的客户端实例"),
+      /* R19（实测）：在线状态原 78px < 内容 85px（「离线」+ 内边距）⇒ 折行；按自然宽度重排。 */
+      [null, "200px", "150px", "90px", "90px", "60px", "126px", "140px"]) +
+    '<div class="lst-foot"><div id="idcPager" role="navigation" aria-label="客户端实例列表分页" style="flex:1"></div></div>' +
+    '<div class="mini" style="margin-top:8px"><b>状态</b>（已激活 / 已禁用 / 已卸载）为实例生命周期，<b>在线</b>（在线 / 离线）为实例当前的连通性 —— 两者相互独立：所在终端在线而某实例已禁用时，仍显示<b>离线</b>。禁用与卸载<b>改变生效面</b>，走二次认证。</div>' +
+    "</div></div>";
+}
+/* 实例的「版本与升级」派生（手册 §2.4.1「版本信息：查看当前客户端软件版本号，有新版时会提示更新」）。
+   比对范围**限定在所在终端的操作系统内** —— 不同操作系统上版本号不通用，跨 OS 比对会给出错误结论。
+   参照版本 = 该操作系统下**已发布**的最新版本（本模块可自证的事实）。
+   ⚠ 手册 §4.7.5 的「默认下载版本」由 WEB 运维通道「版本管理」设置，**该通道不在本原型范围内**
+     ⇒ 本模块不代为设置默认版本，只以「已发布最新版」为参照（见 idSwVerCard 说明）。 */
+function idCinUpHint(c, sw) {
+  sw = sw || idSwOf(c.sw);
+  if (c.st === "已卸载") return '实例已卸载 <span class="mini muted">（不再参与升级）</span>';
+  var fam = idOsFamily((ID.terms.filter(function (t) { return t.id === c.term; })[0] || {}).os);
+  var mine = (sw.osver || []).filter(function (r) { return r.os === fam && r.ver === c.ver; })[0];
+  var pub = (sw.osver || []).filter(function (r) { return r.os === fam && r.pub; })
+    .sort(function (a, b) { return idVerCmp(b.ver, a.ver); });
+  if (!mine) return '<span class="tag t-err">版本未登记</span> <span class="mini muted">该操作系统下无此版本的校验码登记，须重新安装</span>';
+  /* 「登记过」≠「可用」：手册 §4.7.5「已发布版本可用，**未发布不可用**」。
+     用户自行安装（绕过平台发布流程）完全可能落到一个**已登记但未发布 / 已取消发布**的版本上 ——
+     此时校验码查得到，若只看「有没有登记」就会得出「已是最新」的**误判**。 */
+  if (mine.pub !== true) return '<span class="tag t-err">非受控版本</span> <span class="mini muted">该版本未发布或已取消发布（手册 §4.7.5「未发布不可用」），须回退或重装已发布版本</span>';
+  if (!pub.length) return '<span class="tag t-gray">无已发布版本</span> <span class="mini muted">暂不可升级</span>';
+  if (idVerCmp(pub[0].ver, c.ver) > 0) return '<span class="tag t-warn">可升级至 ' + esc(pub[0].ver) + "</span>";
+  return '<span class="tag t-ok">已是最新</span>';
+}
+/* 实例版本变更的**唯一写入口** —— 不论来源是「平台推送升级 / 用户自行升级 / 离线安装包安装」，
+   一律经此登记。`result` 三档落地：**成功**（客户端已回采）/ **待生效**（已下发未回采）/ **失败**（已回滚）。
+   为何必须收口：版本号是**客户端上报值**、不是平台推断值；若各升级路径各写各的，
+   就会出现「客户端早已升级、平台仍显示旧版本」—— 这正是「升级后未采集」的典型表现。 */
+function idCinVerUpd(c, to, way, at, result) {
+  if (!Array.isArray(c.verlog)) c.verlog = [];
+  result = result || "成功";
+  c.verlog.push({ at: at || ID_NOW, from: c.ver || "—", to: to, way: way || "客户端上报", result: result });
+  /* ⚠ **只有成功上报才更新 c.ver**。平台下发 ≠ 客户端已升级：
+     离线客户端既收不到推送、也来不及上报；此刻把 ver 写成目标版本，
+     就成了「平台推断版本」——正是本页口径明令禁止的。 */
+  if (result === "成功") c.ver = to;
+}
+/* 是否存在「已下发但客户端尚未回采」的升级：自末条向前看 ——
+   先遇「成功」⇒ 已回采、无待生效；先遇「待生效」⇒ 返回其目标版本。用于避免重复下发。 */
+function idCinPend(c) {
+  var v = c.verlog || [];
+  for (var i = v.length - 1; i >= 0; i--) {
+    if (String(v[i].result).indexOf("成功") === 0) return null;
+    if (String(v[i].result).indexOf("待生效") === 0) return v[i].to;
+  }
+  return null;
+}
+/* 最近一条**成功上报**记录（无 ⇒ 空对象）—— 「最近上报来源 / 通道」等字段只应由**上报**产生，
+   下发与失败记录都不是上报，不能拿来当来源。 */
+function idCinLastOk(c) {
+  var v = c.verlog || [];
+  for (var i = v.length - 1; i >= 0; i--) { if (String(v[i].result).indexOf("成功") === 0) return v[i]; }
+  return {};
+}
+/* 最近一次**成功上报**时间：有成功记录取末条成功记录时间；无 ⇒ **首次安装注册时上报**，
+   时间由终端注册时间派生（不另存一份，避免「同一次上报两个时间」）。 */
+function idCinVerRpt(c) {
+  var ok = idCinLastOk(c);
+  if (ok.at) return esc(ok.at);
+  var t = (ID.terms || []).filter(function (x) { return x.id === c.term; })[0] || {};
+  return esc(t.reg || "—") + ' <span class="mini muted">（首次安装注册时上报）</span>';
+}
+/* 该实例在**所在操作系统**下已发布的最新版本 —— 升级目标的口径（不跨操作系统比对）。 */
+function idCinLatestPub(c, sw) {
+  sw = sw || idSwOf(c.sw);
+  var fam = idOsFamily((ID.terms.filter(function (t) { return t.id === c.term; })[0] || {}).os);
+  return (sw.osver || []).filter(function (r) { return r.os === fam && r.pub; })
+    .sort(function (a, b) { return idVerCmp(b.ver, a.ver); })[0] || null;
+}
+function idCinVerCard(c) {
+  var sw = idSwOf(c.sw);
+  var fam = idOsFamily((ID.terms.filter(function (t) { return t.id === c.term; })[0] || {}).os);
+  var pub = idCinLatestPub(c, sw);
+  var pend = idCinPend(c);
+  /* 已下发待生效时**不再渲染推送按钮** —— 否则会对同一实例重复下发同一目标版本。 */
+  var canUp = c.st !== "已卸载" && pub && idVerCmp(pub.ver, c.ver) > 0 && !pend;
+  var rows = (c.verlog || []).slice().reverse().map(function (r) {
+    /* 三档落地分色：成功（已回采）绿 · 失败（已回滚）红 · 待生效（未回采）黄。 */
+    var tag = String(r.result).indexOf("成功") === 0 ? '<span class="tag t-ok">成功</span>'
+      : String(r.result).indexOf("失败") === 0 ? '<span class="tag t-err">' + esc(r.result) + "</span>"
+      : '<span class="tag t-warn">' + esc(r.result) + "</span>";
+    return "<tr><td>" + esc(r.at) + '</td><td><span class="kr">' + esc(r.from) + '</span></td>' +
+      '<td><span class="kr">' + esc(r.to) + "</span></td><td>" + esc(r.way) + "</td><td>" + tag + "</td></tr>";
+  }).join("");
+  return '<div class="card"><div class="card-h"><h3>版本上报与升级记录<span class="sub">版本以<b>客户端上报</b>为准 · 下发不等于已升级</span></h3>' +
+    '<div class="toolbar">' + (pend
+      ? '<span class="tag t-warn">已下发 ' + esc(pend) + " · 待客户端上线回采</span>"
+      : (canUp ? idBtn("cinUpgrade", c.id, "推送升级至 " + pub.ver) : "")) + "</div></div>" +
+    '<div class="card-b">' +
+    '<div class="kv" style="grid-template-columns:150px 1fr 150px 1fr">' +
+      idKvLeft("实例版本（上报值）") + idKvVal(esc(c.ver || "—") + "　" + idCinUpHint(c, sw)) +
+      idKvLeft("所在操作系统") + idKvVal(esc(fam || "—")) +
+      idKvLeft("已发布最新版") + idKvVal(esc(pub ? pub.ver : "—") + " <span class=\"mini muted\">（该操作系统下已发布的最新版本）</span>") +
+      idKvLeft("最近上报时间") + idKvVal(idCinVerRpt(c)) +
+      idKvLeft("最近上报来源") + idKvVal(esc(idCinLastOk(c).way || "首次安装注册时上报")) +
+      idKvLeft("上报通道") + idKvVal(esc(idCinLastOk(c).at ? "客户端上线握手 / 心跳上报" : "注册时随客户端信息上报")) +
+      "</div>" +
+    idTbl(["上报时间", "变更前版本", "变更后版本", "来源方式", "结果"],
+      rows || idEmptyRow(5, "暂无版本变更记录（首次安装注册时上报，当前版本即为上报值）"),
+      ["152px", "108px", "108px", null, "156px"]) +
+    '<div class="mini" style="margin-top:8px">实例版本是<b>客户端上报值</b>，平台不推断：注册时上报一次，此后每次握手 / 心跳携带。' +
+      "<b>平台推送升级、用户自行升级、离线安装包安装三条路径，只要客户端重新上线即会重新上报</b>，本页版本号随之更新 —— <b>升级方式不改变「必须回采」这一点</b>。" +
+      "<b>下发 ≠ 已升级</b>：推送只对<b>在线</b>实例即时生效；终端<b>离线</b>时只登记<b>待生效</b>、<b>版本号保持原值不动</b>，待客户端上线完成安装并回采后才更新。" +
+      "上报的版本若不在该操作系统的<b>已发布版本</b>列表内，视为<b>未登记版本</b>；若已登记但<b>未发布</b>（含已取消发布），按手册 §4.7.5「未发布不可用」视为<b>非受控版本</b>。两者均不通过版本签名校验，<b>不得与网关建立通信</b>（手册 §4.6.5）。</div>" +
+    "</div></div>";
+}
+function idCinDetail(c) {
+  var idcTab = (IDC.tab === "t2" || IDC.tab === "t3") ? IDC.tab : "t1";
+  var sw = idSwOf(c.sw);
+  var licRows = (c.lic || []).map(function (l) {
+    var tg = idLicTagOf(l);
+    /* 实例已卸载 ⇒ 其「当前 / 待生效」证书实际不生效（证书阶段由有效期派生，不感知实例生命周期）——
+       明细仍保留可追溯，但须显式标注，避免「实例已卸载、证书仍显示当前」的误读。 */
+    var dead = c.st === "已卸载" && (tg === "当前" || tg === "待生效");
+    var acts = tg === "已吊销" ? '<span class="mini muted">—</span>'
+      : (tg === "当前" || tg === "待生效" ? idBtn("licRevoke", c.id, "吊销", "link", ' data-l="' + esc(l.id) + '"') : '<span class="mini muted">—</span>') +
+        (tg === "当前" && c.st !== "已卸载" ? idBtn("licRotate", c.id, "轮换") : "");
+    return "<tr><td>" + idStTag(tg) + (dead ? ' <span class="mini muted">实例已卸载·不生效</span>' : "") + "</td><td><b>" + esc(l.no) + "</b></td>" +
+      '<td><span class="kr">' + esc(l.ca) + "</span></td>" +
+      "<td>" + esc(l.issued) + "</td><td>" + esc(l.exp) + "</td>" +
+      '<td class="cell-cov">' + esc(l.scope) + "</td>" +
+      "<td>" + acts + "</td></tr>";
+  }).join("");
+  var ais = ID.ain.filter(function (a) { return a.host === c.id; });
+  var aiRows = ais.map(function (a) {
+    return "<tr><td><b>" + esc(idName(ID.asw, a.asw)) + "</b></td><td>" + esc(a.pid) + "</td>" +
+      "<td>" + idStTag(idAgInSt(a)) + "</td>" +
+      "<td>" + idBtn("ainGoto", a.asw, "去实例管理", "", ' data-t="' + esc(a.term) + '"') + "</td></tr>";
+  }).join("");
+  var btns = "";
+  if (c.st === "已激活") btns += '<button class="btn" data-idact="cinToggle" data-id="' + c.id + '">禁用</button>';
+  else if (c.st === "已禁用") btns += '<button class="btn" data-idact="cinToggle" data-id="' + c.id + '">激活</button>';
+  if (c.st !== "已卸载") btns += '<button class="btn danger" data-idact="cinUninstall" data-id="' + c.id + '">卸载</button>';
+  return idTitle("客户端实例详情 · " + (sw.name || ""),
+      "客户端序列号 <b>" + esc(c.cidseq) + "</b> · 所在终端 " + esc(idName(ID.terms, c.term, "id", "name")),
+      '<div class="toolbar"><button class="btn" data-idact="cinList">← 返回列表</button>' +
+      btns + "</div>") +
+    (sw.agent ? '<div class="hint-row"><i class="ic">特殊</i><div>该实例是 <b>AI 安全 agent</b> —— 它下挂的智能体实例是「<b>被它监管的 AI agent</b>」，但<b>下钻查看入口只在「智能体实例管理」页</b>，本页只显示该标记与只读串联。</div></div>' : "") +
+    idTabBar("idCinTabs", [["t1", "实例信息"], ["t2", "License 证书"], ["t3", "智能体实例"]], idcTab) +
+    idTabPane("idCinTabs", "t1", idcTab === "t1",
+      '<div class="card"><div class="card-h"><h3>实例信息</h3></div><div class="card-b">' +
+      '<div class="kv" style="grid-template-columns:150px 1fr 150px 1fr">' +
+      idKvLeft("所属客户端软件") + idKvVal(esc(sw.name || "—") + "　" + idBtn("swGoto", c.sw, "查看软件登记")) +
+      idKvLeft("所在终端") + idKvVal(esc(idName(ID.terms, c.term, "id", "name")) + "　" + idBtn("termGoto", c.term, "查看终端")) +
+      idKvLeft("客户端序列号") + idKvVal(esc(c.cidseq)) +
+      idKvLeft("状态") + idKvVal(idStTag(c.st) + " " + idStTag(c.online)) +
+      "</div></div></div>" +
+    idCinVerCard(c)) +
+    idTabPane("idCinTabs", "t2", idcTab === "t2",
+      '<div class="card"><div class="card-h"><h3>License 证书<span class="sub">一个实例下可挂多份 · 看与改均在本页</span></h3>' +
+      (c.st === "已卸载" ? "" : '<div class="toolbar"><button class="btn" data-idact="cinNewLic" data-id="' + c.id + '">签发证书</button></div>') + "</div>" +
+      '<div class="card-b">' + idTbl(["阶段", "证书编号", "签发 CA", "生效日期", "有效期至", "授权范围", "操作"],
+        licRows || idEmptyRow(7, "该实例暂无证书"), ["92px", "160px", "130px", "105px", "105px", null, "110px"]) +
+      '<div class="mini" style="margin-top:8px">License 证书是<b>平台自定义封装的 License 容器</b>（非 X.509 证书）；内封<b>授权信息</b>（客户端序列号 / 终端序列号 / 授权范围 / 有效期）与建立 TLCP 隧道所需的 <b>CA 证书链</b>，<b>只含公钥、不含私钥</b>。容器内<b>含该终端的设备序列号</b>，凭据与终端绑定；终端其余档案在注册环节采集。轮换过渡期新旧证书<b>并存</b>，阶段由<b>有效期推导</b>（当前 / 待生效 / 已过期），吊销为<b>显式状态</b>且记录保留可追溯。</div>' +
+      "</div></div>") +
+    idTabPane("idCinTabs", "t3", idcTab === "t3",
+      '<div class="card"><div class="card-h"><h3>该实例上的智能体实例<span class="sub">含已终止（供追溯）· 只读串联 · 改动入口在「智能体实例管理」</span></h3></div>' +
+      '<div class="card-b">' + idTbl(["智能体软件", "进程号", "状态", "操作"],
+        aiRows || idEmptyRow(4, "该实例上暂无智能体实例"), [null, "80px", "92px", "140px"]) + "</div></div>");
+}
+
+/* ---------- 6. 页⑤ 智能体软件管理（pg-idagsw） ---------- */
+var IDA = { cur: "", pg: 1, f: { k: "", st: "" } };
+function idAgSwPage() {
+  if (IDA.cur) { var a = ID.asw.filter(function (x) { return x.id === IDA.cur; })[0]; if (a) return idAgSwDetail(a); }
+  var pool = idAgSwFiltered();
+  var size = LIST_PAGE, pg = Math.max(1, Math.min(IDA.pg, Math.ceil(pool.length / size) || 1));
+  IDA.pg = pg;
+  var body = pool.slice((pg - 1) * size, pg * size).map(function (a) {
+    var ninst = ID.ain.filter(function (x) { return x.asw === a.id; }).length;
+    return "<tr><td><b>" + esc(a.name) + "</b></td><td>" + esc(a.vendor) + "</td>" +
+      "<td>" + esc(a.ver.join(" / ")) + "</td>" +
+      "<td>" + (a.guardian ? esc(idName(ID.csw, a.guardian)) : '<span class="tag t-warn">待指定</span>') + "</td>" +
+      "<td>" + idStTag(a.st) + "</td>" +
+      '<td class="cell-cov">' + esc(a.policy) + "</td>" +
+      "<td>" + ninst + " 个</td>" +
+      "<td>" + idBtn("agswView", a.id, "详情", "sm") + idBtn("agswEdit", a.id, "编辑") + "</td></tr>";
+  }).join("");
+  return idTitle("智能体软件管理", "受 <b>AI 安全 agent 监管</b>的 AI agent 软件（软件级）· <b>不集成 SDK</b>，与客户端软件是两条平行线",
+      '<div class="toolbar"><button class="btn primary" data-idact="agswNew">登记智能体软件</button></div>') +
+    idRefNote("<b>智能体不是客户端软件的一种</b>：客户端软件的判定依据是<b>是否集成 SDK</b>，智能体的判定依据是<b>是否受 AI 安全 agent 监管</b>（且不集成 SDK）。AI agent <b>只在智能体两页查看</b>，客户端实例页不下钻。") +
+    '<div class="card"><div class="card-b">' +
+    '<div class="toolbar" style="margin-bottom:12px">' +
+      '<div class="input-w"><input type="search" id="idagswK" aria-label="搜索智能体软件" placeholder="搜索智能体软件 / 厂商" style="width:230px" value="' + esc(IDA.f.k) + '"><i aria-hidden="true">搜索</i></div>' +
+      '<select id="idagswSt" aria-label="按状态筛选"><option value="">全部状态</option>' +
+        ["受管", "待纳管"].map(function (o) { return "<option" + (IDA.f.st === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") +
+      "</select>" +
+    "</div>" +
+    idTbl(["智能体软件", "厂商 / 来源", "版本", "监管的 AI 安全 agent", "状态", "受管策略", "实例数", "操作"],
+      body || idEmptyRow(8, "没有符合条件的智能体软件"),
+      /* R19（实测）：受管策略需 315px（原 219px ⇒ 折两行）；按自然宽度重排后 8 列全部单行。 */
+      [null, "100px", "106px", "156px", "90px", "320px", "70px", "118px"]) +
+    '<div class="lst-foot"><div id="idagswPager" role="navigation" aria-label="智能体软件列表分页" style="flex:1"></div></div>' +
+    '<div class="mini" style="margin-top:8px"><b>状态</b>由「是否已指定监管的 AI 安全 agent」决定：已指定 ⇒ <b>受管</b>；未指定 ⇒ <b>待纳管</b>（尚未纳入监管，不能登记其运行实例）。</div>' +
+    "</div></div>";
+}
+function idAgSwFiltered() {
+  var f = IDA.f || {};
+  return (ID.asw || []).filter(function (a) {
+    if (f.k) {
+      /* 搜索覆盖可见列：监管的 AI 安全 agent 为可见列（显示其名），纳入命中面。 */
+      var hay = (a.name + " " + a.vendor + " " + (a.ver || []).join(" ") + " " + (a.guardian ? idName(ID.csw, a.guardian) : "")).toLowerCase();
+      if (hay.indexOf(String(f.k).toLowerCase()) < 0) return false;
+    }
+    if (f.st && a.st !== f.st) return false;
+    return true;
+  });
+}
+function idAgSwDetail(a) {
+  var insts = ID.ain.filter(function (x) { return x.asw === a.id; });
+  var rows = insts.map(function (i) {
+    return "<tr><td>" + esc(idName(ID.terms, i.term, "id", "name")) + "</td>" +
+      '<td><span class="kr">' + esc(i.cred ? i.cred.no : "—") + "</span></td>" +
+      "<td>" + esc(i.pid) + "</td><td>" + idStTag(idAgInSt(i)) + "</td>" +
+      "<td>" + idBtn("ainGoto", a.id, "去实例管理") + "</td></tr>";
+  }).join("");
+  return idTitle("智能体软件详情 · " + a.name,
+      "厂商 " + esc(a.vendor) + " · 版本 " + esc(a.ver.join(" / ")),
+      '<div class="toolbar"><button class="btn" data-idact="agswList">← 返回列表</button>' +
+      '<button class="btn" data-idact="agswEdit" data-id="' + a.id + '">编辑</button></div>') +
+    '<div class="card"><div class="card-h"><h3>登记信息</h3></div><div class="card-b">' +
+      '<div class="kv" style="grid-template-columns:150px 1fr 150px 1fr">' +
+      idKvLeft("智能体软件") + idKvVal(esc(a.name)) +
+      idKvLeft("厂商 / 来源") + idKvVal(esc(a.vendor)) +
+      idKvLeft("版本列表") + idKvVal(esc(a.ver.join(" / "))) +
+      idKvLeft("进程名 / 可执行文件") + idKvVal(esc(a.proc || "—")) +
+      idKvLeft("监管的 AI 安全 agent") + idKvVal(a.guardian ? esc(idName(ID.csw, a.guardian)) + "（客户端软件管理中的特殊客户端）" : '<span class="tag t-warn">待指定</span>') +
+      idKvLeft("状态") + idKvVal(idStTag(a.st)) +
+      idKvLeft("SDK 集成") + idKvVal("<b>不集成</b>（由 AI 安全 agent 强制监管）") +
+      "</div>" +
+      '<div class="mini" style="margin-top:8px">智能体身份三要素：<b>持有短时凭据</b> + <b>宿主实例的客户端 License 证书</b> + <b>所在终端指纹</b>。⚠ 智能体<b>自己不持证书</b>，它依托<b>宿主实例</b>的证书；宿主必须是 <b>AI 安全 agent 的客户端实例</b>。</div>' +
+    "</div></div>" +
+    '<div class="card"><div class="card-h"><h3>受管策略</h3></div><div class="card-b">' +
+      '<div class="kv" style="grid-template-columns:150px 1fr">' + idKvLeft("可访问范围") + idKvVal(esc(a.policy)) + "</div>" +
+      '<div class="mini" style="margin-top:8px">受管策略由<b>监管它的 AI 安全 agent</b> 执行；资产访问的最终判定仍由资产访问策略（资产侧 ABAC）承担，本页只登记该智能体的受管范围。</div>' +
+    "</div></div>" +
+    '<div class="card"><div class="card-h"><h3>智能体实例<span class="sub">实例台账在「智能体实例管理」· 此处只读串联</span></h3></div>' +
+      '<div class="card-b">' + idTbl(["所在终端", "短时凭据", "进程号", "状态", "操作"],
+        rows || idEmptyRow(5, "该智能体软件暂无实例"), [null, "180px", "80px", "92px", "150px"]) + "</div></div>";
+}
+
+/* ---------- 7. 页⑥ 智能体实例管理（pg-idagin） ---------- */
+var IDAI = { f: { k: "", asw: "", st: "", term: "" }, pg: 1 };
+function idAgInFiltered() {
+  var f = IDAI.f;
+  return (ID.ain || []).filter(function (a) {
+    var nm = idName(ID.asw, a.asw);
+    var hay = (nm + " " + a.pid + " " + idName(ID.terms, a.term, "id", "name") + " " + (a.cred ? a.cred.no : "")).toLowerCase();
+    if (f.k && hay.indexOf(String(f.k).toLowerCase()) < 0) return false;
+    if (f.asw && a.asw !== f.asw) return false;
+    if (f.st && idAgInSt(a) !== f.st) return false;
+    if (f.term && a.term !== f.term) return false;
+    return true;
+  });
+}
+function idAgInPage() {
+  var rows = idAgInFiltered();
+  var size = LIST_PAGE, pg = Math.max(1, Math.min(IDAI.pg, Math.ceil(rows.length / size) || 1));
+  IDAI.pg = pg;
+  var slice = rows.slice((pg - 1) * size, pg * size);
+  var body = slice.map(function (a) {
+    var host = idCinOf(a.host);
+    var st = idAgInSt(a);
+    var acts = st === "已终止"
+      ? '<span class="mini muted">已终止</span>'
+      : idBtn("ainEnd", a.id, "终止") + idBtn("ainRenew", a.id, "续发凭据");
+    return "<tr><td><b>" + esc(idName(ID.asw, a.asw)) + "</b> " + idBtn("agswGoto", a.asw, "软件详情") + "</td>" +
+      "<td>" + esc(idName(ID.terms, a.term, "id", "name")) + "</td>" +
+      "<td>" + (idIsSafeHost(host) ? esc(idName(ID.csw, host.sw)) + "（<span class=\"kr\">" + esc(host.cidseq || "—") + "</span>）" : '<span class="tag t-warn">宿主缺失或非 AI 安全 agent 实例</span>') + "</td>" +
+      '<td><span class="kr">' + esc(a.cred ? a.cred.no : "—") + "</span></td>" +
+      "<td>" + esc(a.cred ? a.cred.exp : "—") + "</td>" +
+      "<td>" + esc(a.pid) + "</td>" +
+      "<td>" + idStTag(st) + "</td>" +
+      "<td>" + acts + "</td></tr>";
+  }).join("");
+  return idTitle("智能体实例管理", "AI agent 在具体终端上的实例台账 · 持有<b>短时凭据</b>，身份依托<b>宿主实例证书 + 终端指纹</b>",
+      '<div class="toolbar"><button class="btn primary" data-idact="ainNew">登记智能体实例</button></div>') +
+    idRefNote("智能体身份 = 持有凭据 + <b>宿主实例的客户端 License 证书</b> + <b>所在终端指纹</b>。⚠ 智能体<b>自己不持证书</b>，依托宿主实例；<b>修改入口只在本页与「智能体软件管理」</b>（权威面唯一）。") +
+    '<div class="card"><div class="card-b">' +
+    '<div class="toolbar" style="margin-bottom:12px">' +
+      '<div class="input-w"><input type="search" id="idaK" aria-label="搜索智能体实例" placeholder="搜索智能体软件 / 进程号 / 所在终端 / 凭据编号" style="width:300px" value="' + esc(IDAI.f.k) + '"><i aria-hidden="true">搜索</i></div>' +
+      '<select id="idaSw" aria-label="按智能体软件筛选"><option value="">全部智能体软件</option>' + ID.asw.map(function (s) { return "<option value=\"" + s.id + "\"" + (IDAI.f.asw === s.id ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("") + "</select>" +
+      '<select id="idaTerm" aria-label="按所在终端筛选"><option value="">全部终端</option>' + ID.terms.map(function (t) { return "<option value=\"" + t.id + "\"" + (IDAI.f.term === t.id ? " selected" : "") + ">" + esc(t.name) + "</option>"; }).join("") + "</select>" +
+      /* ★ R20：筛选取值域须覆盖**派生输出全域** —— `idAgInSt` 还会产出「—」（无凭据 / 旧快照），
+         此前不在下拉中 ⇒ 这类实例永远筛不出来，无法盘点。 */
+      '<select id="idaSt" aria-label="按状态筛选"><option value="">全部状态</option>' + ["运行中", "已过期", "已吊销", "已终止", "—"].map(function (o) { return "<option" + (IDAI.f.st === o ? " selected" : "") + ">" + (o === "—" ? "—（无凭据）" : esc(o)) + "</option>"; }).join("") + "</select>" +
+    "</div>" +
+    idTbl(["智能体软件", "所在终端", "宿主客户端实例", "短时凭据", "凭据有效期至", "进程号", "状态", "操作"],
+      body || idEmptyRow(8, "没有符合条件的智能体实例"),
+      /* R19（实测）：宿主客户端实例需 245px（原 191px ⇒ 折行）；按自然宽度重排。 */
+      [null, "152px", "252px", "126px", "142px", "70px", "90px", "126px"]) +
+    '<div class="lst-foot"><div id="idaPager" role="navigation" aria-label="智能体实例列表分页" style="flex:1"></div></div>' +
+    '<div class="mini" style="margin-top:8px">短时凭据由 <b>AI 安全 agent 与服务端共同颁发</b>，<b>短时效</b>（演示中默认 30 分钟），到期须续发；凭据不落地、用毕即销毁。<b>状态按凭据有效期推导</b>：未到期 ⇒ 运行中，已到期 ⇒ 已过期（可续发）；已吊销为显式状态（短时凭据被吊销后立即失效，可续发）；已终止为显式状态，须重新登记。宿主必须是 <b>AI 安全 agent 的客户端实例</b>，终端随宿主派生。</div>' +
+    "</div></div>";
+}
+
+/* ---------- 8. 统一渲染入口（bootstrap 调用） ---------- */
+function idRerender() {
+  if (document.getElementById("pg-iduser")) renderIdUser();
+  else if (document.getElementById("pg-idterm")) renderIdTerm();
+  else if (document.getElementById("pg-idcsw")) renderIdCSW();
+  else if (document.getElementById("pg-idcin")) renderIdCIN();
+  else if (document.getElementById("pg-idagsw")) renderIdAGSW();
+  else if (document.getElementById("pg-idagin")) renderIdAGIN();
+}
+/* 跨页深链：goPage 是整页跳转（location.href），页内变量必然丢失 ⇒ 目标经查询参数承载。
+   一次装载只施加一次（否则页内重渲染会把用户后续的筛选 / 返回操作覆盖掉），
+   且只对**本页职责范围内且目标真实存在**的参数生效 —— 目标不存在则静默忽略，不伪造入口。 */
+function idDeepLink(page) {
+  if (window.__idDeepLink) return;
+  window.__idDeepLink = true;
+  var q = null;
+  try { q = new URLSearchParams(location.search); } catch (e) { return; }
+  var cur = q.get("cur") || "", inst = q.get("inst") || "", asw = q.get("asw") || "", term = q.get("term") || "";
+  var has = function (arr, id) { return !!id && (arr || []).some(function (x) { return x.id === id; }); };
+  if (page === "pg-iduser") {
+    if (has(ID.users, cur)) IDU.cur = cur;
+  } else if (page === "pg-idterm") {
+    if (has(ID.cin, inst)) { var ci = idCinOf(inst); IDT.cur = ci.term; IDT.inst = inst; }
+    else if (has(ID.terms, cur)) { IDT.cur = cur; IDT.inst = ""; }
+  } else if (page === "pg-idcsw") {
+    if (has(ID.csw, cur)) IDS.cur = cur;
+  } else if (page === "pg-idcin") {
+    if (has(ID.cin, cur)) IDC.cur = cur;
+    else if (q.get("sw") && has(ID.csw, q.get("sw"))) IDC.f.sw = q.get("sw");
+    /* ★ R21（I4）：深链可指定初始页签（如 licGoto 带 tab=t2 直达证书）。取值白名单，非法值忽略。 */
+    var dt = q.get("tab") || "";
+    if (dt === "t1" || dt === "t2" || dt === "t3") IDC.tab = dt;
+  } else if (page === "pg-idagsw") {
+    if (has(ID.asw, cur)) IDA.cur = cur;
+  } else if (page === "pg-idagin") {
+    if (has(ID.asw, asw)) IDAI.f.asw = asw;
+    if (has(ID.terms, term)) IDAI.f.term = term;
+  }
+}
+function renderIdUser()     { var el = document.getElementById("pg-iduser"); if (!el) return; if (!ID) idLoad(); idDeepLink("pg-iduser"); el.innerHTML = idUserPage(); idMountPagers(); }
+function renderIdTerm()     { var el = document.getElementById("pg-idterm"); if (!el) return; if (!ID) idLoad(); idDeepLink("pg-idterm"); el.innerHTML = idTermPage(); idMountPagers(); }
+function renderIdCSW()      { var el = document.getElementById("pg-idcsw"); if (!el) return; if (!ID) idLoad(); idDeepLink("pg-idcsw"); el.innerHTML = idSwPage(); idMountPagers(); }
+function renderIdCIN()      { var el = document.getElementById("pg-idcin"); if (!el) return; if (!ID) idLoad(); idDeepLink("pg-idcin"); el.innerHTML = idCinPage(); idMountPagers(); }
+function renderIdAGSW()     { var el = document.getElementById("pg-idagsw"); if (!el) return; if (!ID) idLoad(); idDeepLink("pg-idagsw"); el.innerHTML = idAgSwPage(); idMountPagers(); }
+function renderIdAGIN()     { var el = document.getElementById("pg-idagin"); if (!el) return; if (!ID) idLoad(); idDeepLink("pg-idagin"); el.innerHTML = idAgInPage(); idMountPagers(); }
+
+/* ---------- 9. 交互（委托挂在页容器上，与身份适配页签同约定） ---------- */
+function idOnClick(e) {
+  var t = e.target && e.target.closest ? e.target.closest("[data-idact]") : null;
+  if (!t) return;
+  var act = t.getAttribute("data-idact");
+  var id = t.getAttribute("data-id") || "";
+  var rerender = idRerender;
+  switch (act) {
+    /* 详情页 TAB：只切显隐、不重渲染；切换态存回模块状态 ⇒ 重渲染（如改完一项回来）仍停在原分区 */
+    case "idTab": {
+      var nav = t.getAttribute("data-nav") || "", tk = t.getAttribute("data-t") || "";
+      idTabShow(nav, tk);
+      if (nav === "idTermTabs") IDT.tab = tk;
+      else if (nav === "idSwTabs") IDS.tab = tk;
+      else if (nav === "idCinTabs") IDC.tab = tk;
+      break;
+    }
+    /* 用户管理 */
+    case "userView": IDU.cur = id; rerender(); break;
+    case "userBack": IDU.cur = ""; rerender(); break;
+    case "userToggle": {
+      var u = ID.users.filter(function (x) { return x.id === id; })[0]; if (!u) break;
+      if (u.st === "已锁定") {
+        idAskEff("解锁用户",
+          "将解锁用户 <b>" + esc(u.name) + "</b>（当前 <b>已锁定</b>，连续登录失败 <b>" + (u.fail || 0) + "</b> 次）。解锁后该用户<b>可重新登录</b>；锁定是连续输错密码达设定次数后的<b>自动处置</b>，解锁须管理员手工执行。<b>本次变更入审计</b>。",
+          function () { u.st = "已启用"; u.fail = 0; idSave(); rerender(); toast("已解锁（演示）"); });
+        break;
+      }
+      var to = u.st === "已启用" ? "已禁用" : "已启用";
+      idAskEff(to === "已禁用" ? "禁用用户" : "启用用户",
+        "将把用户 <b>" + esc(u.name) + "</b> 置为 <b>" + to + "</b>。" + (to === "已禁用" ? "该用户<b>无法登录</b>，正在使用系统的会话将被<b>强制下线</b>。" : "该用户<b>即刻可登录</b>，可使用的终端仍受绑定关系约束。") + "<b>本次变更入审计</b>。",
+        function () { u.st = to; idSave(); rerender(); toast("已" + to.slice(1) + "（演示）"); });
+      break;
+    }
+    case "userEdit": {
+      var u2 = ID.users.filter(function (x) { return x.id === id; })[0]; if (!u2) break;
+      var oldName = u2.name, oldRole = u2.role;
+      openDlg("编辑用户", "修改用户基础信息与角色。⚠ 三个管理角色（系统 / 安全 / 审计管理员）<b>两两互斥</b>，不可同时赋予。手机号用于首次登录短信验证与账号找回。",
+        '<div class="fld"><label>姓名</label><input id="idufName" value="' + esc(u2.name) + '"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>手机号 <span class="req">*</span></label><input id="idufPhone" value="' + esc(u2.phone || "") + '" placeholder="11 位手机号"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>归属组织</label><input id="idufOrg" value="' + esc(u2.org) + '"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>角色</label><select id="idufRole">' +
+          ["操作员", "系统管理员", "安全管理员", "审计管理员"].map(function (r) { return "<option" + (u2.role === r ? " selected" : "") + ">" + r + "</option>"; }).join("") + "</select></div>");
+      $("#dlg1Ok").onclick = function () {
+        var nm = ($("#idufName").value || "").trim(), ph = ($("#idufPhone").value || "").trim();
+        var og = ($("#idufOrg").value || "").trim(), nr = $("#idufRole").value;
+        if (!nm) { markBad($("#idufName"), true); toast("请填写姓名"); return; }
+        if (!/^1[3-9]\d{9}$/.test(ph)) { markBad($("#idufPhone"), true); toast("请填写 11 位有效手机号"); return; }
+        if (ID.users.some(function (x) { return x.id !== u2.id && x.name === nm; })) { markBad($("#idufName"), true); toast("姓名已存在"); return; }
+        var apply = function () {
+          u2.name = nm; u2.phone = ph; u2.org = og || "未分配组织"; u2.role = nr;
+          /* 改名级联：终端归属按 ownerId 关联，展示名随动 —— 否则用户改名后终端侧仍显示旧名、归属判定失配。 */
+          if (nm !== oldName) {
+            ID.terms.forEach(function (tm) {
+              if (tm.ownerId === u2.id || (!tm.ownerId && tm.owner === oldName)) { tm.ownerId = u2.id; tm.owner = nm; }
+            });
+            /* 注册申请按姓名存归属人（apps.owner）⇒ 改名须一并回填：否则审核弹窗仍显示旧名，
+               且通过时 idUserByName(p.owner) 落空、建成一个无归属终端。 */
+            (ID.apps || []).forEach(function (p) { if (p.owner === oldName) p.owner = nm; });
+          }
+          idSave(); closeDlg(); rerender(); toast("已保存（演示）");
+        };
+        /* 角色变更＝权限范围变更（生效面）⇒ 二次认证；仅改基础信息按普通保存处理。 */
+        if (nr !== oldRole) {
+          idAskEff("变更用户角色",
+            "将把 <b>" + esc(nm) + "</b> 的角色由 <b>" + esc(oldRole) + "</b> 变更为 <b>" + esc(nr) + "</b>。" +
+            (["系统管理员", "安全管理员", "审计管理员"].indexOf(nr) >= 0 || ["系统管理员", "安全管理员", "审计管理员"].indexOf(oldRole) >= 0
+              ? "三个管理角色<b>两两互斥</b>；变更后该用户<b>立刻按新角色授权</b>（含管理面可见范围）。" : "") + "<b>本次变更入审计</b>。", apply);
+        } else apply();
+      };
+      break;
+    }
+    case "userNew": {
+      openDlg("新建用户", "创建单个用户。批量导入的用户<b>无初始密码</b>，首次登录须经手机短信验证后自助设置密码。",
+        '<div class="fld"><label>姓名 <span class="req">*</span></label><input id="idunName" placeholder="如 赵敏"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>账号 <span class="req">*</span></label><input id="idunAcct" placeholder="如 zhaomin"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>手机号 <span class="req">*</span></label><input id="idunPhone" placeholder="11 位手机号（首次登录短信验证用）"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>归属组织</label><input id="idunOrg" placeholder="如 信贷管理部"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>角色</label><select id="idunRole"><option>操作员</option><option>系统管理员</option><option>安全管理员</option><option>审计管理员</option></select></div>');
+      $("#dlg1Ok").onclick = function () {
+        var nm = ($("#idunName").value || "").trim();
+        var ph = ($("#idunPhone").value || "").trim();
+        var ac = ($("#idunAcct").value || "").trim();
+        if (!nm) { markBad($("#idunName"), true); toast("请填写姓名"); return; }
+        if (!/^1[3-9]\d{9}$/.test(ph)) { markBad($("#idunPhone"), true); toast("请填写 11 位有效手机号"); return; }
+        if (!/^[A-Za-z][A-Za-z0-9_.-]{2,31}$/.test(ac)) { markBad($("#idunAcct"), true); toast("账号须为 3~32 位、以字母开头（字母 / 数字 / _ . -）"); return; } if (ID.users.some(function (x) { return x.acct === ac; })) { markBad($("#idunAcct"), true); toast("账号已存在"); return; }
+        ID.users.unshift({ id: "u_" + Date.now(), name: nm, acct: ac, org: ($("#idunOrg").value || "").trim() || "未分配组织", role: $("#idunRole").value, st: "已启用", phone: ph, fail: 0, bound: [], allow: [] });
+        idSave(); closeDlg(); IDU.cur = ""; IDU.pg = 1; rerender(); toast("已创建（演示）");
+      };
+      break;
+    }
+    case "userImport":
+      openDlg("Excel 批量导入", "导入的用户<b>无初始密码</b>，首次登录须<b>通过手机短信验证后自助设置密码</b>；导入结果与失败明细可下载。",
+        '<div class="fld"><label>选择文件</label><input type="file" id="iduFile" accept=".xlsx,.xls"></div>' +
+        '<div class="help" style="margin-top:8px">演示环境不实际解析文件；模板列：姓名 / 账号 / 手机号 / 归属组织 / 角色。</div>');
+      $("#dlg1Ok").onclick = function () { closeDlg(); toast("已导入 0 条（演示环境不解析文件）"); };
+      break;
+    case "userReset":
+      idAskEff("重置密码", "将重置该用户密码，用户下次登录须<b>重新设置</b>（重置后的临时凭据由用户自助设置阶段替换）。该动作即刻生效并<b>入审计</b>。", function () { toast("已重置密码（演示环境不落凭据状态）"); });
+      break;
+    case "bindTerm": {
+      var bu = ID.users.filter(function (x) { return x.id === id; })[0]; if (!bu) break;
+      var opts = ID.terms.filter(function (t) { return (bu.bound || []).indexOf(t.id) < 0 && t.st !== "已注销"; });
+      openDlg("绑定终端", "为 <b>" + esc(bu.name) + "</b> 绑定终端（关系表为唯一权威面，终端侧同步可见）。绑定即同时获得<b>归属</b>与<b>使用权限</b>。",
+        '<div class="fld"><label>选择终端</label><select id="iduBind">' +
+          (opts.length ? opts.map(function (t) { return '<option value="' + t.id + '">' + esc(t.name) + "（当前归属 " + esc(t.owner) + "）</option>"; }).join("") : '<option value="">（暂无可绑定终端）</option>') + "</select></div>" +
+        (opts.length ? "" : '<div class="help" style="margin-top:8px">可绑定终端为空：本用户已归属全部在册终端。</div>'));
+      $("#dlg1Ok").onclick = function () {
+        var sel = $("#iduBind"); if (!sel || !sel.value) { closeDlg(); toast("暂无可绑定终端"); return; }
+        var tt = ID.terms.filter(function (x) { return x.id === sel.value; })[0];
+        idAskEff("绑定终端",
+          "将把终端 <b>" + esc(tt.name) + "</b> 绑定到 <b>" + esc(bu.name) + "</b>：该用户同时成为其<b>归属用户</b>并取得<b>使用权限</b>；终端侧归属随之变更。<b>本次变更入审计</b>。",
+          function () {
+            var prev = idUserOf(tt);
+            if (prev && prev.id !== bu.id) idBindWrite(prev, tt.id, true);
+            idBindWrite(bu, tt.id);
+            tt.ownerId = bu.id; tt.owner = bu.name;
+            idSave(); closeDlg(); rerender(); toast("已绑定（演示）");
+          });
+      };
+      break;
+    }
+    case "unbind": {
+      var tu = ID.users.filter(function (x) { return x.id === id; })[0];
+      var tid = t.getAttribute("data-t"); if (!tu || !tid) break;
+      var tm2 = ID.terms.filter(function (x) { return x.id === tid; })[0] || {};
+      idAskEff("解除授权", "将解除 <b>" + esc(tu.name) + "</b> 对终端 <b>" + esc(tm2.name || "") + "</b> 的<b>使用权限</b>（终端<b>归属不变</b>，仍属其归属用户）。<b>本次变更入审计</b>。",
+        function () {
+          tu.allow = (tu.allow || []).filter(function (x) { return x !== tid; });
+          idSave(); rerender(); toast("已解除授权（演示）");
+        });
+      break;
+    }
+    case "unbindOwn": {
+      var ou = ID.users.filter(function (x) { return x.id === id; })[0];
+      var oid = t.getAttribute("data-t"); if (!ou || !oid) break;
+      var ot = ID.terms.filter(function (x) { return x.id === oid; })[0] || {};
+      idAskEff("解除归属", "将解除 <b>" + esc(ou.name) + "</b> 与终端 <b>" + esc(ot.name || "") + "</b> 的<b>归属关系</b>（同时收回其使用权限）。终端将变为<b>无归属</b>，须重新指定归属用户后方可由新用户使用。<b>本次变更入审计</b>。",
+        function () {
+          idBindWrite(ou, oid, true);
+          ot.ownerId = ""; ot.owner = "（未指定）";
+          idSave(); rerender(); toast("已解除归属（演示）");
+        });
+      break;
+    }
+    /* 终端管理 */
+    case "termView": IDT.cur = id; IDT.inst = ""; IDT.tab = "t1"; rerender(); break;
+    case "termList": IDT.cur = ""; IDT.inst = ""; rerender(); break;
+    case "instLic": IDT.inst = id; rerender(); break;
+    case "termBack": IDT.inst = ""; IDT.cur = id; rerender(); break;
+    case "termApply": idOpenApply(); break;
+    case "termDisable": {
+      var tm = ID.terms.filter(function (x) { return x.id === id; })[0]; if (!tm) break;
+      /* 只允许「已激活 ↔ 已禁用」互转：终态（已注销）与未激活不得被 toggle 复活
+         （UI 上不渲染该按钮，此为程序化 / 异常触发的防御）。 */
+      if (tm.st !== "已激活" && tm.st !== "已禁用") { toast("该终端当前为「" + tm.st + "」，不可启停"); break; }
+      var nst = tm.st === "已禁用" ? "已激活" : "已禁用";
+      idAskEff(nst === "已禁用" ? "禁用终端" : "激活终端",
+        "将把终端 <b>" + esc(tm.name) + "</b> 置为 <b>" + nst + "</b>。" + (nst === "已禁用" ? "该终端<b>无法登录</b>，在线用户将被<b>强制下线</b>（适用设备丢失或离职），其上的客户端实例<b>不参与隧道建立</b>。" : "激活后该终端<b>即刻恢复登录能力</b>。") + "<b>本次变更入审计</b>。",
+        function () { tm.st = nst; if (nst === "已禁用") { tm.online = "离线"; (ID.cin || []).forEach(function (c) { if (c.term === tm.id) c.online = "离线"; }); } idSave(); rerender(); toast("已" + nst.slice(1) + "（演示）"); });
+      break;
+    }
+    case "termLogout":
+      idAskEff("注销终端", "注销后该终端<b>需重新注册</b>才能使用（适用设备更换或重装系统）；其上的客户端实例<b>一并置为已卸载</b>、智能体实例<b>一并终止</b>，绑定关系<b>同时解除</b>。历史使用记录与审核记录<b>保留可追溯</b>。<b>此操作入审计</b>。", function () {
+        var tm = ID.terms.filter(function (x) { return x.id === id; })[0]; if (tm) { tm.st = "已注销"; tm.online = "离线"; tm.ownerId = ""; tm.owner = "（未指定）"; } (ID.cin || []).forEach(function (c) { if (c.term === id) { c.st = "已卸载"; c.online = "离线"; } }); (ID.ain || []).forEach(function (a) { if (a.term === id) a.st = "已终止"; });
+        ID.users.forEach(function (u) { idBindWrite(u, id, true); });
+        idSave(); IDT.cur = ""; IDT.inst = ""; rerender(); toast("已注销（演示）");
+      });
+      break;
+    case "termOwn": {
+      var to2 = ID.terms.filter(function (x) { return x.id === id; })[0]; if (!to2) break;
+      /* ★ R21（I3）：候选过滤只约束「可选性」，不约束「已在位的事实」——
+         此前把「禁用 / 锁定」用户整列滤掉，若终端**现任归属**恰是这类用户，现任就不在候选里
+         ⇒ `<select>` 的 selected 落空、默认停在「（不指定归属）」，不改任何字段点确定即**静默清空归属**。 */
+      var toCand = ID.users.filter(function (u) { return (u.st !== "已禁用" && u.st !== "已锁定") || u.id === to2.ownerId; });
+      openDlg("变更归属用户", "终端的<b>归属用户</b>是绑定关系的权威处之一（另一处是「用户管理」的用户详情）。变更归属会<b>同时变更使用权限</b>。",
+        '<div class="fld"><label>归属用户</label><select id="tmoUser"><option value="">（不指定归属）</option>' +
+          toCand.map(function (u) { var dis = (u.st === "已禁用" || u.st === "已锁定"); return '<option value="' + u.id + '"' + (to2.ownerId === u.id ? " selected" : "") + (dis ? " disabled" : "") + ">" + esc(u.name) + "（" + esc(u.acct) + " · " + esc(u.org) + (dis ? " · " + esc(u.st) + "（现任）" : "") + "）</option>"; }).join("") + "</select></div>" +
+        '<div class="help" style="margin-top:8px">可选<b>非禁用</b>用户；现任归属若处于<b>禁用 / 锁定</b>态，仍保留在候选并标注，便于识别 —— 不改该项直接确定<b>不会清空归属</b>。</div>');
+      $("#dlg1Ok").onclick = function () {
+        var nid = $("#tmoUser").value;
+        var nu = nid ? ID.users.filter(function (x) { return x.id === nid; })[0] : null;
+        if (nid && !nu) { closeDlg(); return; }
+        var prev = idUserOf(to2);
+        idAskEff("变更终端归属",
+          "终端 <b>" + esc(to2.name) + "</b> 的归属将由 <b>" + esc(prev ? prev.name : "（未指定）") + "</b> 变更为 <b>" + esc(nu ? nu.name : "（未指定）") + "</b>；原归属用户对该终端的<b>归属与使用权限一并收回</b>，新归属用户<b>即刻获得</b>。<b>本次变更入审计</b>。",
+          function () {
+            if (prev && (!nu || prev.id !== nu.id)) idBindWrite(prev, to2.id, true);
+            if (nu) { idBindWrite(nu, to2.id); to2.ownerId = nu.id; to2.owner = nu.name; }
+            else { to2.ownerId = ""; to2.owner = "（未指定）"; }
+            idSave(); closeDlg(); rerender(); toast("已变更归属（演示）");
+          });
+      };
+      break;
+    }
+    case "termEdit": {
+      var te = ID.terms.filter(function (x) { return x.id === id; })[0]; if (!te) break;
+      openDlg("编辑终端", "修改终端归属组织与备注。归属用户请走「变更归属用户」（涉及使用权限变更，需二次认证）。",
+        '<div class="fld"><label>归属组织</label><input id="idtOrgE" value="' + esc(te.org) + '"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>备注</label><input id="idtNote" value="' + esc(te.note || "") + '" placeholder="如 设备来源 / 使用场景"></div>');
+      $("#dlg1Ok").onclick = function () {
+        te.org = ($("#idtOrgE").value || "").trim() || te.org;
+        te.note = ($("#idtNote").value || "").trim();
+        idSave(); closeDlg(); rerender(); toast("已保存（演示）");
+      };
+      break;
+    }
+    case "termNew": {
+      openDlg("新增终端", "终端是<b>宿主侧入口</b>，串联客户端实例与智能体实例两条线。<b>设备指纹与 MAC 由客户端在注册时上报</b>，此处录入的是台账信息。新增后终端为<b>未激活</b>，须经注册审核转为已激活。",
+        '<div class="fld"><label>终端名称 <span class="req">*</span></label><input id="ntmName" placeholder="如 信贷管理部-王芳-PC"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>终端类型</label><select id="ntmType">' +
+          ["桌面终端", "笔记本", "服务器终端"].map(function (o) { return "<option>" + o + "</option>"; }).join("") + "</select></div>" +
+        '<div class="fld" style="margin-top:10px"><label>归属用户 <span class="req">*</span></label><select id="ntmOwner">' +
+          (ID.users.some(function (u) { return u.st !== "已禁用" && u.st !== "已锁定"; })
+            ? ID.users.filter(function (u) { return u.st !== "已禁用" && u.st !== "已锁定"; }).map(function (u) { return '<option value="' + u.id + '">' + esc(u.name) + "（" + esc(u.org) + "）</option>"; }).join("")
+            : '<option value="">（暂无可用用户）</option>') + "</select></div>" +
+        '<div class="fld" style="margin-top:10px"><label>归属组织</label><input id="ntmOrg" placeholder="如 信贷管理部"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>终端序列号 <span class="req">*</span></label><input id="ntmSn" placeholder="如 PC1D8E44A0F22C93"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>操作系统</label><input id="ntmOs" placeholder="如 Windows 11 专业版"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>注册方式</label><select id="ntmReg">' +
+          ["在线注册 · 管理员审核", "在线注册 · 自动审核", "离线注册 · 管理员审核"].map(function (o) { return "<option>" + o + "</option>"; }).join("") + "</select></div>");
+      $("#dlg1Ok").onclick = function () {
+        var nm = ($("#ntmName").value || "").trim();
+        var sn = ($("#ntmSn").value || "").trim();
+        if (!nm) { markBad($("#ntmName"), true); toast("请填写终端名称"); return; }
+        if (!sn) { markBad($("#ntmSn"), true); toast("请填写终端序列号"); return; }
+        if (ID.terms.some(function (x) { return x.sn === sn; })) { markBad($("#ntmSn"), true); toast("该硬件序列号已登记"); return; }
+        var ou = ID.users.filter(function (x) { return x.id === $("#ntmOwner").value; })[0];
+        if (!ou) { markBad($("#ntmOwner"), true); toast("请先在「用户管理」创建可用用户，再新增终端"); return; }
+        var tid2 = "t_" + Date.now();
+        ID.terms.unshift({
+          id: tid2, name: nm, sn: sn, mac: "", fp: "", os: ($("#ntmOs").value || "").trim() || "—",
+          type: $("#ntmType").value, owner: ou ? ou.name : "（未指定）", ownerId: ou ? ou.id : "",
+          org: ($("#ntmOrg").value || "").trim() || (ou ? ou.org : "—"),
+          st: "未激活", online: "离线", reg: ID_NOW, regway: $("#ntmReg").value
+        });
+        /* 归属写入关系表：新增终端即刻反映到用户侧，避免两侧数据打架。 */
+        if (ou) idBindWrite(ou, tid2);
+        /* ★ R21（I2）：新建项 unshift 在表首 ⇒ 必须复位分页，否则停在第 N 页新建后「看不到新建的那条」。 */
+        IDT.pg = 1; idSave(); closeDlg(); rerender(); toast("已新增（未激活，待注册审核）（演示）");
+      };
+      break;
+    }
+    /* 客户端软件管理 */
+    case "swView": IDS.cur = id; IDS.tab = "t1"; rerender(); break;
+    case "swList": IDS.cur = ""; rerender(); break;
+    case "swGoto": goPage("pg-idcsw", { cur: id }); break;
+    case "swToCin": goPage("pg-idcin", { sw: id }); break;
+    case "termGoto": goPage("pg-idterm", { cur: id }); break;
+    /* 跨页定位用户：身份模块 6 页中「用户」此前是唯一无任何发出端的对象，
+       而终端详情正展示其归属用户 ⇒ 补此入口闭合 pg-iduser 的 `?cur=` 深链。 */
+    case "userGoto": goPage("pg-iduser", { cur: id }); break;
+    case "swAmeth": {
+      /* 客户端软件可用的认证方式（有端侧登记面）。
+         与认证源页的「无端支持」标签共同构成「该方式在当前接入形态下能否用」的完整答案。
+         约束：至少保留一种 —— 全清空会使该软件无法建立会话，属误操作。 */
+      var sw0 = ID.csw.filter(function (x) { return x.id === IDS.cur; })[0]; if (!sw0) break;
+      var mk = t.getAttribute("data-k"); if (!mk) break;
+      var box = (t.tagName === "INPUT") ? t : (t.querySelector ? t.querySelector("input") : null);
+      var arr = sw0.ameth || (sw0.ameth = []);
+      var at0 = arr.indexOf(mk);
+      if (at0 >= 0) {
+        if (arr.length <= 1) { if (box) box.checked = true; markBad(t, true); toast("至少保留一种认证方式"); break; }
+        if (box) box.checked = true;   /* 先回滚控件：二次认证取消无回调，不能把控件留在已勾选态 */
+        idAskEff("禁用认证方式",
+          "禁用后 <b>" + esc(idSWName(mk)) + "</b> 不再作为该客户端可用的认证方式：<b>登录与追加认证时不再下发该选项</b>；已按该方式登记过凭据的用户按 <b>fail-closed</b> 处置（策略要求而该软件不承载时拒绝，不静默回退到低级别方式）。<b>本次变更入审计</b>。",
+          function () {
+            var a2 = sw0.ameth.indexOf(mk); if (a2 >= 0) sw0.ameth.splice(a2, 1);
+            idSave(); rerender(); toast("已禁用 " + idSWName(mk) + "（演示）");
+          });
+      } else {
+        if (box) box.checked = false;
+        idAskEff("启用认证方式",
+          "启用后 <b>" + esc(idSWName(mk)) + "</b> 成为该客户端可用的认证方式：<b>登录与追加认证时按策略下发该选项</b>（实际是否下发还受「认证源登记」与资产访问策略约束）。<b>本次变更入审计</b>。",
+          function () {
+            if (sw0.ameth.indexOf(mk) < 0) sw0.ameth.push(mk);
+            idSave(); rerender(); toast("已启用 " + idSWName(mk) + "（演示）");
+          });
+      }
+      break;
+    }
+    case "swOsAdd": {
+      /* 行式版本编辑器的增行 —— 先收当前行（含未保存的输入），再追加一行空行重渲染。
+         不整窗重开：编辑窗内重开会丢掉其余字段的未保存输入。 */
+      var clsA = t.getAttribute("data-cls") || "e";
+      var rowsA = idSwVerCollect(clsA);
+      rowsA.push({ os: "Windows", ver: "", size: "", sha256: "", sig: ID_SIG_DEF[0], pub: true });
+      $("#swOsver").innerHTML = idSwVerRows(rowsA, clsA);
+      break;
+    }
+    case "swOsDel": {
+      var clsD = t.getAttribute("data-cls") || "e";
+      var iD = parseInt(t.getAttribute("data-i"), 10) || 0;
+      var rowsD = idSwVerCollect(clsD);
+      if (rowsD.length <= 1) { toast("至少保留一个操作系统版本"); break; }
+      rowsD.splice(iD, 1);
+      $("#swOsver").innerHTML = idSwVerRows(rowsD, clsD);
+      break;
+    }
+    case "swVerPub": {
+      /* 版本发布状态 —— 改的是「该版本能否下载 / 参与升级提示」，属客户端生效面。
+         手册 §4.7.5：已有客户端注册成功的版本不可取消发布。 */
+      var psw = ID.csw.filter(function (x) { return x.id === id; })[0]; if (!psw) break;
+      var pOs = t.getAttribute("data-os") || "", pVer = t.getAttribute("data-ver") || "";
+      var prow = (psw.osver || []).filter(function (r) { return r.os === pOs && r.ver === pVer; })[0];
+      if (!prow) break;
+      if (prow.pub) {
+        var nuse = idSwVerUseCount(psw, pOs, pVer);
+        if (nuse > 0) { toast(pOs + " · " + pVer + " 已有 " + nuse + " 个客户端实例在用，不可取消发布"); break; }
+        idAskEff("取消发布版本",
+          "将取消发布 <b>" + esc(pOs) + " · " + esc(pVer) + "</b>。取消发布后该版本<b>不可下载、不参与升级提示</b>；已在用的客户端<b>不受影响</b>（仅不再作为新安装来源）。<b>本次变更入审计</b>。",
+          function () { prow.pub = false; idSave(); idRerender(); toast("已取消发布（演示）"); });
+      } else {
+        idAskEff("发布版本",
+          "将发布 <b>" + esc(pOs) + " · " + esc(pVer) + "</b>。发布后该版本<b>可下载</b>并<b>参与升级提示</b>（客户端检测到当前版本低于默认版本时提示升级，手册 §4.7.5）；可下载前须通过<b>版本签名校验</b>。<b>本次变更入审计</b>。",
+          function () { prow.pub = true; idSave(); idRerender(); toast("已发布（演示）"); });
+      }
+      break;
+    }
+    case "swEdit": {
+      var sw = ID.csw.filter(function (x) { return x.id === id; })[0]; if (!sw) break;
+      /* R17：编辑弹窗已瘦身 —— 只留**登记口径**基础信息（软件名称 / 注册方式）。
+         重配置项拆为详情页独立入口：客户端策略与授权（swPolicyEdit）、版本与校验码（swVerVsig / swVerAdd）。
+         新建弹窗（swNew）仍为完整表单 —— 创建时一次性登记是合理的，编辑时逐块改才需要拆。 */
+      openDlg("编辑基础信息", "登记口径信息。<b>客户端策略与授权</b>（证书签发机制 / 客户端绑定与静默登录 / 可访问资产）与<b>版本与校验码</b>已拆为详情页的独立入口。",
+        '<div class="fld"><label>软件名称</label><input id="idswName" value="' + esc(sw.name) + '"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>注册方式与审核方式</label><select id="idswReg">' +
+          ["在线注册 · 管理员审核", "在线注册 · 自动审核", "离线注册 · 管理员审核"].map(function (o) { return "<option" + (sw.regway === o ? " selected" : "") + ">" + o + "</option>"; }).join("") + "</select>" +
+          '<div class="help" style="margin-top:6px">注册方式属<b>登记口径</b>（不改变当前可用面）⇒ 随保存生效，用户注册时<b>自动遵循</b>；软件名称是<b>标识</b>，改名不改变客户端生效面。</div></div>');
+      $("#dlg1Ok").onclick = function () {
+        /* 基础信息 = 登记口径（名称 / 注册方式）⇒ 不改变客户端生效面 ⇒ 无需二次认证。 */
+        sw.name = ($("#idswName").value || "").trim() || sw.name;
+        sw.regway = $("#idswReg").value;
+        idSave(); closeDlg(); idRerender(); toast("已保存（演示）");
+      };
+      break;
+    }
+    case "swPolicyEdit": {
+      /* 客户端策略与授权（R17 从编辑弹窗拆出）—— 证书签发机制 / 客户端绑定与静默登录 / 可访问资产。
+         三项均改变**客户端生效面** ⇒ 任一变更走二次认证（判据是「是否改变生效面」，不是动作名）。 */
+      var psw = ID.csw.filter(function (x) { return x.id === id; })[0]; if (!psw) break;
+      openDlg("客户端策略与授权", "<b>" + esc(psw.name) + "</b> 的软件级策略与授权。三项均改变<b>客户端生效面</b>，变更走<b>二次认证</b>。",
+        '<div class="fld"><label>证书签发机制</label><select id="idswCert">' +
+          ["自有证书", "CA 机构签发"].map(function (o) { return "<option" + (psw.cert === o ? " selected" : "") + ">" + o + "</option>"; }).join("") + "</select>" +
+          '<div class="help" style="margin-top:6px">软件级<b>策略选择</b>，<b>不是为某个客户端签发证书</b> —— 与实例级 License 证书的签发 / 轮换是两回事。仅影响此后新签 / 轮换的证书，<b>存量不追溯重签</b>。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label>客户端绑定与静默登录</label><select id="idswBind">' +
+          [["1", "已开启（静默登录有效期默认 30 天）"], ["0", "未开启"]].map(function (o) { return "<option value=\"" + o[0] + "\"" + ((psw.bind ? "1" : "0") === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select>" +
+          '<div class="help" style="margin-top:6px">开启后客户端与终端<b>绑定</b>并可静默登录（有效期取客户端证书有效期，默认 30 天）；绑定关系变化将<b>自动通知管理员</b>。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label>可访问资产</label><div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px">' +
+          ID_ASSET_DEF.map(function (a) { return '<label class="mini" style="display:flex;align-items:center;gap:4px"><input type="checkbox" class="sw-asset" value="' + esc(a) + '"' + ((psw.assets || []).indexOf(a) >= 0 ? " checked" : "") + ">" + esc(a) + "</label>"; }).join("") + "</div>" +
+          '<div class="help" style="margin-top:6px">取自管理员维护的「资产列表」（只读引用）。此处限定<b>客户端侧可见范围</b>；用户最终能否访问还取决于该资产自身的<b>访问策略</b>。</div></div>');
+      $("#dlg1Ok").onclick = function () {
+        var pCert = $("#idswCert").value, pBind = $("#idswBind").value === "1";
+        var pAssets = Array.prototype.slice.call(document.querySelectorAll(".sw-asset")).filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+        var pChanged = (pCert !== psw.cert) || (pBind !== psw.bind) ||
+          pAssets.slice().sort().join("|") !== (psw.assets || []).slice().sort().join("|");
+        var pApply = function () {
+          psw.cert = pCert; psw.bind = pBind; psw.assets = pAssets;
+          idSave(); closeDlg(); idRerender(); toast("已保存（演示）");
+        };
+        if (!pChanged) { pApply(); return; }
+        idAskEff("变更客户端策略与授权",
+          "将变更 <b>" + esc(psw.name) + "</b> 的<b>证书签发机制 / 客户端绑定与静默登录 / 可访问资产</b> —— 均属<b>客户端生效面</b>：证书机制仅影响此后新签 / 轮换的证书（存量不追溯重签）；可访问资产收窄后<b>用户即使有该资产权限也无法访问</b>；绑定关系变化将<b>自动通知管理员</b>。<b>本次变更入审计</b>。",
+          pApply);
+      };
+      break;
+    }
+    case "swVerVsig": {
+      /* 版本签名校验（**单值 · 生效面策略**）—— R19 从「版本与校验码」总弹窗拆出：
+         一个弹窗只承担一类语义（策略 vs 台账），「改的是哪一项、要不要认证」才说得清（R17 判据）。 */
+      var wsw = ID.csw.filter(function (x) { return x.id === id; })[0]; if (!wsw) break;
+      openDlg("版本签名校验", "<b>" + esc(wsw.name) + "</b> 的版本签名校验策略：策略含<b>哈希值校验</b>则 SHA256 校验码必填；含<b>客户端签名校验</b>则签名必填。",
+        '<div class="fld"><label>版本签名校验</label><select id="idswVsig">' +
+          ["哈希值校验", "客户端签名校验", "哈希值校验 + 客户端签名校验"].map(function (o) { return "<option" + (wsw.vsig === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") + "</select>" +
+          '<div class="help" style="margin-top:6px">任一校验不通过，客户端<b>不得与网关建立通信</b>（手册 §4.6.5）。</div></div>');
+      $("#dlg1Ok").onclick = function () {
+        var wv = $("#idswVsig").value;
+        var wApply = function () { wsw.vsig = wv; idSave(); closeDlg(); idRerender(); toast("已保存（演示）"); };
+        if (wv === wsw.vsig) { wApply(); return; }
+        idAskEff("变更版本签名校验",
+          "将 <b>" + esc(wsw.name) + "</b> 的<b>版本签名校验</b>改为 <b>" + esc(wv) + "</b> —— 属<b>客户端生效面</b>：变更后客户端<b>须按新策略重新通过校验方可与网关建立通信</b>（校验不通过即拒绝，手册 §4.6.5）。<b>本次变更入审计</b>。",
+          wApply);
+      };
+      break;
+    }
+    case "swVerAdd": {
+      /* 表外添加 —— 一次只开一行，行数再多也不受弹窗承载能力限制。 */
+      var asw = ID.csw.filter(function (x) { return x.id === id; })[0]; if (!asw) break;
+      openSwVerRow(asw, null);
+      break;
+    }
+    case "swVerRowEdit": {
+      var esw = ID.csw.filter(function (x) { return x.id === id; })[0]; if (!esw) break;
+      var eRow = idSwVerRowFound(esw, t.getAttribute("data-os") || "", t.getAttribute("data-ver") || "");
+      if (!eRow) break;
+      openSwVerRow(esw, eRow);
+      break;
+    }
+    case "swVerDel": {
+      /* 删除登记行 —— 与「不可取消发布」同判据：删掉在用版本的校验记录，在用客户端下次建连即被拒。 */
+      var dsw = ID.csw.filter(function (x) { return x.id === id; })[0]; if (!dsw) break;
+      var dOs = t.getAttribute("data-os") || "", dVer = t.getAttribute("data-ver") || "";
+      if (!idSwVerRowFound(dsw, dOs, dVer)) break;
+      if ((dsw.osver || []).length <= 1) { toast("至少保留一个操作系统版本"); break; }
+      var dUse = idSwVerUseCount(dsw, dOs, dVer);
+      if (dUse > 0) { toast(dOs + " · " + dVer + " 已有 " + dUse + " 个客户端实例在用，不可删除"); break; }
+      idAskEff("删除操作系统版本",
+        "将删除 <b>" + esc(dsw.name) + "</b> 的 <b>" + esc(dOs) + " · " + esc(dVer) + "</b> 登记行。删除后该版本的<b>校验码与签名记录一并消失</b>，客户端若上报该版本将按<b>非受控版本</b>处理（无法通过版本校验，手册 §4.6.5）。<b>本次变更入审计</b>。",
+        function () {
+          dsw.osver = (dsw.osver || []).filter(function (r) { return !(r.os === dOs && r.ver === dVer); });
+          idSave(); idRerender(); toast("已删除（演示）");
+        });
+      break;
+    }
+    case "swDel": {
+      var dsw = ID.csw.filter(function (x) { return x.id === id; })[0]; if (!dsw) break;
+      /* 在用实例的软件不可删 —— 否则实例的外键悬空（与「删除资产须先处置访问」同构）。 */
+      var live = (ID.cin || []).filter(function (c) { return c.sw === dsw.id && c.st !== "已卸载"; });
+      if (live.length) { toast("该软件下仍有 " + live.length + " 个在用实例，须先卸载后再删除"); break; }
+      idAskEff("删除客户端软件",
+        "将删除客户端软件 <b>" + esc(dsw.name) + "</b>（序列号 " + esc(dsw.sn) + "）。删除后<b>不可恢复</b>，其登记信息与可访问资产配置一并移除。<b>本次变更入审计</b>。",
+        function () {
+          ID.csw = ID.csw.filter(function (x) { return x.id !== dsw.id; });
+          ID.cin = (ID.cin || []).filter(function (c) { return c.sw !== dsw.id; });
+          IDS.cur = ""; idSave(); rerender(); toast("已删除（演示）");
+        });
+      break;
+    }
+    case "swNew": {
+      var amethAll = ID_AMETH_DEF.map(function (m) { return [m.k, m.name]; });
+      openDlg("新建客户端软件", "登记一款<b>集成 SDK 的</b>客户端软件；唯一序列号<b>全局唯一</b>，用于 SDK 打包时识别。<b>支持的认证方式新建时不预勾</b>（避免误开放）。",
+        '<div class="fld"><label>软件名称 <span class="req">*</span></label><input id="nswName" placeholder="如 白泽客户端（PC）"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>唯一序列号 <span class="req">*</span></label><input id="nswSn" placeholder="16 位大写字母 + 8 位数字，如 BAIZEPCCLIENTAAA20260001"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>类别</label><select id="nswKind">' +
+          ["白泽官方客户端", "客户 SDK 集成", "AI 安全 agent"].map(function (o) { return "<option>" + o + "</option>"; }).join("") + "</select></div>" +
+        '<div class="fld" style="margin-top:10px"><label>注册方式</label><select id="nswReg">' +
+          ["在线注册 · 管理员审核", "在线注册 · 自动审核", "离线注册 · 管理员审核"].map(function (o) { return "<option>" + o + "</option>"; }).join("") + "</select></div>" +
+        '<div class="fld" style="margin-top:10px"><label>证书签发机制</label><select id="nswCert">' +
+          ["自有证书", "CA 机构签发"].map(function (o) { return "<option>" + o + "</option>"; }).join("") + "</select></div>" +
+        '<div class="fld" style="margin-top:10px"><label>通信协议</label><select id="nswProto">' +
+          ["TLCP", "TLS"].map(function (o) { return "<option>" + o + "</option>"; }).join("") + "</select></div>" +
+        '<div class="fld" style="margin-top:10px"><label>是否需绑定终端</label><select id="nswBind"><option value="1">需要（绑定型）</option><option value="0">不需要</option></select></div>' +
+        '<div class="fld" style="margin-top:10px"><label>版本签名校验</label><select id="nswVsig">' +
+          ["哈希值校验", "客户端签名校验", "哈希值校验 + 客户端签名校验"].map(function (o) { return "<option" + (o === "哈希值校验 + 客户端签名校验" ? " selected" : "") + ">" + o + "</option>"; }).join("") + "</select></div>" +
+        '<div class="fld" style="margin-top:10px"><label>版本与校验码（按操作系统） <span class="req">*</span></label>' +
+          '<div id="swOsver">' + idSwVerRows([{ os: "Windows", ver: "", size: "", sha256: "", sig: ID_SIG_DEF[0], pub: true }], "n") + "</div>" +
+          '<div style="margin-top:6px"><button type="button" class="btn sm" data-idact="swOsAdd" data-cls="n">＋ 增加操作系统版本</button></div>' +
+          '<div class="help" style="margin-top:6px">同一款软件在不同操作系统上的<b>版本号与校验码各自独立</b>，须<b>逐个操作系统登记</b>；未登记的操作系统上客户端<b>不会通过签名校验</b>。校验码为安装包的 <b>SHA256</b>（64 位十六进制）。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label>可访问资产</label><div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px">' +
+          ID_ASSET_DEF.map(function (a) { return '<label class="mini" style="display:flex;align-items:center;gap:4px"><input type="checkbox" class="nsw-asset" value="' + esc(a) + '">' + esc(a) + "</label>"; }).join("") + "</div></div>" +
+        '<div class="fld" style="margin-top:10px"><label>支持的认证方式</label><div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:6px">' +
+          amethAll.map(function (a) { return '<label class="mini" style="display:flex;align-items:center;gap:4px"><input type="checkbox" class="nsw-ameth" value="' + a[0] + '">' + a[1] + "</label>"; }).join("") + "</div></div>");
+      $("#dlg1Ok").onclick = function () {
+        var nm = ($("#nswName").value || "").trim();
+        var sn = ($("#nswSn").value || "").trim();
+        if (!nm) { markBad($("#nswName"), true); toast("请填写软件名称"); return; }
+        if (!/^[A-Z]{16}\d{8}$/.test(sn)) { markBad($("#nswSn"), true); toast("序列号须为 16 位大写字母 + 8 位数字"); return; }
+        if (ID.csw.some(function (s) { return s.sn === sn; })) { markBad($("#nswSn"), true); toast("序列号已存在（全局唯一）"); return; }
+        var ameth = Array.prototype.slice.call(document.querySelectorAll(".nsw-ameth")).filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+        var vsigN = $("#nswVsig") ? $("#nswVsig").value : "哈希值校验 + 客户端签名校验";
+        var vrowsN = idSwVerCollect("n");
+        var vbadN = idSwVerValid(vrowsN, vsigN);
+        if (vbadN) { toast(vbadN); return; }
+        var swNew_ = {
+          id: "sw_" + Date.now(), name: nm, sn: sn, kind: $("#nswKind").value, agent: $("#nswKind").value === "AI 安全 agent",
+          regway: $("#nswReg").value, bind: $("#nswBind").value === "1", cert: $("#nswCert").value, proto: $("#nswProto").value,
+          vsig: vsigN, osver: [],
+          assets: Array.prototype.slice.call(document.querySelectorAll(".nsw-asset")).filter(function (c) { return c.checked; }).map(function (c) { return c.value; }), ameth: ameth
+        };
+        idSwVerWrite(swNew_, vrowsN);
+        ID.csw.unshift(swNew_);
+        IDS.pg = 1;
+        idSave(); closeDlg(); rerender(); toast("已登记（演示）");
+      };
+      break;
+    }
+    case "cinGoto": goPage("pg-idcin", { cur: id }); break;
+    /* ★ R21（I4）：从认证侧 License 台账跨页跳身份侧实例详情 —— 目标是**看证书**，故带 tab=t2；
+       cinGoto（从实例列表进详情）走默认 t1 不带。 */
+    case "licGoto": goPage("pg-idcin", { cur: id, tab: "t2" }); break;
+    /* 客户端实例管理 */
+    case "cinUpgrade": {
+      /* 平台推送升级 —— 只是**三条升级路径中的一条**。用户自行升级与离线安装包安装不经本按钮，
+         但客户端重新上线后同样会上报版本并经 idCinVerUpd 更新，口径一致。 */
+      var cu2 = ID.cin.filter(function (x) { return x.id === id; })[0]; if (!cu2) break;
+      if (cu2.st === "已卸载") { toast("该实例已卸载，不可推送升级"); break; }
+      var pend2 = idCinPend(cu2);
+      if (pend2) { toast("该实例已有待生效的升级下发（" + pend2 + "），待客户端上线回采"); break; }
+      var swu = idSwOf(cu2.sw);
+      var tgt = idCinLatestPub(cu2, swu);
+      if (!tgt || idVerCmp(tgt.ver, cu2.ver) <= 0) { toast("该实例已是所在操作系统的最新已发布版本，无需升级"); break; }
+      var famU = idOsFamily((ID.terms.filter(function (x) { return x.id === cu2.term; })[0] || {}).os);
+      /* 终端离线 ⇒ 推送只登记为**待生效**、版本号不动：客户端收不到也来不及上报，
+         此刻改 ver 就是「平台推断版本」。上线回采后才更新 —— 与「版本以客户端上报值为准」同一口径。 */
+      var off2 = cu2.online !== "在线";
+      idAskEff("推送客户端升级",
+        "将向 <b>" + esc(idName(ID.terms, cu2.term, "id", "name")) + "</b> 上的实例推送升级：" +
+        "<b>" + esc(cu2.ver) + " → " + esc(tgt.ver) + "</b>（" + esc(famU) + "）。升级后客户端<b>须重新通过版本签名校验</b>方可与网关建立通信，升级期间隧道<b>短暂中断</b>。" +
+        (off2
+          ? "⚠ 该实例所在终端当前<b>离线</b>：本次推送只登记为<b>待生效</b>，<b>不改变本页版本号</b>；客户端下次上线完成安装并<b>回采</b>后版本号才更新。"
+          : "<b>无论平台推送、用户自行升级还是离线安装包安装，客户端上线后都会重新上报版本</b>，平台以<b>最近一次上报值</b>为本页版本号。") +
+        "<b>本次变更入审计</b>。",
+        function () {
+          idCinVerUpd(cu2, tgt.ver, "平台推送升级", ID_NOW, off2 ? "待生效·客户端离线" : "成功");
+          idSave(); rerender();
+          toast(off2 ? "已登记待生效（客户端离线，上线后回采）" : "已推送升级（演示）");
+        });
+      break;
+    }
+    case "cinView": IDC.cur = id; IDC.tab = "t1"; rerender(); break;
+    case "cinList": IDC.cur = ""; rerender(); break;
+    /* ★ R21（I4）：点「证书」入口此前只设 cur、不复位 tab ⇒ 落回默认 t1（基础信息），
+       用户点的正是证书却看不到证书。页签必须**由入口驱动**，不能只由「上一次点过哪个签」决定。 */
+    case "cinLic": IDC.cur = id; IDC.tab = "t2"; rerender(); break;
+    case "cinToggle": {
+      var ct = ID.cin.filter(function (x) { return x.id === id; })[0]; if (!ct) break;
+      var ns2 = ct.st === "已禁用" ? "已激活" : "已禁用";
+      idAskEff(ns2 === "已禁用" ? "禁用客户端实例" : "激活客户端实例",
+        "将把该客户端实例置为 <b>" + ns2 + "</b>。" + (ns2 === "已禁用"
+          ? "禁用后该实例<b>无法建立隧道</b>（所在终端与其他实例不受影响），已建立的会话将被<b>中断</b>；若该实例是 <b>AI 安全 agent</b>，其监管的智能体实例将<b>一并终止</b>（宿主已失活）。"
+          : "激活后该实例<b>即刻可用</b>；登录与追加认证按其所属客户端软件登记的认证方式下发选项。") + "<b>本次变更入审计</b>。",
+        /* toast 由目标状态派生，与终端开关（L1164）同构：状态写什么就报什么，
+           不再硬编码动作词 —— 否则「写入 已激活 / 提示 已启用」两处打架。 */
+        function () { ct.st = ns2; if (ns2 === "已禁用") { ct.online = "离线"; if (idIsSafeHost(ct)) (ID.ain || []).forEach(function (a) { if (a.host === ct.id && a.st !== "已终止") a.st = "已终止"; }); } idSave(); rerender(); toast("已" + ns2.slice(1) + "（演示）"); });
+      break;
+    }
+    case "cinUninstall": {
+      var cu = ID.cin.filter(function (x) { return x.id === id; })[0]; if (!cu) break;
+      idAskEff("卸载客户端实例",
+        "将把该实例置为 <b>已卸载</b>：<b>不再参与隧道建立</b>，其上的智能体实例<b>一并终止</b>（宿主已卸载，不再具备监管通道）。License 证书记录<b>保留在台账</b>（如确认不再使用，另在「签发凭据管理」吊销以使其失效，本页吊销仅改本模块标注）。<b>此操作入审计</b>。",
+        function () { cu.st = "已卸载"; cu.online = "离线"; (ID.ain || []).forEach(function (a) { if (a.host === cu.id) a.st = "已终止"; }); idSave(); rerender(); toast("已卸载（演示）"); });
+      break;
+    }
+    case "cinNew": {
+      var swOpts = ID.csw.map(function (s) { return '<option value="' + s.id + '">' + esc(s.name) + "</option>"; }).join("");
+      var termOpts = ID.terms.filter(function (s) { return s.st === "已激活"; }).map(function (s) { return '<option value="' + s.id + '">' + esc(s.name) + "</option>"; }).join("");
+      openDlg("登记客户端实例", "实例是软件装在具体终端上的落地。<b>客户端发起的注册由「注册申请审核」承接</b>；此处为<b>管理员直接登记</b>，登记即视为审核通过。须指定所属软件与所在终端；登记后即签发首份 License 证书。",
+        '<div class="fld"><label>所属软件 <span class="req">*</span></label><select id="nciSw">' + swOpts + "</select></div>" +
+        '<div class="fld" style="margin-top:10px"><label>所在终端 <span class="req">*</span></label><select id="nciTerm">' + termOpts + "</select></div>" +
+        '<div class="fld" style="margin-top:10px"><label>客户端序列号 <span class="req">*</span></label><input id="nciSeq" placeholder="如 BZPC-0007-3A2C"></div>' +
+        /* ★ R21（I1）：撤除「注册方式」下拉 —— 全库仅此一处渲染、**无任何读取**（死控件：能改但改了没用）；
+           且注册方式是**软件级**配置（手册 §4.6.2），在实例级重复登记反而误导。登记即视为审核通过，
+           注册方式以所属软件的配置为准。 */
+        '<div class="fld" style="margin-top:10px"><label>License 授权范围 <span class="req">*</span></label><input id="nciScope" placeholder="如 信贷核心系统 / 客户管理平台"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>License 有效期至 <span class="req">*</span></label><input id="nciExp" value="' + idYmdShift(idDay(), 0, 1) + '"></div>');
+      $("#dlg1Ok").onclick = function () {
+        if (!$("#nciSw") || !$("#nciSw").value) { toast("当前没有可登记的客户端软件"); return; }
+        if (!$("#nciTerm") || !$("#nciTerm").value) { toast("当前没有可登记实例的已激活终端"); return; } var seq = ($("#nciSeq").value || "").trim();
+        var sc = ($("#nciScope").value || "").trim();
+        var ex = ($("#nciExp").value || "").trim();
+        if (!seq) { markBad($("#nciSeq"), true); toast("请填写客户端序列号"); return; }
+        if (!/^[A-Z]{4}-\d{4}-[A-Z0-9]{4}$/.test(seq)) { markBad($("#nciSeq"), true); toast("客户端序列号格式须为 4 位大写字母-4 位数字-4 位字母数字，如 BZPC-0007-3A2C"); return; }
+        if (ID.cin.some(function (x) { return x.cidseq === seq; })) { markBad($("#nciSeq"), true); toast("该客户端序列号已存在"); return; }
+        if (!sc) { markBad($("#nciScope"), true); toast("请填写 License 授权范围"); return; }
+        if (!ex) { markBad($("#nciExp"), true); toast("请填写 License 有效期"); return; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(ex)) { markBad($("#nciExp"), true); toast("有效期格式须为 YYYY-MM-DD"); return; }
+        /* 判据须与提示语一致：此前为 `ex < idDay()` ⇒ 允许录入**等于今天**（有效期 0 天、
+           签发即过期）；且签发 / 轮换侧为 `ex2 <= is2`（更严）⇒ 同字段两处严格度不一致。 */
+        if (ex <= idDay()) { markBad($("#nciExp"), true); toast("有效期须晚于今天"); return; }
+        var sid = $("#nciSw").value, tid3 = $("#nciTerm").value;
+        var nciTerm = ID.terms.filter(function (x) { return x.id === tid3; })[0];
+        /* 登记实例不改变归属关系。 */
+        ID.cin.unshift({
+          id: "ci_" + Date.now(), sw: sid, term: tid3, cidseq: seq, st: "已激活", online: "在线",
+          /* ★ R20：此前取 `idSwOf(sid).ver[0]` —— `ver` 是 pre-id-7 死字段，新快照里不存在
+             ⇒ 恒落占位 "1.0.0"，刚登记的实例一建即被标「可升级」。改为按所在终端操作系统派生
+             （与注册审核通过同源同判据）。 */
+          ver: idCinNewVer(idSwOf(sid), nciTerm),
+          lic: [{ id: "lic_" + Date.now(), no: idLicNo(), issued: idDay(), exp: ex, tag: "当前",
+            ca: idSwOf(sid).cert === "CA 机构签发" ? "外购 CA（CFCA）" : "白泽内网 CA", scope: sc }]
+        });
+        /* 客户端实例不另存归属键：归属只经关系表与终端侧维护，避免第三份投影漂移。 */
+        /* 实例台账由 idCinPage / idCinDetail 从 ID.cin 直读。 */
+        /* ★ 2026-10-10（R27 · B-2）：登记即签发首份 License ⇒ 同步回写认证侧签发台账。 */
+        idRegisterAuthLic(ID.cin[0], (ID.cin[0].lic || [])[0]);
+        IDC.pg = 1;
+        idSave(); closeDlg(); rerender(); toast("已登记并签发 License 证书（演示）");
+      };
+      break;
+    }
+    case "cinNewLic": {
+      var ce0 = ID.cin.filter(function (x) { return x.id === id; })[0]; if (!ce0) break;
+      var dftScope = (ce0.lic && ce0.lic[0] && ce0.lic[0].scope) || "";
+      openDlg("签发 License 证书", "将为该实例签发一份新的 License 证书。<b>生效日期晚于今天 ⇒ 自动标注「待生效」</b>。轮换过渡期新旧证书<b>并存</b>。<b>此操作入审计</b>。",
+        '<div class="fld"><label>授权范围 <span class="req">*</span></label><input id="nlcScope" value="' + esc(dftScope) + '" placeholder="如 信贷核心系统 / 客户管理平台"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>生效日期 <span class="req">*</span></label><input id="nlcIssued" value="' + idDay() + '"><div class="mini" style="margin-top:4px">晚于今天即标注<b>待生效</b>（用于换发衔接）；等于今天即<b>当前</b>。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label>有效期至 <span class="req">*</span></label><input id="nlcExp" value="' + idYmdShift(idDay(), 0, 1) + '"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>签发 CA</label><select id="nlcCa">' +
+          ["白泽内网 CA", "外购 CA（CFCA）"].map(function (o) { return "<option>" + o + "</option>"; }).join("") + "</select></div>" +
+        '<div class="help" style="margin-top:8px">证书内嵌<b>客户端序列号 / 终端序列号 / 授权范围 / 有效期 / 建立 TLCP 隧道所需的 CA 证书链（只含公钥）</b>，不可单独修改，随实例信息自动带入。</div>');
+      $("#dlg1Ok").onclick = function () {
+        var sc2 = ($("#nlcScope").value || "").trim();
+        var is2 = ($("#nlcIssued").value || "").trim();
+        var ex2 = ($("#nlcExp").value || "").trim();
+        if (!sc2) { markBad($("#nlcScope"), true); toast("请填写授权范围"); return; }
+        if (!is2) { markBad($("#nlcIssued"), true); toast("请填写生效日期"); return; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(is2)) { markBad($("#nlcIssued"), true); toast("生效日期格式须为 YYYY-MM-DD"); return; }
+        if (!ex2) { markBad($("#nlcExp"), true); toast("请填写有效期"); return; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(ex2)) { markBad($("#nlcExp"), true); toast("有效期格式须为 YYYY-MM-DD"); return; }
+        if (ex2 <= is2) { markBad($("#nlcExp"), true); toast("有效期须晚于生效日期"); return; } if (ce0.st === "已卸载") { toast("该实例已卸载，不可签发或轮换证书（如需处置请吊销既有证书）"); return; } if (is2 <= idDay() && (ce0.lic || []).some(function (l) { return idLicTagOf(l) === "当前"; })) { markBad($("#nlcIssued"), true); toast("该实例已有生效中的证书，请改用「轮换」以维持单一当前证书"); return; }
+        /* ★ R20：**待生效侧此前不判重** —— 「轮换」会拦（已有待生效证书），「签发证书」不会
+           ⇒ 同一实例可连开多份待生效证书，与页内自述「轮换过渡期新旧证书并存（＝一旧一新）」
+           冲突，也让「谁是下一份当前」出现歧义。判据提为共享助手，与轮换侧同源。 */
+        var pend0 = idLicPending(ce0);
+        if (pend0 && is2 > idDay()) { markBad($("#nlcIssued"), true); toast("该实例已有待生效证书 " + pend0.no + "（" + pend0.issued + " 起生效），同一时刻只允许一份待生效证书"); return; }
+        var ca2 = $("#nlcCa").value;
+        idAskEff("签发 License 证书", "将为该客户端实例签发一份 License 证书（授权范围 <b>" + esc(sc2) + "</b>，有效期 <b>" + esc(is2) + " ~ " + esc(ex2) + "</b>，签发 CA <b>" + esc(ca2) + "</b>）。<b>此操作入审计</b>。", function () {
+          ce0.lic = ce0.lic || [];
+          ce0.lic.push({ id: "lic_" + Date.now(), no: idLicNo(), issued: is2, exp: ex2, tag: is2 > idDay() ? "待生效" : "当前", ca: ca2, scope: sc2 });
+          /* ★ 2026-10-10（R27 · B-2）：新签发份同步回写认证侧（按 no 幂等）。 */
+          idRegisterAuthLic(ce0, ce0.lic[ce0.lic.length - 1]);
+          idSave(); closeDlg(); rerender(); toast("已签发新证书（演示）");
+        });
+      };
+      break;
+    }
+    case "licRevoke": {
+      var ci2 = ID.cin.filter(function (x) { return x.id === id; })[0]; if (!ci2) break;
+      var lid = t.getAttribute("data-l");
+      var l0 = (ci2.lic || []).filter(function (l) { return l.id === lid; })[0]; if (!l0) break;
+      idAskEff("吊销 License 证书",
+        "将吊销证书 <b>" + esc(l0.no) + "</b>。<b>吊销后该证书立即失效</b>，设备须持有效证书方可建立隧道；<b>记录保留在台账</b>（可追溯），如需同步失效「签发凭据管理」中的同一份凭据，系统按证书编号<b>一并置为已吊销</b>。<b>此操作入审计</b>。",
+        function () {
+          l0.tag = "已吊销"; l0.revokedAt = ID_NOW;
+          idRevokeAuthIssue(l0.no);
+          idSave(); rerender(); toast("已吊销（演示）");
+        });
+      break;
+    }
+    case "licRotate": {
+      var rc = ID.cin.filter(function (x) { return x.id === id; })[0]; if (!rc) break;
+      var cur = (rc.lic || []).filter(function (l) { return idLicTagOf(l) === "当前"; })[0] || (rc.lic || [])[0] || {};
+      var pend = idLicPending(rc);
+      if (pend) { toast("已存在待生效证书 " + pend.no + "，无需重复轮换"); break; }
+      var ni = cur.exp ? idYmdShift(cur.exp, 1) : idDay();
+      idAskEff("发起证书轮换",
+        "将为该实例生成一份<b>新证书</b>并保留当前证书至其到期（过渡期<b>新旧共存</b>）；新证书生效日 <b>" + esc(ni) + "</b>（当前证书到期次日），届时标注为「当前」。<b>此操作入审计</b>。",
+        function () {
+          rc.lic = rc.lic || [];
+          rc.lic.push({ id: "lic_" + Date.now(), no: idLicNo(), issued: ni, exp: idYmdShift(ni, 0, 1), tag: "待生效", ca: cur.ca || "白泽内网 CA", scope: cur.scope || "—" });
+          /* ★ 2026-10-10（R27 · B-2）：轮换生成的新份同步回写认证侧（按 no 幂等）。 */
+          idRegisterAuthLic(rc, rc.lic[rc.lic.length - 1]);
+          idSave(); rerender(); toast("已轮换：生成待生效新证书（演示）");
+        });
+      break;
+    }
+    /* 智能体软件管理 */
+    case "agswView": IDA.cur = id; rerender(); break;
+    case "agswList": IDA.cur = ""; rerender(); break;
+    case "agswEdit": {
+      var ag = ID.asw.filter(function (x) { return x.id === id; })[0]; if (!ag) break;
+      /* ★ R21（I8）：与 I3 同型 —— 候选只收「有已激活实例」的 agent 软件，
+         现任监管若已无活跃实例就落选 ⇒ 弹窗默认「（待指定）」，直接确定即**静默清空现任监管**。
+         保留现任（标注「现任 · 当前不可选」），使「在位事实」可见。 */
+      var gopts = ID.csw.filter(function (s) { return (s.agent && (ID.cin || []).some(function (c) { return c.sw === s.id && c.st === "已激活"; })) || s.id === ag.guardian; });
+      openDlg("编辑智能体软件", "受 <b>AI 安全 agent 监管</b>的 AI agent 软件（<b>不集成 SDK</b>）。指定监管 agent 后状态转为<b>受管</b>；清空则回到<b>待纳管</b>。",
+        '<div class="fld"><label>智能体软件名称</label><input id="idagName" value="' + esc(ag.name) + '"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>进程名 / 可执行文件</label><input id="idagProc" value="' + esc(ag.proc || "") + '"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>监管的 AI 安全 agent</label><select id="idagGuard"><option value="">（待指定）</option>' +
+          gopts.map(function (s) { var ok = s.agent && (ID.cin || []).some(function (c) { return c.sw === s.id && c.st === "已激活"; }); return '<option value="' + s.id + '"' + (ag.guardian === s.id ? " selected" : "") + (ok ? "" : " disabled") + ">" + esc(s.name) + (ok ? "" : "（现任 · 当前不可选）") + "</option>"; }).join("") + "</select></div>" +
+        '<div class="fld" style="margin-top:10px"><label>受管策略</label><input id="idagPolicy" value="' + esc(ag.policy) + '"></div>');
+      $("#dlg1Ok").onclick = function () {
+        var gNew = $("#idagGuard").value;
+        var agNm = ($("#idagName").value || "").trim() || ag.name;
+        var agProc = ($("#idagProc").value || "").trim() || ag.proc;
+        var agPol = ($("#idagPolicy").value || "").trim() || ag.policy;
+        var applyAg = function () {
+          ag.name = agNm; ag.proc = agProc; ag.guardian = gNew; ag.policy = agPol;
+          ag.st = ag.guardian ? "受管" : "待纳管";
+          idSave(); closeDlg(); rerender(); toast("已保存（演示）");
+        };
+        if (gNew === (ag.guardian || "")) { applyAg(); return; }
+        var live = (ID.ain || []).filter(function (x) { return x.asw === ag.id && x.st !== "已终止"; });
+        idAskEff("变更智能体软件的监管 agent",
+          "将把 <b>" + esc(ag.name) + "</b> 的监管 agent 变更为 <b>" + esc(gNew ? idName(ID.csw, gNew) : "（待指定）") + "</b>。" +
+          (gNew ? "该软件转为<b>受管</b>，可持续登记其运行实例。" : "该软件转为<b>待纳管</b>，不能登记其运行实例。") +
+          (live.length ? "其下 <b>" + live.length + "</b> 个未终止的智能体实例中，宿主不再匹配新监管 agent 的将<b>一并终止</b>。" : "") +
+          "<b>本次变更入审计</b>。",
+          function () {
+            /* 监管 agent 变更（含 A→B 换绑）后，存量未终止实例的宿主若不再匹配新监管 agent 则一并终止
+               —— 否则 host 仍指向旧 agent 的实例，宿主链与新监管关系不自洽。 */
+            (ID.ain || []).forEach(function (x) {
+              if (x.asw !== ag.id || x.st === "已终止") return;
+              var hs = idCinOf(x.host);
+              if (!gNew || !hs || idSwOf(hs.sw).id !== gNew) x.st = "已终止";
+            });
+            applyAg();
+          });
+      };
+      break;
+    }
+    case "agswNew": {
+      var gopts2 = ID.csw.filter(function (s) { return s.agent && (ID.cin || []).some(function (c) { return c.sw === s.id && c.st === "已激活"; }); });
+      openDlg("登记智能体软件", "登记一个受 AI 安全 agent 监管的智能体软件。⚠ <b>它不集成 SDK</b>，与客户端软件是两条平行线；其身份依托<b>宿主实例的客户端 License 证书 + 所在终端指纹</b>。",
+        '<div class="fld"><label>智能体软件名称 <span class="req">*</span></label><input id="nagName" placeholder="如 代码助手 Agent"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>厂商 / 来源</label><input id="nagVendor" placeholder="如 内部自研 / 科大讯飞"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>版本</label><input id="nagVer" value="1.0.0"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>进程名 / 可执行文件</label><input id="nagProc" placeholder="如 code-agent.exe"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>监管的 AI 安全 agent</label><select id="nagGuard"><option value="">（待指定）</option>' +
+          gopts2.map(function (s) { return '<option value="' + s.id + '">' + esc(s.name) + "</option>"; }).join("") + "</select></div>" +
+        '<div class="fld" style="margin-top:10px"><label>受管策略</label><input id="nagPolicy" placeholder="如 仅可访问代码库与需求库；禁止访问信贷核心系统"></div>');
+      $("#dlg1Ok").onclick = function () {
+        var nm = ($("#nagName").value || "").trim();
+        if (!nm) { markBad($("#nagName"), true); toast("请填写智能体软件名称"); return; }
+        if (ID.asw.some(function (x) { return x.name === nm; })) { markBad($("#nagName"), true); toast("该智能体软件已登记"); return; }
+        var gd = $("#nagGuard").value;
+        ID.asw.unshift({
+          id: "asw_" + Date.now(), name: nm, vendor: ($("#nagVendor").value || "").trim() || "—",
+          ver: [($("#nagVer").value || "").trim() || "1.0.0"],
+          proc: ($("#nagProc").value || "").trim() || "—",
+          guardian: gd, policy: ($("#nagPolicy").value || "").trim() || "待配置", st: gd ? "受管" : "待纳管"
+        });
+        IDA.pg = 1;
+        idSave(); closeDlg(); rerender(); toast("已登记（演示）");
+      };
+      break;
+    }
+    case "ainGoto": goPage("pg-idagin", { asw: id, term: t.getAttribute("data-t") || "" }); break;
+    case "agswGoto": goPage("pg-idagsw", { cur: id }); break;
+    /* 智能体实例管理 */
+    case "ainNew": {
+      var hosts = ID.cin.filter(function (c) { return idIsSafeHost(c) && c.st === "已激活"; });
+      if (!hosts.length) {
+        openDlg("无法登记智能体实例", "智能体实例的宿主<b>必须是 AI 安全 agent 的客户端实例</b>（方案 §1.1：由它监管本终端的 AI agent）。当前没有可用的宿主实例。<br><br>处置路径：① 在「客户端软件管理」登记 <b>AI 安全 agent</b> 软件；② 在「客户端实例管理」为它登记实例并通过注册审核；③ 回到本页登记智能体实例。<br><br>⚠ 普通客户端实例<b>不能</b>作为智能体宿主。");
+        break;
+      }
+      var aswOpts = ID.asw.filter(function (s) { return s.guardian; }).map(function (s) { return '<option value="' + s.id + '">' + esc(s.name) + "</option>"; }).join("");
+      var cinOpts = hosts.map(function (c) {
+        return '<option value="' + c.id + '">' + esc(idName(ID.csw, c.sw)) + " @ " + esc(idName(ID.terms, c.term, "id", "name")) + "</option>";
+      }).join("");
+      openDlg("登记智能体实例", "登记 AI agent 在具体终端上的实例。<b>宿主必须选 AI 安全 agent 的客户端实例</b>（所在终端随宿主派生）；短时凭据由宿主实例的 License 证书与终端指纹派生。",
+        '<div class="fld"><label>智能体软件 <span class="req">*</span></label><select id="naiAsw">' + (aswOpts || '<option value="">（暂无已受管的智能体软件）</option>') + "</select></div>" +
+        '<div class="fld" style="margin-top:10px"><label>宿主客户端实例 <span class="req">*</span></label><select id="naiHost">' + cinOpts + "</select><div class=\"mini\" style=\"margin-top:4px\">候选＝<b>AI 安全 agent 的已激活客户端实例</b>（普通客户端实例不可作宿主；且须与该智能体软件的<b>监管 agent</b>一致）。</div></div>" +
+        '<div class="fld" style="margin-top:10px"><label>进程号（PID） <span class="req">*</span></label><input id="naiPid" placeholder="如 4821"></div>' +
+        '<div class="fld" style="margin-top:10px"><label>凭据有效期（分钟）</label><input id="naiTtl" type="number" min="5" max="1440" value="30"></div>');
+      $("#dlg1Ok").onclick = function () {
+        var pid = ($("#naiPid").value || "").trim();
+        var sid2 = $("#naiAsw").value;
+        var hid = $("#naiHost").value;
+        var ttl = parseInt($("#naiTtl").value, 10);
+        if (!sid2) { markBad($("#naiAsw"), true); toast("请先在「智能体软件管理」指定监管 agent（转为受管）"); return; }
+        if (!pid) { markBad($("#naiPid"), true); toast("请填写进程号"); return; }
+        if (!/^\d+$/.test(pid)) { markBad($("#naiPid"), true); toast("进程号须为数字"); return; }
+        if (!(ttl >= 5 && ttl <= 1440)) { markBad($("#naiTtl"), true); toast("凭据有效期须为 5 ~ 1440 分钟"); return; }
+        if (ID.ain.some(function (x) { return x.host === hid && x.pid === pid && x.st !== "已终止"; })) { markBad($("#naiPid"), true); toast("该宿主上已存在同进程号的运行实例"); return; }
+        var hc = idCinOf(hid);
+        if (!idIsSafeHost(hc)) { toast("宿主必须是 AI 安全 agent 的客户端实例"); return; }
+        /* 宿主实例所属软件必须正是该智能体软件指定的监管 agent —— idIsSafeHost 只判「是不是 AI agent 实例」，
+           不判「是哪一款」，否则可登记出监管 agent 与宿主错配的实例。 */
+        var asw0 = ID.asw.filter(function (x) { return x.id === sid2; })[0] || {};
+        if (asw0.guardian && idSwOf(hc.sw).id !== asw0.guardian) { toast("宿主实例所属软件（" + idName(ID.csw, hc.sw) + "）与该智能体软件的监管 agent（" + idName(ID.csw, asw0.guardian) + "）不一致"); return; }
+        ID.ain.unshift({
+          id: "ai_" + Date.now(), asw: sid2, term: hc.term, host: hid, pid: pid,
+          cred: { no: idCredNo(pid), issued: ID_NOW, exp: idShift(ID_NOW, ttl) }
+        });
+        IDAI.pg = 1;
+        idSave(); closeDlg(); rerender(); toast("已登记（有效期 " + ttl + " 分钟）（演示）");
+      };
+      break;
+    }
+    case "ainEnd": {
+      var ae = ID.ain.filter(function (x) { return x.id === id; })[0]; if (!ae) break;
+      if (idAgInSt(ae) === "已终止") { toast("该实例已终止"); break; }
+      idAskEff("终止智能体实例",
+        "将终止该智能体实例并<b>使其短时凭据立即失效</b>；<b>终止不可逆</b>，如需再次运行须<b>重新登记</b>实例。<b>此操作入审计</b>。",
+        function () { ae.st = "已终止"; idSave(); rerender(); toast("已终止（演示）"); });
+      break;
+    }
+    case "ainRenew": {
+      var ar = ID.ain.filter(function (x) { return x.id === id; })[0]; if (!ar) break;
+      if (idAgInSt(ar) === "已终止") { toast("该实例已终止，须重新登记后方可续发凭据"); break; }
+      var ttl2 = 30;
+      idAskEff("续发短时凭据",
+        "将为该实例续发一份短时凭据（有效期 <b>" + ttl2 + "</b> 分钟），<b>原凭据立即失效</b>。凭据不落地、用毕即销毁。<b>此操作入审计</b>。",
+        function () {
+          var _rn = idCredNo(ar.pid), _rx = idShift(ID_NOW, ttl2);
+          ar.cred = { no: _rn, issued: ID_NOW, exp: _rx };
+          /* ★ 2026-10-10（R17）：续发同样要回写认证侧发放台账 —— 只改本模块的 cred，认证侧会停在
+             上一份，两页对「该实例此刻拿的是哪份」各说一套。holder 按与认证侧**同一套 label 构造**
+             拼装（见 `_frag_auth.js` 的 auHolderRef），否则两边对不上、回写静默落空。 */
+          idRegisterAuthIssue({
+            holder: "智能体实例 · " + idName(ID.asw, ar.asw, "id", "name") + " @ " + idName(ID.terms, ar.term, "id", "name") + "（进程 " + ar.pid + "）",
+            no: _rn, issued: ID_NOW, exp: _rx, ttl: ttl2
+          });
+          delete ar.st; idSave(); rerender(); toast("已续发凭据（演示）");
+        });
+      break;
+    }
+  }
+}
+/* 认证侧「签发凭据管理」按证书编号回写同一份证书的状态；身份侧吊销须同样回写，
+   否则同一张证书在本页显示「已吊销」、在认证侧仍显示「有效」（两页自相矛盾）。
+   ⚠ 认证数据只在认证模块页装载（AU 为 null）；身份页须按需补装 —— 与 auLoad 里
+     「ID 为 null 时补 idLoad()」互为对称，否则跨模块回写在本页静默失效。 */
+function idRevokeAuthIssue(no) {
+  try {
+    if (!no) return;
+    if ((typeof AU === "undefined" || !AU || !Array.isArray(AU.issue)) && typeof auLoad === "function") auLoad();
+    if (typeof AU === "undefined" || !AU || !Array.isArray(AU.issue)) return;
+    var hit = false;
+    AU.issue.forEach(function (x) { if (x.no === no) { x.st = "已吊销"; hit = true; } });
+    if (hit && typeof auSave === "function") auSave();
+  } catch (e) { /* 认证数据不可用时不阻断本模块 */ }
+}
+/* 认证侧「签发凭据管理」的**反向**回写（R17）：身份侧续发短时凭据后，认证侧的发放台账也要记上
+   这一份「当前份」。原实现只改本模块的 `cred`，认证侧台账停在上一份 ⇒ 两页对「该实例此刻拿的
+   是哪份」各说一套（X1 轮补的正是这一类缺口，运行时又被拉开）。
+   ⚠ 与 `idRevokeAuthIssue` 完全对称：`AU` 为 null 时按需补装；认证数据不可用时不阻断本模块。 */
+/* 认证侧「签发凭据管理」的**反向**回写（R27 · 对称性补齐）：身份侧**新签发 / 轮换**客户端
+   License 证书后，认证侧的发放台账也要记上这一份。原实现只在吊销（licRevoke）与智能体续发
+   （ainRenew）两处回写，`cinNew` / `cinNewLic` / `licRotate` 三条**签发 / 轮换**路径全部不回写
+   ⇒ 身份侧新签出的证书在页⑤ 查不到，两页对「该实例此刻持有什么」各说一套（回写只做了半套）。
+   ⚠ 与 `idRevokeAuthIssue` / `idRegisterAuthIssue` 同体例：`AU` 为 null 时按需补装；认证数据
+     不可用时不阻断本模块。holder 按与认证侧 `auHolderRef` **同一套 label 构造**拼装，否则两边
+     对不上、回写静默落空。
+   ⚠ 认证侧台账**无「待生效」态**（`auIssueSt` 只按 exp 派生 有效 / 即将过期 / 已过期）——
+     轮换生成的「待生效」份照样落表，issued 为未来日期、st 按 exp 算，与页⑤ 既有口径一致。 */
+function idRegisterAuthLic(cin, lic) {
+  try {
+    if (!cin || !lic || !lic.no) return;
+    if ((typeof AU === "undefined" || !AU || !Array.isArray(AU.issue)) && typeof auLoad === "function") auLoad();
+    if (typeof AU === "undefined" || !AU || !Array.isArray(AU.issue)) return;
+    /* 按证书编号幂等：同号已在表即跳过（轮换 / 签发各只应落一次）。 */
+    if (AU.issue.some(function (x) { return x.no === lic.no; })) return;
+    var holder = "客户端实例 · " + idName(ID.csw, cin.sw, "id", "name") + " @ " + idName(ID.terms, cin.term, "id", "name");
+    /* 绑定主体标识 cn = 该实例的 cidseq；指纹 fp = 所在终端的 sn（与认证侧 cnOf / fpOf 同源）。 */
+    var fp = "";
+    for (var i = 0; i < (ID.terms || []).length; i++) { if (ID.terms[i].id === cin.term) { fp = ID.terms[i].sn || ""; break; } }
+    AU.issue.unshift({
+      id: "is_" + Date.now(), kind: "客户端 License 证书", holder: holder, no: lic.no,
+      issued: lic.issued, exp: lic.exp,
+      st: (typeof auIssueSt === "function" ? auIssueSt(lic.exp) : "有效"),
+      cn: cin.cidseq || "", fp: fp, scope: lic.scope || "", ca: lic.ca || "", ttl: 0
+    });
+    if (typeof auSave === "function") auSave();
+  } catch (e) { /* 认证数据不可用时不阻断本模块 */ }
+}
+function idRegisterAuthIssue(o) {
+  try {
+    if (!o || !o.no) return;
+    if ((typeof AU === "undefined" || !AU || !Array.isArray(AU.issue)) && typeof auLoad === "function") auLoad();
+    if (typeof AU === "undefined" || !AU || !Array.isArray(AU.issue)) return;
+    if (AU.issue.some(function (x) { return x.no === o.no; })) return;
+    /* 绑定主体标识 / 授权范围 / 签发 CA 不在身份侧维护 —— 从该主体**上一份同类型**凭据继承
+       （续发不改变「这台实例被允许访问什么」，只换凭据本身）；无前份则留空、由展示层兜底，
+       **不落**「—」（R14 裁决⑤：展示层缺省符不得当数据落库）。 */
+    var prev = AU.issue.filter(function (x) { return x.holder === o.holder && x.kind === "智能体短时凭据"; })[0] || {};
+    AU.issue.unshift({
+      id: "is_" + Date.now(), kind: "智能体短时凭据", holder: o.holder, no: o.no,
+      issued: o.issued, exp: o.exp,
+      st: (typeof auIssueSt === "function" ? auIssueSt(o.exp) : "有效"),
+      cn: prev.cn || "", fp: prev.fp || "", scope: prev.scope || "", ca: "", ttl: o.ttl || 30
+    });
+    if (typeof auSave === "function") auSave();
+  } catch (e) { /* 认证数据不可用时不阻断本模块 */ }
+}
+function idOnChange(e) {
+  var t = e.target;
+  if (!t || !t.id) return;
+  var rerender = idRerender;
+  /* 焦点保持：筛选 select 的 change 若直接整页重渲染，控件被销毁 ⇒ 焦点掉回 body，
+     键盘用户每选一次都要重新 Tab（搜索框输入已用 rerenderKeep 保焦点，此处与之对齐）。 */
+  var rerenderKeep = function () { rerender(); var n = document.getElementById(t.id); if (n) n.focus(); };
+  var v = t.value;
+  switch (t.id) {
+    case "idswAgent": IDS.f.agent = v; IDS.pg = 1; rerenderKeep(); break;
+    case "idswOs": IDS.f.os = v; IDS.pg = 1; rerenderKeep(); break;
+    case "idagswSt":  IDA.f.st = v; IDA.pg = 1; rerenderKeep(); break;
+    case "iduOrg": IDU.f.org = v; IDU.pg = 1; rerenderKeep(); break;
+    case "iduRole": IDU.f.role = v; IDU.pg = 1; rerenderKeep(); break;
+    case "iduSt": IDU.f.st = v; IDU.pg = 1; rerenderKeep(); break;
+    case "idtOrg": IDT.f.org = v; IDT.pg = 1; rerenderKeep(); break;
+    case "idtSt": IDT.f.st = v; IDT.pg = 1; rerenderKeep(); break;
+    /* ★ R20：新增筛选控件的分发分支（漏一条即「改了没反应」—— 本模块控件按 id 硬编码分发）。 */
+    case "idtOn": IDT.f.online = v; IDT.pg = 1; rerenderKeep(); break;
+    case "idtFrom": IDT.f.regFrom = v; IDT.pg = 1; rerenderKeep(); break;
+    case "idtTo": IDT.f.regTo = v; IDT.pg = 1; rerenderKeep(); break;
+    case "idcSw": IDC.f.sw = v; IDC.pg = 1; rerenderKeep(); break;
+    case "idcSt": IDC.f.st = v; IDC.pg = 1; rerenderKeep(); break;
+    case "idaSw": IDAI.f.asw = v; IDAI.pg = 1; rerenderKeep(); break;
+    case "idaTerm": IDAI.f.term = v; IDAI.pg = 1; rerenderKeep(); break;
+    case "idaSt": IDAI.f.st = v; IDAI.pg = 1; rerenderKeep(); break;
+  }
+}
+function idOnInput(e) {
+  var t = e.target;
+  if (!t || !t.id) return;
+  var rerender = idRerender;
+  var rerenderKeep = function (el) { var pos = el.selectionStart; rerender(); var n = document.getElementById(el.id); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (x) {} } };
+  switch (t.id) {
+    case "idswK":   IDS.f.k = t.value; IDS.pg = 1; rerenderKeep(t); break;
+    case "idagswK": IDA.f.k = t.value; IDA.pg = 1; rerenderKeep(t); break;
+    case "iduK": IDU.f.k = t.value; IDU.pg = 1; rerenderKeep(t); break;
+    case "idtK": IDT.f.k = t.value; IDT.pg = 1; rerenderKeep(t); break;
+    case "idcK": IDC.f.k = t.value; IDC.pg = 1; rerenderKeep(t); break;
+    case "idaK": IDAI.f.k = t.value; IDAI.pg = 1; rerenderKeep(t); break;
+  }
+}
+/* 分页入口（pgmk 以「函数名(页码)」生成 onclick，故必须是全局函数） */
+function iduPg(p) { IDU.pg = Math.max(1, p | 0); renderIdUser(); }
+function idtPg(p) { IDT.pg = Math.max(1, p | 0); renderIdTerm(); }
+function idswPg(p) { IDS.pg = Math.max(1, p | 0); renderIdCSW(); }
+function idcPg(p) { IDC.pg = Math.max(1, p | 0); renderIdCIN(); }
+function idagswPg(p) { IDA.pg = Math.max(1, p | 0); renderIdAGSW(); }
+function idaPg(p) { IDAI.pg = Math.max(1, p | 0); renderIdAGIN(); }
+
+/* ---------- 10. 挂载分页器（各页渲染后调用；面板不存在时静默跳过） ---------- */
+function idMountPagers() {
+  /* 末位提示不再写「勾选/批量」：本模块列表**未提供勾选框**，承诺批量操作是无处兑现的假入口。 */
+  var HINT = "未开放批量操作";
+  if (document.getElementById("iduPager")) pgmk("#iduPager", idUserFiltered().length, IDU.pg, "iduPg", "个用户", LIST_PAGE, HINT);
+  if (document.getElementById("idtPager")) pgmk("#idtPager", idTermFiltered().length, IDT.pg, "idtPg", "台终端", LIST_PAGE, HINT);
+  if (document.getElementById("idswPager")) pgmk("#idswPager", idSwFiltered().length, IDS.pg, "idswPg", "个软件", LIST_PAGE, HINT);
+  if (document.getElementById("idcPager")) pgmk("#idcPager", idCinFiltered().length, IDC.pg, "idcPg", "个实例", LIST_PAGE, HINT);
+  if (document.getElementById("idagswPager")) pgmk("#idagswPager", idAgSwFiltered().length, IDA.pg, "idagswPg", "个智能体软件", LIST_PAGE, HINT);
+  if (document.getElementById("idaPager")) pgmk("#idaPager", idAgInFiltered().length, IDAI.pg, "idaPg", "个智能体实例", LIST_PAGE, HINT);
+}
+
+/* ---------- 11. 事件挂载（在 bootstrap 里按当前页调用一次） ---------- */
+function idMountEvents() {
+  ["pg-iduser", "pg-idterm", "pg-idcsw", "pg-idcin", "pg-idagsw", "pg-idagin"].forEach(function (pid) {
+    var el = document.getElementById(pid);
+    if (!el) return;
+    el.addEventListener("click", idOnClick);
+    el.addEventListener("change", idOnChange);
+    el.addEventListener("input", idOnInput);
+    el.addEventListener("keydown", idOnKey);
+  });
+  /* ★ 2026-10-10（R15-E）：弹窗是**页面容器的兄弟节点**（#dlg1 挂在 body 下，不在任一 pg-* 内），
+     故弹窗内的 [data-idact] 控件此前**一律无委托可达** —— 点了没反应；而死按钮门禁只校验
+     「动作名有没有 case」，不校验「元素在不在被委托的容器里」⇒ 整类缺陷不被拦住（门禁盲区）。
+     实测：客户端软件编辑弹窗「＋ 增加操作系统版本」点击后行数不变（探针 F36-7b FAIL）。
+     data-idact 是身份模块独占属性名（认证段 0 处使用），补挂 #dlg1 无串扰。 */
+  var dlg = document.getElementById("dlg1");
+  if (dlg) dlg.addEventListener("click", idOnClick);
+}
+
+/* ==========================================================================
+   认证模块 · 6 页（2026-09-29 新增）
+   --------------------------------------------------------------------------
+   页面与对象（一页一对象，不设总览 / 工作台）：
+     auth-dict.html         认证方式字典      pg-audict
+     auth-source.html       认证源            pg-ausrc
+     cred-hosting.html      网关凭据托管      pg-cred　← 既有页，从「安全设置」组归入本模块
+     auth-user-cred.html    用户代填账号托管  pg-auusercred
+     auth-issue.html        签发凭据管理      pg-auissue
+     auth-authenticator.html 强认证器绑定管理 pg-auauthr
+
+   ★★ 六条硬约束（写代码前先读）：
+     ① 主线两级「认证源 → 认证方式」，字典是**旁挂的取值域**（不在主线上）。
+        字典统一的是**名字**，不是效力；同一方式在不同源下级别可不同。
+     ② 认证策略**不单独成页** —— 已由资产访问策略（ABAC）的 auth.* 三键承载。
+        ⚠ 不建「认证策略 / 登录方式」页。
+     ③ 「强度级别 + 适用范围」是（源 × 方式）**联合判定**结果，落在**认证源**页。
+     ④ 凭据按持有 / 签发方**拆三个页**：网关托管 / 用户代填 / 平台签发，各自独立不合并。
+     ⑤ 「认证源 → 认证方式」一对多；每条「源 × 方式」记录带**「无端支持」标签**。
+     ⑥ 认证器绑定是**用户 ∖ 认证器**独立台账，不挂字典也不挂源。
+
+   ★ 抗钓鱼是认证方式的内生属性（＝凭据在协议层是否绑定源），**与级别无关** ——
+     级别由「源 × 方式」联合判定（见 ①③），不存在「某级别才可置位」的约束。
+   ★ 被启用策略引用的方式**不可删除**。
+   ★ 页面不出现任何租户信息。
+   ========================================================================== */
+
+/* ---------- 0. 演示数据 ---------- */
+var AU_KEY = "baize.assetmgmt.auth.v1";
+var AU = null;
+/* ★ 2026-10-10（R24）：RP ID = WebAuthn 的**平台统一作用域**（Relying Party ID）。同一平台下所有
+   认证器共用同一个 RP 域名，随平台部署域名确定 —— 不逐条登记。此前「登记认证器」把它做成逐记录
+   手填，同平台的不同记录可填成不同域名，而 passkey 只在登记时的 RP 域名下可用 ⇒ 台账会记出
+   互相不可用的凭据。现收为模块级常量：弹窗只读展示、落库一律取此常量（见 auAuthrNormalize）。 */
+var AU_RP_ID = "baize.example.com";
+
+/* 认证方式字典真源（AU_LEVELS / AU_METHODS）已上移至文件顶部「属性字典」之前 ——
+   它是**全平台唯一的「方式名 + 固有属性」取值域**，必须早于引用它的各页渲染函数声明。
+   此处不再重复定义，避免出现第二份自造列表。
+   ⚠ 自 2026-09-30 起，本字典**不再派生**任何「档位 → 方式集合」视图 —— 级别不归字典，
+     实际级别由「认证源 × 认证方式」记录联合判定；字典上的 defLv 仅为**参考默认级别**。 */
+/* 认证源：每条记录含「该源支持的方式集合」，每项带 级别 / 适用范围 / 无端支持 标签 */
+
+/* ============================================================================
+ * 认证源「连接参数」的真源（结构化字段）
+ * ----------------------------------------------------------------------------
+ * 「连接参数」区呈现的是**可填参数**（参数名 + 当前值 + 控件），不是散文摘要 ——
+ * 参数值就是运营要填进对接配置的东西；说明性文字一律不进本表（收进「关键业务说明」）。
+ * 字段模板按 kind 一套；新建源用模板取空值，已建源用 auConnSeed() 带初值。
+ * 控件类型：text（默认）/ password（加密存储、界面不回显明文、留空表示不修改）/
+ *           select（枚举）/ check（布尔）。
+ * ==========================================================================*/
+/* ★ 2026-10-10（R25）：认证源「适用范围」的**受控取值域** —— 与资产台账 `ASSETS[].grp`
+   （资产组）同名同义。此前该列是逐（源 × 方式）**自由文本框**，种子值「办公类资产 /
+   外部协作类资产 / 信贷核心系统」与台账「资产组」取值域无一对应，且资产侧并无该字段
+   承载面 ⇒ 一个「联合判定的结果」列却无受控来源，无法作为策略生效范围的可靠输入。 */
+var AU_SCOPE_OPTS = ["全部资产", "核心业务", "办公协同", "数据平台", "开发测试", "对外服务"];
+
+var AU_CONN_FIELDS = {
+  /* 本地账号体系：无外部连接 —— 本表是**账号与口令策略**，不做连通性测试 */
+  local: [
+    { k: "pwdMin",  label: "口令最小长度（位）", req: true, ph: "如 12", type: "number", min: 6, max: 64 },
+    { k: "pwdCplx", label: "复杂度要求", req: true, type: "select",
+      /* ★ 2026-10-10（R16）：本字段的 hint 声明「等保要求口令至少由三类组成」，选项集却含
+         「大写 + 数字」「小写 + 数字」「仅数字」三个**低于基线**的取值 ⇒ 页面自相矛盾、
+         且平台自身的本地账号口令策略不应可选到基线以下。收敛为不低于三类的三项。 */
+      opts: ["大写 + 小写 + 数字 + 符号", "大写 + 小写 + 数字", "大写 + 小写 + 符号"],
+      ph: "如 大写 + 小写 + 数字 + 符号", hint: "等保要求口令至少由大写 / 小写 / 数字 / 符号中三类组成" },
+    { k: "pwdDays", label: "强制轮换周期（天）", req: true, ph: "如 90", type: "number", min: 1, max: 365 },
+    { k: "pwdHist", label: "历史口令不可复用（次）", ph: "如 5", type: "number", min: 0, max: 24 },
+    { k: "lockN",   label: "连续失败锁定阈值（次）", req: true, ph: "如 5", type: "number", min: 1, max: 20 },
+    { k: "lockMin", label: "锁定时长（分钟）", req: true, ph: "如 30", type: "number", min: 1, max: 1440 },
+    /* ★ 2026-10-10（R25）：下列两项改为**平台统一只读**（`ro`）。它们是平台实现层的
+       固定值，不是可逐源调的业务策略：同一账号库不可能一半 bcrypt 一半 Argon2id；
+       解锁方式为全局策略（手册 §4.3.1：需管理员手动解锁）。值恒取模板常量 `v0`，
+       不受种子 / 快照 / 迁移覆盖。 */
+    { k: "lockHow", label: "锁定解除方式", ro: true, v0: "管理员解锁 / 到期自动解除" },
+    { k: "hash",    label: "凭据存储算法", ro: true, v0: "bcrypt（cost 12）" }
+  ],
+  /* AD / LDAP：对接一个外部目录 */
+  ldap: [
+    { k: "addr",    label: "目录地址", req: true, url: "ldap", ph: "ldaps://host.domain" },
+    { k: "port",    label: "端口", req: true, ph: "如 636", type: "number", min: 1, max: 65535 },
+    { k: "base",    label: "Base DN", req: true, ph: "DC=corp,DC=internal" },
+    { k: "bind",    label: "Bind DN", req: true, ph: "CN=svc,OU=Service,DC=corp,DC=internal" },
+    { k: "pwd",     label: "Bind 口令", type: "password" },
+    { k: "enc",     label: "传输加密", type: "select", opts: ["TLS 强制（关闭 start_tls）", "start_tls 升级"] },
+    { k: "verify",  label: "证书校验", type: "check", forced: true, hint: "校验服务端证书链（安全基线，强制开启）" },
+    { k: "trust",   label: "信任库", ph: "如 平台内置 CA", hint: "信任锚：校验证书链时使用的 CA 信任库（与「证书校验」分工：本项定信任锚，开关定是否校验）" },
+    { k: "poolMin", label: "连接池下限", ph: "如 2", type: "number", min: 0, max: 1000 },
+    { k: "poolMax", label: "连接池上限", ph: "如 20", type: "number", min: 1, max: 2000 },
+    { k: "idle",    label: "空闲回收（秒）", ph: "如 300", type: "number", min: 1, max: 86400 },
+    { k: "qto",     label: "单次查询超时（秒）", ph: "如 5", type: "number", min: 1, max: 3600 },
+    { k: "fo",      label: "故障转移", type: "check", hint: "主备自动切换：主节点不可用时按「主 → 备」顺序重试，切换事件入审计" },
+    /* ★ 2026-10-10（R20）：**备用节点**录入位 —— 此前本模板只有 `fo` 开关，
+       「主备自动切换」勾上后**没有任何地方填备节点**（历史上一度有 `port2`，因「收集后零引用」
+       被当死字段删除，`fo` 就此变成**孤儿开关**）⇒ 系统无从得知备节点是谁。
+       现**成套恢复「备用目录地址 + 备用端口」并让它们真被消费**：
+         ① `connSave` 随 `fo` 校验 / 落库（勾选则必填且不得与主地址相同；未勾选则清空）；
+         ② 详情页同表回显；
+         ③ 连通性测试叙述里列出「主 → 备」两端。
+       `dep: "fo"` 见 `auConnForm` 条件显隐 / `auConnDep`。 */
+    { k: "foAddr",  label: "备用目录地址", dep: "fo", url: "ldap", ph: "ldaps://host2.domain" },
+    { k: "foPort",  label: "备用端口", dep: "fo", ph: "如 636", type: "number", min: 1, max: 65535 }
+  ],
+  /* OIDC 外部 IdP：平台作 RP，走授权码流 */
+  oidc: [
+    { k: "issuer",  label: "Issuer", req: true, url: "https", ph: "https://idp.example.com/realms/x" },
+    { k: "cid",     label: "Client ID", req: true, ph: "如 baize-sp" },
+    { k: "pwd",     label: "Client Secret", type: "password" },
+    { k: "cb",      label: "回调地址", req: true, url: "https", ph: "https://portal.example.com/_baize/sso/oidc/callback" },
+    { k: "scope",   label: "Scope", ph: "如 openid profile email" },
+    { k: "disc",    label: "发现文档", type: "check", hint: "自动拉取发现文档并从其中取 JWKS 地址" },
+    { k: "alg",     label: "签名算法", type: "select",
+      opts: ["RS256", "ES256", "PS256", "SM2（国密）"], ph: "如 RS256" },
+    { k: "jwks",    label: "JWKS 缓存（小时）", ph: "如 12", type: "number", min: 1, max: 168 },
+    /* ★ 2026-10-10（R21）：**反义条件字段** —— 关闭「发现文档」后 RP 无法自动发现
+       `jwks_uri`，而 `verify`（ID Token 验签）**强制开启**、必须有验签公钥 ⇒ 此时 JWKS 地址
+       须**手工提供**。此前本模板只有「缓存小时数」、**没有地址录入位**，`disc` 一旦关闭
+       就出现与 R20 `fo` 完全同型的**能力-输入不闭合**。
+       `depOff: "disc"` ⇒ 仅在「发现文档」**未勾选**时显示且必填；勾选时地址由发现文档取得、
+       手填值清空（见 `connSave`）。 */
+    { k: "jwksUri", label: "JWKS 地址", depOff: "disc", url: "https", ph: "https://idp.example.com/realms/x/protocol/openid-connect/certs" },
+    { k: "verify",  label: "ID Token 验签", type: "check", forced: true, hint: "强制验签并校验 iss / aud / exp / nonce（安全基线，强制开启）" },
+    { k: "slo",     label: "单点登出", type: "check", hint: "IdP 侧登出通知回本平台" }
+  ],
+  /* CA / 证书体系 */
+  ca: [
+    { k: "root",     label: "信任根", req: true, ph: "如 CFCA 机构根证书" },
+    { k: "rootExp",  label: "根证书有效期至", ph: "如 2029-06-30", date: true },
+    { k: "suite",    label: "证书体系", ph: "如 TLCP 双证书（签名 + 加密）" },
+    { k: "chainChk", label: "证书校验", type: "check", forced: true, hint: "校验链完整性与吊销状态（安全基线，强制开启）" },
+    { k: "crl",      label: "CRL 拉取周期（小时）", req: true, ph: "如 12", type: "number", min: 1, max: 168 },
+    { k: "strict",   label: "CRL 拉取失败策略", type: "check", hint: "拉取失败时拒绝新会话并告警" },
+    { k: "ocsp",     label: "OCSP 兜底", type: "check", hint: "CRL 不可用时启用 OCSP 查询" },
+    { k: "subjMap",  label: "主体映射来源", ph: "如 证书 CN / UID" }
+  ]
+};
+
+/* 按 kind 取字段模板并复制一份（避免各源共享同一对象） */
+function auConnFields(kind) {
+  return (AU_CONN_FIELDS[kind] || AU_CONN_FIELDS.local).map(function (f) {
+    var o = {};
+    for (var p in f) { if (Object.prototype.hasOwnProperty.call(f, p)) { o[p] = f[p]; } }
+    if (f.ro) { o.v = f.v0 || ""; }   /* ★ 平台统一只读：值恒取模板常量 */
+    else if (f.type === "check") { o.v = !!f.forced; }
+    else if (f.type === "select") { o.v = (f.opts || [""])[0]; }
+    else { o.v = ""; }
+    return o;
+  });
+}
+
+/* 建一个带初值的 conn（vals 为 {字段键: 值}；pwdSet 表示口令/密钥是否已设置） */
+function auConnSeed(kind, vals, pwdSet, lastTest) {
+  var fs = auConnFields(kind);
+  if (vals) {
+    fs.forEach(function (f) {
+      if (f.ro) return;   /* ★ 平台统一只读项不受种子 vals 覆盖 */
+      if (Object.prototype.hasOwnProperty.call(vals, f.k)) { f.v = vals[f.k]; }
+    });
+  }
+  return { kind: kind, fields: fs, pwdSet: !!pwdSet, lastTest: lastTest || "" };
+}
+
+/* 旧版本地存储的 conn 形状升级（{kind, rows:[散文]} → {kind, fields:[参数]}）。
+   无 fields ⇒ 按 kind 取模板并把旧行按**标签**搬到同名参数；
+   有 fields ⇒ 按模板补齐缺失键（模板日后加字段，旧快照也能跟上），既有值原样保留。 */
+function auMigrateConn(c, seeded) {
+  if (!c) return c;
+  if (c.fields && c.fields.length) {
+    var tmpl0 = auConnFields(c.kind), have0 = {};
+    c.fields.forEach(function (f) { have0[f.k] = 1; });
+    tmpl0.forEach(function (f) { if (!have0[f.k]) { c.fields.push(f); } });
+    /* ★ 2026-10-10（R25）：**平台统一只读项就地归一** —— 旧快照里它们是可编辑的
+       select（值可逐源不同），不归一则影子值长期驻留。 */
+    c.fields.forEach(function (f) {
+      var t0 = tmpl0.filter(function (x) { return x.k === f.k; })[0];
+      if (t0 && t0.ro) { f.ro = true; f.v = t0.v; delete f.opts; delete f.type; delete f.ph; }
+    });
+    return c;
+  }
+  /* 旧 rows 是散文（多个事实挤一行），拆不回结构化参数 —— 硬搬只会把说明文字
+     塞进参数值里。有同 id 的新鲜种子就直接采用它的干净值，只保留 pwdSet / lastTest。 */
+  if (seeded && seeded.fields) {
+    var sc = JSON.parse(JSON.stringify(seeded));
+    sc.pwdSet = !!c.pwdSet;
+    sc.lastTest = c.lastTest || "";
+    return sc;
+  }
+  var tmpl = auConnFields(c.kind), oldVals = {};
+  (c.rows || []).forEach(function (r) {
+    if (r && r[0] != null) { oldVals[String(r[0])] = String(r[1] == null ? "" : r[1]).replace(/<[^>]*>/g, "").trim(); }
+  });
+  tmpl.forEach(function (f) {
+    if (f.type === "check") return;
+    var v = oldVals[f.label];
+    if (v != null && v !== "") { f.v = v; }
+  });
+  return { kind: c.kind, fields: tmpl, pwdSet: !!c.pwdSet, lastTest: c.lastTest || "" };
+}
+
+/* 「连接参数 / 账号与口令策略」的页内参数表：参数名 + 控件 + 现值 */
+/* ★ 2026-10-10（R20）：条件字段显隐 —— 由父开关（`dep` 指向的 check 字段）决定。
+   渲染期初值由 `auConnForm` 按当前值给出（与本函数同判据），本处只管**交互切换**。 */
+function auConnDep(cb) {
+  if (!cb || !cb.id) return;
+  var key = cb.id.slice(4), on = !!cb.checked;
+  /* ★ 2026-10-10（R23）：**chip 底色随勾选同步** —— 连接参数表的开关是 `<label class="chip">`
+     套原生复选框，`.chip.on` **只由 class 驱动**（`.chip.on{background:var(--primary)}`），
+     样式表**没有** `:has(input:checked)` 兜底 ⇒ 运行时点击只改复选框、**底色停在渲染时那一档**
+     （实测：`auc_fo` 由勾选改为未勾选后 `class` 仍是 `chip on`）。父开关与普通开关一律同步。 */
+  var lb = cb.closest && cb.closest("label.chip");
+  if (lb) { lb.classList.toggle("on", on); }
+  var root = (cb.closest && cb.closest(".kv")) || document;
+  var nodes = root.querySelectorAll('[data-dep="' + key + '"]');
+  for (var i = 0; i < nodes.length; i++) { nodes[i].style.display = on ? "" : "none"; }
+  /* 反义条件字段：父开关**关闭**时显示（如「发现文档」关闭 ⇒ 手工填 JWKS 地址）。 */
+  var offs = root.querySelectorAll('[data-depoff="' + key + '"]');
+  for (var j = 0; j < offs.length; j++) { offs[j].style.display = on ? "none" : ""; }
+}
+function auConnForm(conn) {
+  var _cfs = conn.fields || [];
+  /* 当前值表 + 被依赖的开关集合 —— 条件字段（dep）据此定**初值显隐**并给父开关挂 onchange。 */
+  var _fv = {}; _cfs.forEach(function (f0) { _fv[f0.k] = f0.v; });
+  /* ★ 2026-10-10（R23）：原 `_depKeys`（登记哪些开关有依赖项、**仅**给它们挂 `onchange`）已删除 ——
+     普通开关（`verify` / `slo` / `strict` / `ocsp` …）同样需要芯片底色随勾选同步，
+     故 `auConnForm` 的**所有**开关一律挂 `auConnDep`（见下 `_foHook`）。 */
+  function _depAttr(f) {
+    /* `dep`：父开关**开启**时显示；`depOff`：父开关**关闭**时显示（反义条件字段）。 */
+    if (f.dep) return ' data-dep="' + f.dep + '"' + (_fv[f.dep] ? "" : ' style="display:none"');
+    if (f.depOff) return ' data-depoff="' + f.depOff + '"' + (_fv[f.depOff] ? ' style="display:none"' : "");
+    return "";
+  }
+  return '<div class="kv conn-kv" style="grid-template-columns:170px 1fr 170px 1fr">' +
+    _cfs.map(function (f) {
+      var id = "auc_" + f.k, ctl;
+      var _dep = _depAttr(f);
+      /* ★ 2026-10-10（R25）：**平台统一只读项**（锁定解除方式 / 凭据存储算法）——
+         值由平台统一设定，界面只读展示（不渲染任何控件、不产生可提交值）。
+         返回**两格**：label + 值（标签内置）—— `.kv` 是 grid，多一格会让后续项错位。 */
+      if (f.ro) {
+        return '<span class="k"' + _dep + ">" + esc(f.label) + "</span>" +
+          '<span class="ro-v">' + esc(f.v == null ? "" : f.v) + ' <span class="tag t-gray">平台统一</span></span>';
+      }
+      if (f.type === "check") {
+        /* forced：安全基线项（ID Token 验签 / 证书链校验）—— 强制开启**且不可关闭**。
+           此前这类项 hint 里写着「强制」，控件却是可取消勾选的普通开关，文案与控件自相矛盾。 */
+        var _foHook = ' onchange="auConnDep(this)"';
+        ctl = '<label class="chip' + (f.v ? " on" : "") + '" style="justify-self:start' + (f.forced ? ";opacity:.85" : "") + '"' + _dep + '>' +
+          '<input type="checkbox" id="' + id + '"' + (f.v ? " checked" : "") + (f.forced ? " disabled" : "") + _foHook + ">" + esc(f.hint || f.label) +
+          (f.forced ? ' <span class="tag t-info">强制</span>' : "") + "</label>";
+        return '<span class="k"' + _dep + ">" + esc(f.label) + "</span>" + ctl;
+      }
+      /* ★ 2026-10-10（R14）：页内 `.kv` 表单的必填此前只有视觉星标（`<span class="req">*</span>`），
+         无障碍树上并非必填 —— R13 的 aria-required 补齐写在 openDlg 里、只扫 `#dlg1Body .fld`，
+         本表是**页内表单**、不经弹窗 ⇒ 整张表漏网。此处对 `f.req` 的控件直接补 required / aria-required。 */
+      var _rq = f.req ? ' required aria-required="true"' : "";
+      if (f.type === "select") {
+        /* 选项集是**受控取值域**，但既有取值必须可精确复现（R8「holder 可复现不变量」）—— 枚举收口后
+           旧快照里的值可能不在新选项集内，直接丢弃会让浏览器静默选中首项、保存时把旧值「看不见地」改写。 */
+        var _opts = (f.opts || []).slice();
+        if (f.v != null && f.v !== "" && _opts.indexOf(f.v) < 0) _opts.push(f.v);
+        ctl = '<select id="' + id + '"' + _rq + _dep + ">" + _opts.map(function (o) {
+          return "<option" + (o === f.v ? " selected" : "") + ">" + esc(o) + "</option>";
+        }).join("") + "</select>";
+      } else if (f.type === "password") {
+        /* 口令类字段不挂 _rq：星标会与「编辑态留空＝不修改」的语义打架；其必填由 connSave
+           按「首配 / 非首配」两态判定并给出明确提示（口径不变）。 */
+        ctl = '<input type="password" id="' + id + '"' + _dep + ' placeholder="' +
+          esc((conn.pwdSet ? "已设置 · 留空表示不修改" : "首次配置须填写") + "（加密存储）") + '">';
+      } else if (f.type === "number") {
+        /* ★ 2026-10-10（R13）：数值语义字段（口令长度 / 轮换周期 / 锁定阈值…）此前一律 text，
+           可落库任意串（如 "abc"）⇒ 取值域不闭合。改 number + min/max（浏览器侧约束，落库侧见 connSave）。 */
+        ctl = '<input type="number" id="' + id + '" value="' + esc(String(f.v == null ? "" : f.v)) +
+          '"' + (f.min != null ? ' min="' + f.min + '"' : "") + (f.max != null ? ' max="' + f.max + '"' : "") +
+          _dep + _rq + ' placeholder="' + esc(f.ph || "") + '">';
+      } else {
+        ctl = '<input type="text" id="' + id + '" value="' + esc(String(f.v == null ? "" : f.v)) +
+          '"' + _dep + _rq + ' placeholder="' + esc(f.ph || "") + '">';
+      }
+      /* ★ 2026-10-10（R12）：可见标签改用 <label for> 绑定控件 —— 此前是 <span class="k">，
+         口令策略 / 锁定策略 / 散列算法 / 会话超时等 12 个控件在无障碍树上都没有名字
+         （复选框行不受影响：其控件本身被 <label class="chip"> 包住，已有可访问名）。 */
+      return '<label class="k" for="' + id + '"' + _dep + ">" + esc(f.label) + (f.req ? ' <span class="req">*</span>' : "") + "</label>" + ctl;
+    }).join("") + "</div>";
+}
+
+/* ★ 2026-10-10（R25）：适用范围多选 chips —— 列表列（只读展示）、行内编辑弹窗、添加弹窗三处共用。
+   取值域 = `AU_SCOPE_OPTS`；历史快照里的旧值若不在域内则**补入**，保证可复现（R8 不变量）。 */
+function auScopeChips(name, cur) {
+  var sel = String(cur || "").split(/[、,，/]/).map(function (s) { return s.trim(); }).filter(Boolean);
+  var opts = AU_SCOPE_OPTS.slice();
+  sel.forEach(function (v) { if (opts.indexOf(v) < 0) opts.push(v); });
+  return '<span class="chips" data-scope-box="' + esc(name) + '">' + opts.map(function (o) {
+    return '<label class="chip' + (sel.indexOf(o) >= 0 ? " on" : "") + '"><input type="checkbox" value="' +
+      esc(o) + '"' + (sel.indexOf(o) >= 0 ? " checked" : "") + ' onchange="auScopeSync(this)">' + esc(o) + "</label>";
+  }).join("") + "</span>";
+}
+function auScopeSync(cb) {
+  var lb = cb && cb.closest && cb.closest("label.chip");
+  if (lb) lb.classList.toggle("on", !!cb.checked);
+}
+function auScopeRead(box) {
+  if (!box) return "";
+  var ins = box.querySelectorAll("input:checked"), out = [];
+  for (var i = 0; i < ins.length; i++) out.push(ins[i].value);
+  return out.join("、");
+}
+/* 行内编辑入口：弹窗式多选（列表列窄，放不下 chips） */
+function auScopeDlg(cur, onOk) {
+  openDlg("设置适用范围",
+    "取值范围取自<b>资产台账的「资产组」</b> —— 该列是（源 × 方式）联合判定的结果，取值域不自行输入。",
+    '<div class="fld"><label>适用范围 <span class="req">*</span></label>' + auScopeChips("dlgScope", cur) + "</div>");
+  $("#dlg1Ok").onclick = function () {
+    var v = auScopeRead(document.querySelector('[data-scope-box="dlgScope"]'));
+    if (!v) { toast("请至少选择一项适用范围：它是本源 × 本方式联合判定的结果列之一"); return; }
+    closeDlg(); onOk(v);
+  };
+}
+function auSeed() {
+  return {
+    schema: "au-5",
+    dict: {
+      methods: JSON.parse(JSON.stringify(AU_METHODS)),
+      levels: JSON.parse(JSON.stringify(AU_LEVELS))
+    },
+    sources: [
+      { id: "src_local", name: "本地账号", type: "本地账号体系", st: "已启用", order: 1, tag: "LOCAL",
+        desc: "平台自带账号体系，口令策略与锁定机制由平台管控",
+        conn: auConnSeed("local", {
+          pwdMin: "12", pwdCplx: "大写 + 小写 + 数字 + 符号", pwdDays: "90", pwdHist: "5",
+          lockN: "5", lockMin: "30"
+        }, true, ""),
+        sync: { mode: "—", note: "本地账号由平台自管，<b>不涉及外部同步</b>。" },
+        ways: [
+          { mid: "pwd", lv: 2, scope: "办公协同", anon: true },
+          { mid: "otp", lv: 2, scope: "核心业务、数据平台", anon: false }
+        ] },
+      { id: "src_ad", name: "AD 域", type: "AD / LDAP", st: "已启用", order: 2, tag: "AD",
+        desc: "组织与用户定时同步；口令校验交 LDAP bind",
+        conn: auConnSeed("ldap", {
+          addr: "ldaps://ad.baize.internal", port: "636",
+          base: "DC=baize,DC=internal", bind: "CN=svc_baize,OU=Service,DC=baize,DC=internal",
+          enc: "TLS 强制（关闭 start_tls）", verify: true, trust: "平台内置 CA",
+          poolMin: "2", poolMax: "20", idle: "300", qto: "5", fo: true,
+          foAddr: "ldaps://ad-dc2.baize.internal", foPort: "636"
+        }, true, "2026-09-29 09:14 · 连通 往返 42ms"),
+        sync: { mode: "定时同步（增量）", note: "每 <b>30 分钟</b>增量拉取；同步范围＝指定 OU 子树。仅管理来源为 <b>AD</b> 的账号，<b>不覆盖内部手工账号</b>；属性冲突时<b>告警而非覆盖</b>。", map: [["账号名", "sAMAccountName"], ["姓名", "displayName"], ["部门", "department"], ["邮箱", "mail"]] },
+        ways: [
+          { mid: "pwd", lv: 2, scope: "办公协同", anon: false },
+          { mid: "fp", lv: 4, scope: "全部资产", anon: false }
+        ] },
+      { id: "src_oidc", name: "外部 IdP（OIDC）", type: "OIDC 外部 IdP", st: "已启用", order: 3, tag: "OIDC",
+        desc: "平台作 RP，走授权码流；用户信息按需映射",
+        conn: auConnSeed("oidc", {
+          issuer: "https://idp.partner.com/realms/baize", cid: "baize-sp",
+          cb: "https://portal.baize.internal/_baize/sso/oidc/callback", scope: "openid profile email",
+          disc: true, alg: "RS256", jwks: "12", verify: true, slo: true
+        }, true, "2026-09-29 09:14 · 连通 往返 42ms"),
+        sync: { mode: "登录时按需映射", note: "不在平台侧建全量账号副本；<b>首次登录时</b>按 sub 建立映射并落账号，此后仅更新时间戳。", map: [["账号名", "preferred_username"], ["姓名", "name"], ["部门", ""], ["邮箱", "email"]] },
+        ways: [
+          { mid: "pwd", lv: 1, scope: "对外服务", anon: false },
+          { mid: "sms", lv: 2, scope: "对外服务", anon: true }
+        ] },
+      { id: "src_ca", name: "国密 CA 认证", type: "CA / 证书体系", st: "已停用", order: 4, tag: "CA",
+        desc: "基于数字证书的强身份认证，供高敏感资产",
+        conn: auConnSeed("ca", {
+          root: "CFCA 机构根证书", rootExp: "2029-06-30", suite: "TLCP 双证书（签名 + 加密）",
+          chainChk: true, crl: "12", strict: true, ocsp: false, subjMap: "证书 CN / UID"
+        }, true, ""),
+        sync: { mode: "定时同步（CRL）", note: "账号不批量同步；仅按证书主体<b>按需建立映射</b>。吊销状态以 CRL 为准，<b>拉取失败即告警</b>。", map: [["账号名", "UID"], ["姓名", "CN"], ["部门", ""], ["邮箱", ""]] },
+        ways: [
+          { mid: "usbkey", lv: 4, scope: "核心业务", anon: false }
+        ] }
+    ],
+    /* ★ 2026-10-09：原 `gw: { creds, cas, mtls }` 种子**整块删除**。
+       它是已撤除的重复页 `pg-augwcred` 的数据源（撤除见 `_patchlog/_proto_v_drop_gwcred.py`）；
+       页③（`pg-cred`）的活台账是模块级常量 `CRED_LIST` / `CA_LIST` / `MTLS_LIST`，两者内容
+       完全不同 —— 即页面上凭空多出「两套网关凭据、两套 mTLS 证书」。其中 `gw.creds` / `gw.mtls`
+       **从不被读**（纯死登记），`gw.cas` 仅被 `auGwCas()` 读，该函数已改读模块级常量 `GW_SIGN_CAS`。
+       保留本注释，以免后来者再从历史备份里「恢复」这套影子数据。 */
+    uc: {
+      items: [
+        {
+          id: "uc_01", asset: "运维堡垒机 Web 控制台", assetId: "a20", mode: "用户自管", owner: "郑浩", acct: "zhenghao",
+          st: "已托管", upd: "2026-08-11", fill: "自动（字段特征库）",
+          /* ★ 2026-10-10（R27 · C-4）：本记录**不再自持契约副本** —— 登录契约的唯一真源是
+             资产侧「身份适配 → D 档」（`ASSETS[]._adapt.d`，本页由 ucLoginOf 现读）。
+             此处 `login` 只承载**测试留痕**（tested / fail），是记录级状态、不属契约。 */
+          login: { tested: "2026-08-11" }
+        },
+        {
+          id: "uc_02", asset: "报表导出网关", assetId: "a10", mode: "管理员托管", owner: "组织资产", acct: "rpt_svc",
+          st: "已托管", upd: "2026-07-22", fill: "自动（字段特征库）",
+          login: { tested: "2026-07-22" }
+        },
+        {
+          id: "uc_03", asset: "报表中心", assetId: "a4", mode: "用户自管", owner: "李俊", acct: "lijun",
+          st: "代填失败", upd: "2026-09-02", fill: "自定义选择器",
+          login: { tested: "2026-09-02", fail: "表单已改版（#loginBtn 未命中）→ 回退手动登录" }
+        }
+      ],
+      cfg: {
+        scope: "两者", form: "自动（字段特征库）",
+        captcha: "人工输入", bind: "一对一", fail: "提示手动登录",
+        defaultKind: "单步（账号+密码同页）", defaultSubmit: "自动提交"
+      }
+    },
+    /* ⚠ holder 的规范形式＝`"客户端实例 · " + 软件名 + " @ " + 终端名`（`@` **两侧各一空格**）
+       —— 签发弹窗按此拼装、cnOf 按此反查；少一个空格即让**查重与 cn 反查同时失效**
+       （2026-10-10 R8 实测：种子少空格 ⇒ 同主体同类型可重复签发）。 */
+    /* 「绑定主体标识」(cn) = 持有主体所属**客户端实例的序列号 cidseq**（口径见 cnOf）。
+       ⚠ 智能体实例的宿主是**该智能体软件的客户端实例**（身份台账 ai_01.host = ci_004
+         ⇒ ci_004.cidseq = BZAI-0007-3A2C），不是同终端上的 PC 客户端实例（ci_001）。 */
+    issue: [
+      { id: "is_01", kind: "客户端 License 证书", holder: "客户端实例 · 白泽客户端（PC） @ 科技管理部-张伟-PC", no: "LC-2026-000701", issued: "2026-03-14", exp: "2027-03-13", st: "有效", ca: "白泽内网 CA", cn: "BZPC-0007-3A2C", fp: "PC7F3A2C91E004B7", scope: "信贷核心系统 / 客户管理平台" },
+      { id: "is_02", kind: "客户端 License 证书", holder: "客户端实例 · 白泽客户端（PC） @ 信贷管理部-王芳-PC", no: "LC-2026-001201", issued: "2026-04-02", exp: "2027-04-01", st: "有效", ca: "白泽内网 CA", cn: "BZPC-0012-1D8E", fp: "PC1D8E44A0F22C93", scope: "信贷核心系统 / 客户管理平台 / 报表分析平台" },
+      { id: "is_03", kind: "客户端 License 证书", holder: "客户端实例 · 客户集成 OA 插件 @ 综合管理部-周琴-PC", no: "LC-2026-005101", issued: "2026-01-11", exp: "2027-01-10", st: "已吊销", ca: "外购 CA（CFCA）", cn: "CSOA-0021-5C0F", fp: "PC5C0F93D2B661A4", scope: "办公自动化平台" },
+      /* ★ 2026-10-10（R9）：原只有一条 is_04（09-29 签发、已过期），而身份台账 ai_01.cred 记的是
+         此刻持有的那份（09-30 09:05–09:35）⇒ **本页台账未覆盖主体的当前持有状态**，两模块对
+         「该主体现在拿的是哪份」各说一套（短时凭据每次续发编号本就不同，编号差异本身合法）。
+         按「按续发周期逐条留痕」补当前份 is_05：台账自此覆盖当前份与历史份，同一时刻只有一条生效。 */
+      { id: "is_05", kind: "智能体短时凭据", holder: "智能体实例 · 代码助手 Agent @ 科技管理部-张伟-PC（进程 4821）", no: "AT-3A2C-7F19", issued: "2026-09-30 09:05", exp: "2026-09-30 09:35", st: "有效", cn: "BZAI-0007-3A2C", fp: "PC7F3A2C91E004B7", scope: "代码库 / 需求库", ttl: 30 },
+      { id: "is_04", kind: "智能体短时凭据", holder: "智能体实例 · 代码助手 Agent @ 科技管理部-张伟-PC（进程 4821）", no: "AT-3A2C-4821", issued: "2026-09-29 09:12", exp: "2026-09-29 09:42", st: "已过期", cn: "BZAI-0007-3A2C", fp: "PC7F3A2C91E004B7", scope: "代码库 / 需求库", ttl: 30 },
+      /* ★ 2026-10-10（跨模块同源轮 X1）：身份侧 6 个客户端实例 lic「当前」份 + 4 个智能体实例 cred
+         共 10 份已签发凭据，本台账此前只登记 5 份 ⇒ 从身份侧点过来查不到、「台账覆盖主体当前
+         持有状态」只对 ai_01 成立。补齐 6 份：is_06/07/08 ↔ ci_003/ci_004/ci_006 的当前 License，
+         is_09/10/11 ↔ ai_02/ai_03/ai_04 的当前短时凭据（编号 / 签发 / 到期逐项与身份侧同源）。
+         ⚠ ci_001 的 lic_001b（LC-2027-000702，签发日 2027-03-14）属**未来签发**的轮换预告，
+         尚未签发 ⇒ 不入本台账；身份侧实例详情的「待生效」仅作预告呈现。 */
+      { id: "is_06", kind: "客户端 License 证书", holder: "客户端实例 · 白泽客户端（PC） @ 电子银行部-李俊-NB", no: "LC-2026-003101", issued: "2026-05-19", exp: "2027-05-18", st: "有效", ca: "白泽内网 CA", cn: "BZPC-0031-9A2C", fp: "NB9A2C77B1155E08", scope: "信贷核心系统 / 报表分析平台" },
+      { id: "is_07", kind: "客户端 License 证书", holder: "客户端实例 · AI 安全 agent @ 科技管理部-张伟-PC", no: "LC-2026-004001", issued: "2026-06-01", exp: "2027-05-31", st: "有效", ca: "白泽内网 CA", cn: "BZAI-0007-3A2C", fp: "PC7F3A2C91E004B7", scope: "信贷核心系统 / 数据中台" },
+      { id: "is_08", kind: "客户端 License 证书", holder: "客户端实例 · AI 安全 agent @ 信贷管理部-王芳-PC", no: "LC-2026-006001", issued: "2026-08-18", exp: "2027-08-17", st: "有效", ca: "白泽内网 CA", cn: "BZAI-0012-1D8E", fp: "PC1D8E44A0F22C93", scope: "信贷核心系统 / 客户管理平台 / 数据中台" },
+      { id: "is_09", kind: "智能体短时凭据", holder: "智能体实例 · 报表生成 Agent @ 科技管理部-张伟-PC（进程 5187）", no: "AT-3A2C-5187", issued: "2026-09-30 08:20", exp: "2026-09-30 08:50", st: "已过期", cn: "BZAI-0007-3A2C", fp: "PC7F3A2C91E004B7", scope: "报表分析平台（只读）", ttl: 30 },
+      { id: "is_10", kind: "智能体短时凭据", holder: "智能体实例 · 代码助手 Agent @ 信贷管理部-王芳-PC（进程 2210）", no: "AT-1D8E-2210", issued: "2026-09-30 09:02", exp: "2026-09-30 09:32", st: "有效", cn: "BZAI-0012-1D8E", fp: "PC1D8E44A0F22C93", scope: "代码库 / 需求库", ttl: 30 },
+      { id: "is_11", kind: "智能体短时凭据", holder: "智能体实例 · 风控建模 Agent @ 信贷管理部-王芳-PC（进程 9034）", no: "AT-1D8E-9034", issued: "2026-09-30 07:55", exp: "2026-09-30 08:25", st: "已过期", cn: "BZAI-0012-1D8E", fp: "PC1D8E44A0F22C93", scope: "沙箱环境", ttl: 30 },
+      /* ★ 2026-10-10（R27 · B-1 补齐）：本条为 ci_007（信贷管理部-王芳-NB / BZPC-0042-7B31）的「当前」
+         License。身份侧自 id-8 起即有该份，认证侧台账此前**漏登**（全段 0 命中）—— 而页⑤「签发凭据
+         管理」自述「覆盖主体当前持有状态」⇒ 不补则两页对「该实例持有什么」各说一套。
+         cn/fp/scope 逐字取自身份侧 ci_007.lic[0] 与其终端 t_nb_0042.sn（同一事实不得另造）。 */
+      { id: "is_12", kind: "客户端 License 证书", holder: "客户端实例 · 白泽客户端（PC） @ 信贷管理部-王芳-NB", no: "LC-2026-004201", issued: "2026-06-15", exp: "2027-06-14", st: "有效", ca: "白泽内网 CA", cn: "BZPC-0042-7B31", fp: "NB7B31D9E4F0A6C2", scope: "信贷核心系统 / 客户管理平台" }
+    ],
+    authr: [
+      { id: "ar_01", user: "张伟", kind: "USB Key 硬件令牌", lv: 4, ctype: "绑定型", dev: "科技管理部-张伟-PC", rpid: "baize.example.com", reg: "2026-06-05", st: "有效", credId: "CID-7F3A-01" },
+      { id: "ar_02", user: "张伟", kind: "指纹识别", lv: 4, ctype: "绑定型", dev: "科技管理部-张伟-PC", rpid: "baize.example.com", reg: "2026-06-05", st: "有效", credId: "CID-9C42-02" },
+      { id: "ar_03", user: "王芳", kind: "指纹识别", lv: 4, ctype: "可同步凭据", dev: "信贷管理部-王芳-PC", rpid: "baize.example.com", reg: "2026-07-18", st: "有效", credId: "CID-2E88-03" },
+      { id: "ar_04", user: "陈丽", kind: "活体人脸识别", lv: 5, ctype: "绑定型", dev: "数据管理部-审计终端", rpid: "baize.example.com", reg: "2026-08-22", st: "有效", credId: "CID-5B17-04" },
+      { id: "ar_05", user: "李俊", kind: "指纹识别", lv: 4, ctype: "绑定型", dev: "电子银行部-李俊-NB", rpid: "baize.example.com", reg: "2026-05-20", st: "已吊销", credId: "CID-4D6F-05" }
+    ]
+  };
+}
+/* ---------- 认证侧数据口径迁移（就地升级旧快照） ---------- */
+/* 旧口径里 WebAuthn / 设备生物因素 / 活体人脸曾被当成「方式名」（内码 webauthn / bio / facial），
+   现按 PRD F5.4 回归：L4 / L5 的实现口径是 WebAuthn（FIDO2）**承载协议**，方式名是
+   指纹识别 / USB Key 硬件令牌 / 活体人脸识别 / 虹膜识别。旧内码按下表折算。 */
+var AU_MID_LEGACY = { webauthn: "fp", bio: "fp", facial: "face" };
+function auMigrateWayMid(w) {
+  if (w && AU_MID_LEGACY[w.mid]) w.mid = AU_MID_LEGACY[w.mid];
+  return w;
+}
+/* 字典口径迁移：旧快照把「免认证登录」那一档砍掉后整体上移一档（账号密码记成 L1、短信记成
+   L2、L3 整档缺失），并含 WebAuthn/bio/facial 三个非 PRD 方式名；旧版级别字段名为 lv
+   （且无 srcBind / interactive）、快照键名为 lvdef。命中即按真源重建标准条目；
+   运行时自建的方式（内码不在标准集内）保留，不被抹掉。 */
+function auMigrateDict(d) {
+  if (!d || typeof d !== "object") return d;
+  /* 快照无方式清单（或只剩旧键 lvdef）⇒ 按真源重建 */
+  if (!Array.isArray(d.methods) || !d.methods.length) {
+    d.methods = JSON.parse(JSON.stringify(AU_METHODS));
+    d.levels = JSON.parse(JSON.stringify(AU_LEVELS));
+    if (d.lvdef) delete d.lvdef;
+    return d;
+  }
+  var std = {};
+  AU_METHODS.forEach(function (m) { std[m.id] = m; });
+  var stale = d.methods.some(function (m) {
+    if (AU_MID_LEGACY[m.id]) return true;
+    var s = std[m.id];
+    if (!s) return false;
+    return String(s.name) !== String(m.name)
+      || Number(s.defLv) !== Number(m.defLv)
+      || Number(s.authrLv || 0) !== Number(m.authrLv || 0)
+      || Boolean(s.srcBind) !== Boolean(m.srcBind)
+      || Boolean(s.interactive) !== Boolean(m.interactive);
+  });
+  /* 快照键名未升级（仍带旧 lvdef、或缺 levels）同样按真源归一 —— 用「或」而非「且」：
+     二者同时存在的快照也必须重建，否则旧键 lvdef 永远清不掉。 */
+  if (!d.levels || d.lvdef) stale = true;
+  if (!stale) return d;
+  var custom = d.methods.filter(function (m) {
+    return !std[m.id] && !AU_MID_LEGACY[m.id];
+  }).map(function (m) {
+    /* 自建方式保留，并把旧字段名 / 缺失字段补齐到当前形态 */
+    return { id: m.id, name: m.name,
+      defLv: Number(m.defLv != null ? m.defLv : m.lv) || 1,
+      authrLv: Number(m.authrLv) || 0,
+      srcBind: !!m.srcBind, interactive: m.interactive !== false,
+      inherent: m.inherent || "—", inSession: m.inSession !== false };
+  });
+  d.methods = JSON.parse(JSON.stringify(AU_METHODS)).concat(custom);
+  d.levels = JSON.parse(JSON.stringify(AU_LEVELS));
+  if (d.lvdef) delete d.lvdef;
+  return d;
+}
+function auLoad() {
+  /* ★ 认证模块的「持有主体」选项与「绑定主体标识」(cn) 均取自身份模块台账
+     ID.cin / ID.ain，而身份数据只在身份模块页由 idLoad() 装载（见 renderId*）——
+     直接进入认证模块页时 ID 为 null，会让主体下拉退化成兜底单选项、cn 回落为客户端名
+     （与种子记录的序列号口径打架）。此处按需补装，失败不阻断认证模块独立演示。 */
+  if (typeof ID === "undefined" || !ID) { try { idLoad(); } catch (e) { /* 忽略 */ } }
+  AU = auSeed();
+  var _snapDef = auSeed();
+  try {
+    var s = JSON.parse(localStorage.getItem(AU_KEY) || "null");
+    /* ★ 2026-10-10（R25）：**快照 schema 判版** —— 此前无条件采用快照
+       （`for (var k in s)` 直接覆盖新种子）⇒ 种子改了用户永远看到旧数据。
+       实测：页④长期显示数月前的 4 条（办公自动化平台 / 客户管理平台 /
+       旧版报表系统 / 供应商门户），其资产名在资产台账中均不存在
+       ⇒ 点「配置契约」报「该资产未在资产管理登记」。
+       今按 schema 判版：不一致即整包丢弃，按新种子重建。 */
+    if (s && typeof s === "object" && s.schema === _snapDef.schema) {
+      for (var k in s) { if (s[k] != null) AU[k] = s[k]; }
+    }
+  } catch (e) { /* 忽略 */ }
+  var d = auSeed();
+  ["sources", "issue", "authr"].forEach(function (k) { if (!Array.isArray(AU[k])) AU[k] = d[k]; });
+  if (!AU.dict || !Array.isArray(AU.dict.methods)) AU.dict = d.dict;
+  /* 字典回归 PRD 一期 F5.4 口径（详见文件顶部 AU_METHODS 处的唯一真源说明） */
+  auMigrateDict(AU.dict);
+  /* ★ 2026-10-09：`anti` 字段已**整体撤除** —— 抗钓鱼 ≡ 源绑定，同一事实不再两处维护；
+     页面一律读 `srcBind`（历史快照里遗留的 anti 键不再被读取，也不参与任何判定）。 */
+  AU_SRC_METHODS = (AU.dict.methods || AU_METHODS).slice();
+  /* ★ 2026-10-10（R33 · X-2）：先把身份侧权威值同步下来，再按有效期归一状态。 */
+  auSyncIssueFromId();
+  /* 签发凭据状态按有效期归一（同 web 侧 credNormalize 的体例）。 */
+  auIssueNormalize();
+  /* ★ 2026-10-10（R24）：认证器登记记录的 RP ID 一律收敛为平台统一常量。 */
+  auAuthrNormalize();
+  /* ★ 2026-10-09：原为 `if (!AU.gw) AU.gw = d.gw;` —— 随死种子一并撤除
+     （`AU.gw` 的唯一读者 `auGwCas()` 已改读模块级常量 `GW_SIGN_CAS`）。
+     旧存档曾**整包**持久化 `AU`（`auSave` 即 `JSON.stringify(AU)`），`AU.gw` 会随旧档复活
+     ⇒ 此处就地清除，避免影子数据在用户浏览器里长期驻留。 */
+  if (AU.gw) delete AU.gw;
+  if (!AU.uc) AU.uc = d.uc;
+  AU.schema = d.schema;
+  /* 归一化：conn 由 {kind, rows:[散文]} 改为 {kind, fields:[参数]} 后，旧快照没有 fields，
+     新版参数表会渲染成空表（表现为「每个认证源的连接参数都一样、且找不到可填项」）。
+     此处就地升级 —— 与上面 AU.uc 的归一化同一体例。 */
+  var seedConn = {};
+  (d.sources || []).forEach(function (x) { seedConn[x.id] = x.conn; });
+  (AU.sources || []).forEach(function (s) {
+    s.conn = s.conn
+      ? auMigrateConn(s.conn, seedConn[s.id])
+      : JSON.parse(JSON.stringify(seedConn[s.id] || auConnSeed("local", null, false, "")));
+    /* 旧内码（webauthn / bio / facial）折算为 PRD 口径的方式内码 */
+    (s.ways || []).forEach(auMigrateWayMid);
+  });
+  /* 归一化：旧版本 localStorage 里的 uc 记录没有 login → 按 id 从种子补齐**测试留痕**，
+     种子也没有的（运行时新建）→ 补最小骨架，避免页面出现 undefined。
+     ★ 2026-10-10（R27 · C-4）：`login` 已**只承载测试留痕**（契约的唯一真源是资产侧 _adapt.d）
+       ⇒ 此处不再补契约字段（补了反而制造第二份可漂移的副本）。 */
+  if (AU.uc && Array.isArray(AU.uc.items)) {
+    var seedMap = {};
+    (d.uc.items || []).forEach(function (s) { seedMap[s.id] = s; });
+    AU.uc.items.forEach(function (x) {
+      if (x.login && typeof x.login === "object") return;
+      if (seedMap[x.id] && seedMap[x.id].login) { x.login = JSON.parse(JSON.stringify(seedMap[x.id].login)); return; }
+      x.login = { tested: "未测试" };
+    });
+    if (!AU.uc.cfg || AU.uc.cfg.url) {
+      /* 旧 cfg 里有全局 url（已废弃的「统一登录页」口径）→ 丢弃，改用引擎级默认口径 */
+      var oc = AU.uc.cfg || {};
+      AU.uc.cfg = { scope: oc.scope || d.uc.cfg.scope, form: oc.form || d.uc.cfg.form,
+        captcha: oc.captcha || d.uc.cfg.captcha, bind: oc.bind || d.uc.cfg.bind, fail: oc.fail || d.uc.cfg.fail,
+        defaultKind: d.uc.cfg.defaultKind, defaultSubmit: d.uc.cfg.defaultSubmit,
+        /* ★ 重建时必须保留运行期写入的「最近批量测试」时刻 —— 全量重建会把清单外的键整体丢弃，
+           这正是「最近测试」列长期恒为「—」的成因之一。 */
+        tested: oc.tested || "" };
+    }
+  }
+}
+function auSave() { try { localStorage.setItem(AU_KEY, JSON.stringify(AU)); } catch (e) { /* 忽略 */ } }
+
+/* ---------- 1. 通用小件 ---------- */
+function auLvTag(lv) {
+  return '<span class="lv l' + lv + '">L' + lv + "</span>";
+}
+function auStTag(st) {
+  var m = { "已启用": "t-ok", "有效": "t-ok", "已托管": "t-ok", "待配契约": "t-warn", "已停用": "t-gray", "已吊销": "t-err",
+            /* ★ 2026-10-10（R9）：原「已过期」映射 t-gray —— 与页③（CA / mTLS 凭据）的 _ST_TAG `"已过期":"t-err"` **同一状态两种颜色**，且灰与「已停用」（人为停用、中性）同色，会把「有效期已过」这一非预期失效读成运维态。统一为 t-err（失效态）。 */
+            "已过期": "t-err", "即将过期": "t-warn", "代填失败": "t-err" };
+  return '<span class="tag ' + (m[st] || "t-gray") + '">' + esc(st) + "</span>";
+}
+function auMethodName(mid) { for (var i = 0; i < (AU.dict.methods || []).length; i++) if (AU.dict.methods[i].id === mid) return AU.dict.methods[i].name; return mid; }
+function auMethod(mid) { for (var i = 0; i < (AU.dict.methods || []).length; i++) if (AU.dict.methods[i].id === mid) return AU.dict.methods[i]; return null; }
+/* 该方式是否被任一启用中的源引用（被引用 ⇒ 字典中不可删除） */
+/* 「被引用」＝**任一认证源**（无论启用 / 停用）在其「源 × 方式」记录里引用了该方式。
+   ⚠ 若只算「已启用」源：一个已停用源的引用不被视为引用 ⇒ 字典页显示「未引用」并放出
+   「删除」按钮 ⇒ 删除后该停用源的 ways 里留着指向不存在方式的 mid ⇒ **悬空引用**
+   （该源再次启用时认证链引用空对象）。故口径取「所有源」，并按启停拆分用于文案。 */
+function auRefSplit(mid) {
+  var on = 0, off = 0;
+  (AU.sources || []).forEach(function (s) {
+    (s.ways || []).forEach(function (w) {
+      if (w.mid === mid) { if (s.st === "已启用") on++; else off++; }
+    });
+  });
+  return { on: on, off: off };
+}
+function auRefCount(mid) { var r = auRefSplit(mid); return r.on + r.off; }
+/* 该方式是否被**访问策略**引用 —— 策略条件里的「认证方式 ∈ …」按**方式名**取值（不是内码）
+   ⇒ 与认证源侧按 mid 的引用是**两条独立引用链**，必须一并纳入「被引用不可删」判定。
+   覆盖面：页 A 准入策略（POLICIES[资产].agentless / agent）与页 B 资源级访问要求
+   （ASSETS[].res[].paths[]._rq.cond，随该路径生命周期 lc 启停）。
+   ⚠ 只扫认证源会漏放：删掉被启用策略引用的方式后，策略条件里留着指向不存在方式的方式名 ——
+     引擎按方式名求值时命中不到任何「源 × 方式」记录，该条件**恒不达标**（静默失效）。 */
+function auPolRefSplit(name) {
+  var on = 0, off = 0;
+  function scanCond(cond, active) {
+    var hit = false;
+    (function walk(n) {
+      if (!n) return;
+      if (n.t === "g") { (n.ch || []).forEach(walk); return; }
+      if (n.t !== "c" || n.attr !== "auth.method") return;
+      var vs = Array.isArray(n.v) ? n.v : String(n.v == null ? "" : n.v).split(/[、,]/);
+      for (var i = 0; i < vs.length; i++) { if (String(vs[i]).trim() === name) { hit = true; return; } }
+    })(cond);
+    if (hit) { if (active) on++; else off++; }
+  }
+  try {
+    if (typeof POLICIES !== "undefined" && POLICIES) {
+      Object.keys(POLICIES).forEach(function (aid) {
+        var g = POLICIES[aid] || {};
+        ["agentless", "agent"].forEach(function (mode) {
+          (g[mode] || []).forEach(function (p) { if (p && p.cond) scanCond(p.cond, !!p.on); });
+        });
+      });
+    }
+    if (typeof ASSETS !== "undefined" && ASSETS) {
+      (ASSETS || []).forEach(function (a) {
+        ((a && a.res) || []).forEach(function (r) {
+          ((r && r.paths) || []).forEach(function (p) {
+            if (p && p._rq && p._rq.cond) scanCond(p._rq.cond, p.lc === "已激活");
+          });
+        });
+      });
+    }
+  } catch (e) { /* 策略 / 资产台账未就绪时不阻断字典页 */ }
+  return { on: on, off: off };
+}
+
+/* ===== 认证模块 · 列表分页（2026-10-09 裁定「表格都应该分页」） =====
+   复用全站通用分页器（pgmk / .pager.tight，见上方「通用分页」段）：
+   · 有数据即渲染（单页也渲染，仅零条不渲染）—— 与 2026-10-08 裁定同口径；
+   · 勾选 / 全选 / 批量一律限定「当前页可见行」（与 aspPg 同口径）；
+   · 页码状态与筛选条件同层：只活在本次会话内、不进 localStorage —— 筛选条件本身
+     也不持久化，单独持久化页码会还原出「无筛选的第 3 页」这种错状态。
+   参与分页的是**记录台账**（认证方式清单 / 认证源列表 / 源 × 方式记录 / 托管账号 /
+   表单契约 / 签发凭据 / 认证器登记，以及页③的三张凭据表）；
+   **不**参与的是**定义表与子表**（级别档位定义固定 L1~L5 五行、表单字段映射固定四项、
+   源属性 / 引擎策略等键值表）—— 它们不是可增长的记录台账。 */
+var AU_PAGE = 10;
+/* ★ 2026-10-10（R15）：设备名（「数据管理部-审计终端」「张伟-PC」）是不可断行的自然长值，
+   在 111px 的弹性列里折成「数据管理部-审」/「计终端」—— 断点落在**词中间**。按 R12④ 口径
+   （标识类长串的断点须落在**语义边界**）在连字符与斜杠后插 `<wbr>`，让折行发生在「-」「/」之后。 */
+function devWbr(s) {
+  return esc(String(s == null ? "" : s)).replace(/([-/])/g, "$1<wbr>");
+}
+function auSlice(rows, holder) {
+  var pages = Math.max(1, Math.ceil(rows.length / AU_PAGE));
+  var p = Math.min(Math.max(1, Number(holder.pg) || 1), pages);
+  holder.pg = p;
+  return rows.slice((p - 1) * AU_PAGE, p * AU_PAGE);
+}
+function auMountPager(elId, total, page, go, unit, hint) {
+  if (!document.getElementById(elId.replace("#", ""))) return;
+  pgmk(elId, total, page, go, unit, AU_PAGE, hint);
+}
+/* ★ 2026-10-10（R11）：落库后把页码指向新行所在页。
+   原实现各「新增」分支都不动分页状态 ⇒ push 到末尾的新行落在末页、unshift 到开头的新行落在
+   首页，两种在当前页都不可见（用户以为「新增没生效」）。atEnd=true 表示新行落在末页。 */
+function auPgNew(holder, total, atEnd) {
+  if (!holder) return;
+  holder.pg = atEnd ? Math.max(1, Math.ceil(Number(total || 0) / AU_PAGE)) : 1;
+}
+/* 翻页入口一律重渲染本文；页⑤ 翻页同时清空勾选（勾选与结果集强相关，避免跨页误批量） */
+function audPg(p)      { AUD.pg = Math.max(1, p | 0); renderAuDict(); }
+/* ★ 2026-10-10（R11-H）：档位定义表的翻页入口（与 audPg 同形，页码状态独立）。 */
+function audLvPg(p)    { AUD.lv.pg = Math.max(1, p | 0); renderAuDict(); }
+function ausrcPg(p)    { AUS.pg = Math.max(1, p | 0); renderAuSrc(); }
+function ausrcWayPg(p) { AUW.pg = Math.max(1, p | 0); renderAuSrc(); }
+/* ★ 2026-10-10（R13）：认证源详情「字段映射」表的翻页入口（与 ausrcWayPg 同形，页码状态独立）。 */
+function ausrcMapPg(p) { AUW.map.pg = Math.max(1, p | 0); renderAuSrc(); }
+function auucPg(p)     { AUU.pg = Math.max(1, p | 0); renderAuUserCred(); }
+function auucFmtPg(p)  { AUF.pg = Math.max(1, p | 0); renderAuUserCred(); }
+function auiPg(p)      { AUI.pg = Math.max(1, p | 0); AUI.sel = []; renderAuIssue(); }
+function aurPg(p)      { AUR.pg = Math.max(1, p | 0); renderAuAuthr(); }
+/* 页③ 三张凭据表各自的分页状态（同口径：只活在本次会话内） */
+var CRED_PG = { c1: 1, c2: 1, c3: 1 };
+function credSlice(rows, key) {
+  var pages = Math.max(1, Math.ceil(rows.length / AU_PAGE));
+  var p = Math.min(Math.max(1, Number(CRED_PG[key]) || 1), pages);
+  CRED_PG[key] = p;
+  return rows.slice((p - 1) * AU_PAGE, p * AU_PAGE);
+}
+function credPager(key, elId, total, unit, hint) {
+  if (!document.getElementById(elId)) return;
+  pgmk("#" + elId, total, CRED_PG[key], "credPg_" + key, unit, AU_PAGE, hint);
+}
+function credPg_c1(p) { CRED_PG.c1 = Math.max(1, p | 0); credRows(); }
+function credPg_c2(p) { CRED_PG.c2 = Math.max(1, p | 0); caRows(); }
+function credPg_c3(p) { CRED_PG.c3 = Math.max(1, p | 0); mtlsRows(); }
+
+/* ---------- 2. 页① 认证方式字典（pg-audict） ---------- */
+/* ★ 2026-10-10（R11-H）：`lv` 页签（级别档位定义）与 `m` 页签（认证方式清单）各自持有页码 ——
+   共用 `AUD.pg` 会在「m 翻到第 2 页 → 切 lv」时把 5 行按第 2 页切片。 */
+var AUD = { tab: "lv", k: "", pg: 1, lv: { pg: 1 } };
+function auDictFiltered() {
+  var k = String(AUD.k || "").toLowerCase();
+  if (!k) return (AU.dict.methods || []).slice();
+  return (AU.dict.methods || []).filter(function (m) {
+    /* ★ 2026-10-09：原过滤条件含 `m.note`，但该字段从未写入、也从未渲染 ⇒「搜索说明」无从命中
+       （搜不到任何东西的筛选项）。改为搜可命中的字段：方式名 / 凭据固有属性 / 抗钓鱼判据。 */
+    return (m.name + " " + (m.inherent || "") + " " + (m.srcBind ? "抗钓鱼 源绑定" : "")).toLowerCase().indexOf(k) >= 0;
+  });
+}
+function auDictPage() {
+  var tab = AUD.tab;
+  /* 档位表**只描述档位本身** —— 不列「该档方式」、不判「该档可否抗钓鱼」：
+     抗钓鱼是方式的固有属性（源绑定能力），不是档位的属性。 */
+  var lvHtml = auSlice(AU.dict.levels || [], AUD.lv).map(function (d) {
+    return '<tr><td><b>L' + d.lv + "</b> · " + esc(d.name) + (d.res ? ' <span class="tag t-gray">' + esc(d.res) + "</span>" : "") + "</td>" +
+      "<td>" + esc(d.desc) + "</td></tr>";
+  }).join("");
+  var mHtml = auSlice(auDictFiltered(), AUD).map(function (m) {
+    var rfs = auRefSplit(m.id), ref = rfs.on + rfs.off;
+    /* ★ 2026-10-10（R30）：引用 = 认证源 + 访问策略（两条独立链，见 auPolRefSplit）。 */
+    var pfs = auPolRefSplit(m.name), pref = pfs.on + pfs.off;
+    /* ★ 2026-09-30：字典条目的删除门禁改由**方式自身的身份**判定 ——
+       内置方式内码在 AU_BUILTIN_IDS 内 ⇒ 不可删（删掉会让方式名取值域残缺、
+       已落库的「源 × 方式」记录悬空）；自建方式未引用即可删。
+       旧实现按「该档位下方式条数 ≤ 1 则不可删」，其依据是「档位 → 方式集合」这一**已废止**的
+       归属关系（级别不归字典），故该判据连同依据一并摘除。
+       与「被引用不可删」同为由数据推导的门禁：入口级收口（不渲染入口）+ 提交侧兜底。 */
+    var builtin = AU_BUILTIN_IDS.indexOf(m.id) >= 0;
+    /* ★ 2026-10-10（R30/R32）：次行文案**须短到单行放得下** —— 本列 150px，实测
+       「（含已停用 1）· 策略引用 2」在此列折成两行、整格 3 行（破坏 R15「次行块不折行」）。
+       收敛为「停用 N · 策略引用 M」形态，仍由同一个 `.mini` 块级次行承载。 */
+    var _seg = [];
+    if (rfs.off) _seg.push("停用 " + rfs.off);
+    if (pref) _seg.push("策略引用 " + pref);
+    var _refCell = (ref || pref)
+      ? (ref ? "<b>" + ref + "</b> 个源引用" : "") + (_seg.length ? '<div class="mini" style="margin-top:2px">' + _seg.join(" · ") + "</div>" : "")
+      : '<span class="muted">未引用</span>';
+    var _opCell = (ref || pref) ? "" : (builtin ? '<span class="muted mini" title="平台内置方式，不可删除 —— 删除会使方式名取值域残缺、历史记录悬空">内置方式</span>' : '<button class="btn link" data-auact="dictDel" data-id="' + m.id + '">删除</button>');
+    return "<tr><td><b>" + esc(m.name) + "</b></td>" +
+      "<td>" + (m.defLv ? auLvTag(m.defLv) + ' <span class="mini">参考</span>' : '<span class="tag t-gray">—</span>') + "</td>" +
+      "<td>" + esc(m.inherent) + "</td>" +
+      "<td>" + (m.srcBind ? '<span class="tag t-info">源绑定 · 抗钓鱼</span>' : '<span class="tag t-gray">—</span>') + "</td>" +
+      /* ★ 2026-10-10（R11）：「交互式」由 dictNew 采集并已决定二次认证的可用方式（过滤在 render2FA），
+         但字典页此前不呈现 ⇒ 补次行；不新增列，避免 1280 下 8 列溢出。 */
+      "<td>" + (m.inSession ? "计入" : '<span class="muted">不计入</span>') + '<div class="mini" style="margin-top:2px">' + (m.interactive ? "交互式" : "非交互式") + "</div></td>" +
+      /* ★ 2026-10-10（R15）：括注原为 inline `<span class="mini">`，与主文本同流 ⇒ 150px 列里折成
+         「1 个源引用 （含已停用」/「1）」，断点落在**非语义边界**。改为**次行块**（同模块既有
+         「长值折次行」范式），主行只留「N 个源引用」，列宽 150px 不变即恒稳。 */
+      "<td>" + _refCell + "</td>" +
+      '<td><span class="opgrp">' + _opCell + "</span></td></tr>";
+  }).join("");
+  return idTitle("认证方式字典", "<b>方式名</b>的唯一取值域来源 · 全平台唯一权威源 · <b>旁挂</b>于「认证源 → 认证方式」主线之外",
+      /* ★ 2026-10-10（R16）：本入口只作用于「认证方式清单」页签（新增的是方式、不是档位），
+         而默认落「级别档位定义」页签 ⇒ 默认视图下点新增，屏幕停在档位表、毫无变化，
+         toast 却说「已跳至第 N 页」—— 属「点了没反应 + 提示与可见内容不符」。
+         入口随页签出现（档位表只读，本无新增语义）。
+         ⚠ 本行原串尾部的 `)` 是 `idTitle(` 的闭合括号，插入三元后必须一并保留，
+           否则 `idTitle(` 悬空（R16 首次落盘即被 node --check 拦下，见本文件落盘前语法门）。 */
+      (tab === "m"
+        ? '<div class="toolbar"><button class="btn primary" data-auact="dictNew">新增认证方式</button></div>'
+        : "")) +
+    idRefNote("本页只回答<b>「平台上有哪些认证方式、各自的凭据形态与固有属性」</b>，<b>不含具体源的效力</b> —— 同一方式在不同源下的级别与适用范围由<b>认证源</b>页联合判定，本页<b>统一的是名字，不是效力</b>。方式上标注的<b>参考默认级别</b>只作新建记录时的初值。") +
+    /* ★ 2026-10-10（R12）：补 tablist / tab / tabpanel 语义（范式同动态防护 `#dpOvTabs`）。 */
+    '<div class="tabs" id="audTabs" role="tablist">' +
+      '<button type="button" role="tab" id="audTabsTab_lv" aria-controls="audPanel" aria-selected="' + (tab === "lv" ? "true" : "false") + '" data-aut="lv" class="' + (tab === "lv" ? "on" : "") + '">级别档位定义<span class="num">L1~L5</span></button>' +
+      '<button type="button" role="tab" id="audTabsTab_m" aria-controls="audPanel" aria-selected="' + (tab === "m" ? "true" : "false") + '" data-aut="m" class="' + (tab === "m" ? "on" : "") + '">认证方式清单<span class="num">' + (AU.dict.methods || []).length + "</span></button></div>" +
+    '<div class="card" role="tabpanel" id="audPanel" aria-labelledby="audTabsTab_' + (tab === "lv" ? "lv" : "m") + '"><div class="card-h"><h3>' + (tab === "lv" ? "级别档位定义" : "认证方式清单") +
+      '<span class="sub">' + (tab === "lv" ? "档位固定 L1~L5 且序不变 · 只描述档位本身 · 不含方式归属" : "方式名的唯一取值范围 · 供认证源引用 · 级别由源 × 方式判定") + "</span></h3></div>" +
+      '<div class="card-b">' +
+      (tab === "m"
+        ? '<div class="toolbar" style="margin-bottom:12px">' +
+             '<div class="input-w"><input type="search" id="audK" placeholder="搜索方式名 / 固有属性" aria-label="搜索认证方式" style="width:240px" value="' + esc(AUD.k) + '"><i>搜索</i></div>' +
+          "</div>"
+        : "") +
+      (tab === "lv"
+        ? idTbl(["档位", "判定含义"], lvHtml || idEmptyRow(2, "档位定义缺失"), ["220px", null]) +
+          /* ★ 2026-10-10（R11-H）：本表此前**整张无分页器**，违反「有数据即渲染分页器」。 */
+          '<div class="lst-foot"><div id="audLvPager" style="flex:1"></div></div>'
+        /* ★ 2026-10-10（R11）：末段表头由单行改两行 —— 本列 106px 内容盒 78px，单行文案实测 125.9px（溢出 48px，
+           1280 下同）。主行「计入会话档位」75.0px、次行「交互式」37.5px，与数据单元格「计入 / 不计入 + mini 次行」形态一致。 */
+        : idTbl(["方式名", "参考默认级别", "凭据固有属性", "源绑定（抗钓鱼判据）", "计入会话档位<br><span class=\"mini\">交互式</span>", "被引用", "操作"],
+            mHtml || idEmptyRow(7, AUD.k ? "没有符合条件的认证方式" : "暂无认证方式"), /* ★ 2026-10-10（R12）：两个弹性列原按剩余宽**等比平分**（≈208 / ≈208）——
+         「方式名」短内容白占宽、「凭据固有属性」长内容反复折行。改为「方式名」定宽 150，
+         余量全部归「凭据固有属性」。 */
+            ["150px", "108px", null, "156px", "116px", "150px", "92px"]) +
+          '<div class="lst-foot"><div id="audMPager" style="flex:1"></div></div>') +
+      /* ★ 2026-10-10（R19·A4）：页尾长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 */
+      "</div></div>";
+}
+
+/* ---------- 3. 页② 认证源（pg-ausrc）唯一落笔处 ---------- */
+/* ★ 2026-10-10（R9）：新增源此前把 `sync.mode` **直接写死「未配置」**，而「同步方式」全页无任何
+   维护入口（`srcEditAttr` 只改展示属性）⇒ 新建的非本地源**永远不能启用**（启用校验要求账号来源
+   明确），详情页还会渲染一个点了只弹「后续版本提供」的死按钮。此处把同步方式的**取值域**与
+   **说明派生**收成一处，新增向导与「编辑源属性」共用（穷举既有取值，避免编辑时下拉对不上既有值
+   而被静默改写）。「—」＝本地账号体系；「定时同步（CRL）」＝CA / 证书体系专用档。 */
+var AU_SYNC_MODES = ["—", "未配置", "定时同步（全量）", "定时同步（增量）", "定时同步（CRL）", "实时同步（事件驱动）", "登录时按需映射"];
+/* 🎯 2026-10-10（R12）：上面这份是**并集**（供「方式 → 说明」派生与既有台账回显），
+   但**控件取值域必须按源类型收敛** —— 并集直接铺进下拉，会落出「AD 域 · 定时同步（CRL）」这类
+   自相矛盾的记录（CRL 是证书吊销列表，目录服务不产生它）。
+   判据：档位语义（拉账号 / 拉证书吊销 / 按需建映射）必须与该类型**可提供的能力**一致。 */
+var AU_SYNC_BY_TYPE = {
+  "本地账号体系": ["—"],
+  "AD / LDAP": ["未配置", "定时同步（全量）", "定时同步（增量）", "实时同步（事件驱动）", "登录时按需映射"],
+  "OIDC 外部 IdP": ["未配置", "实时同步（事件驱动）", "登录时按需映射"],
+  "CA / 证书体系": ["未配置", "定时同步（CRL）", "登录时按需映射"]
+};
+/* 取某类型可用的同步方式；类型缺省（数据异常）时退回并集，避免下拉为空。 */
+function auSyncModes(type) {
+  var ls = AU_SYNC_BY_TYPE[String(type == null ? "" : type).trim()];
+  return (ls || AU_SYNC_MODES).slice();
+}
+function auSyncNote(mode) {
+  switch (mode) {
+    case "—": return "本地账号由平台自管，<b>不涉及外部同步</b>。";
+    case "定时同步（全量）": return "按固定周期<b>全量拉取</b>；仅管理来源标注为本源的账号，<b>不覆盖内部手工账号</b>；属性冲突时<b>告警而非覆盖</b>。";
+    case "定时同步（增量）": return "按固定周期<b>增量拉取</b>；仅管理来源标注为本源的账号，<b>不覆盖内部手工账号</b>；属性冲突时<b>告警而非覆盖</b>。";
+    case "定时同步（CRL）": return "账号不批量同步，仅按证书主体<b>按需建立映射</b>；吊销状态以 <b>CRL</b> 为准，拉取失败即告警。";
+    case "实时同步（事件驱动）": return "由来源侧事件<b>实时推送</b>；仅管理来源标注为本源的账号，<b>不覆盖内部手工账号</b>；冲突时<b>告警而非覆盖</b>。";
+    case "登录时按需映射": return "不在平台侧建全量账号副本；<b>首次登录时</b>按来源主体建立映射并落账号，此后仅更新时间戳。";
+    default: return "本源<b>尚未配置同步</b>；启用前须明确账号从哪来。";
+  }
+}
+/* 新增源：类型选「本地账号体系」时同步方式固定「—」并收起该字段（本地无外部同步） */
+/* ★ 2026-10-10（R22）：来源标注**随类型自动带出** —— 类型已唯一确定基础标注
+   （与种子 LOCAL / AD / OIDC / CA 同口径），同类型多源自动加序号（AD → AD2 → AD3…）。
+   此前要用户手打 ⇒ 既冗余（把已定信息再抄一遍）又制造两类错：标注与类型不一致、
+   手打撞车被唯一性校验弹回。标注仍是账号同步的归属键，**需唯一**（自动派生天然满足）；
+   用户手工覆盖后不再自动覆盖（`auTagDirty` 置 `data-auto="0"`）。 */
+function auTagBase(tp) {
+  return tp === "AD / LDAP" ? "AD" : tp === "OIDC 外部 IdP" ? "OIDC" : tp === "CA / 证书体系" ? "CA" : "LOCAL";
+}
+function auTagAuto(tp, selfId) {
+  var base = auTagBase(tp), used = {};
+  (AU.sources || []).forEach(function (x) { if (x.id !== selfId) { used[x.tag || x.name] = 1; } });
+  if (!used[base]) { return base; }
+  var n = 2;
+  while (used[base + n]) { n++; }
+  return base + n;
+}
+function auTagDirty(el) { if (el) { el.setAttribute("data-auto", "0"); } }
+function auSrcTypeSync(v) {
+  var w = document.getElementById("ausSyncWrap"), s2 = document.getElementById("ausSync");
+  if (!w || !s2) return;
+  var isLocal = (String(v || "") === "本地账号体系");
+  w.style.display = isLocal ? "none" : "";
+  /* ★ 2026-10-10（R11）：切回非本地时须把「—」恢复为「未配置」——
+     原实现只在 isLocal 分支改写值，而 R10「开窗即收放」开窗即置「—」⇒
+     用户切成 AD / LDAP 后该值被继承并原样落库（sync.mode="—"，说明写成
+     「本地账号由平台自管，不涉及外部同步」），而启用校验必然拒绝「—」、
+     界面又无「未配置」可回退 ⇒ 死循环。 */
+  if (isLocal) s2.value = "—";
+  else if (String(s2.value || "").trim() === "—") s2.value = "未配置";
+  /* 🎯 2026-10-10（R12）：选项集按类型重建 —— 例如把类型从「CA / 证书体系」改成「AD / LDAP」时，
+     原选的「定时同步（CRL）」必须从下拉消失；当前值若不在新类型可用集内，回落「未配置」。 */
+  var ls2 = auSyncModes(v);
+  var cur2 = String(s2.value || "").trim();
+  if (ls2.indexOf(cur2) < 0) cur2 = (ls2.length && ls2[0] === "—") ? "—" : "未配置";
+  s2.innerHTML = ls2.map(function (o5) { return "<option" + (o5 === cur2 ? " selected" : "") + ">" + esc(o5) + "</option>"; }).join("");
+  s2.value = cur2;
+  /* ★ 2026-10-10（R22）：来源标注随类型刷新（用户手改过则不再覆盖）。 */
+  var _tg = document.getElementById("ausTag");
+  if (_tg && _tg.getAttribute("data-auto") !== "0") { _tg.value = auTagAuto(String(v || ""), ""); }
+}
+var AUS = { cur: "", addWay: "", f: { k: "", st: "" }, pg: 1, pgw: 1 };
+function auSrcFiltered() {
+  var f = AUS.f || {};
+  return (AU.sources || []).filter(function (s) {
+    if (f.k) {
+      var hay = (s.name + " " + s.type + " " + s.tag + " " + (s.desc || "")).toLowerCase();
+      if (hay.indexOf(String(f.k).toLowerCase()) < 0) return false;
+    }
+    if (f.st && s.st !== f.st) return false;
+    return true;
+  });
+}
+function auSrcPage() {
+  if (AUS.cur) { var s = AU.sources.filter(function (x) { return x.id === AUS.cur; })[0]; if (s) return auSrcDetail(s); }
+  var body = auSlice(auSrcFiltered(), AUS).map(function (s) {
+    return "<tr><td><b>" + esc(s.name) + "</b></td>" +
+      "<td>" + esc(s.type) + "</td>" +
+      "<td>" + auStTag(s.st) + "</td>" +
+      '<td><span class="kr">' + esc(s.tag) + "</span></td>" +
+      '<td class="cell-cov">' + (s.ways || []).map(function (w) { return '<span class="tag t-gray">' + esc(auMethodName(w.mid)) + " " + "<b>L" + w.lv + "</b>" + "</span>"; }).join(" ") + "</td>" +
+      '<td>' + esc(s.order) + "</td>" +
+      '<td><span class="opgrp"><button class="btn link" data-auact="srcView" data-id="' + s.id + '">配置</button>' +
+      '<button class="btn link" data-auact="srcToggle" data-id="' + s.id + '">' + (s.st === "已启用" ? "停用" : "启用") + "</button></span></td></tr>";
+  }).join("");
+  return idTitle("认证源", "回答「用户<b>从哪来</b>」· （认证源 × 认证方式）<b>联合判定的唯一落笔处</b> · 每条「源 × 方式」记录带<b>无端支持</b>标签",
+      '<div class="toolbar"><button class="btn primary" data-auact="srcNew">新增认证源</button></div>') +
+    idRefNote("主线两级：<b>认证源 → 认证方式</b>（一对多）。级别与适用范围是<b>源与方式两端联合判定</b>的结果 —— 换源或换方式任一改变，判定即变；<b>不是源定档，也不是方式定档</b>。") +
+    '<div class="card"><div class="card-b">' +
+    '<div class="toolbar" style="margin-bottom:12px">' +
+      '<div class="input-w"><input type="search" id="ausrcK" placeholder="搜索认证源 / 类型 / 标注" aria-label="搜索认证源" style="width:250px" value="' + esc(AUS.f.k) + '"><i>搜索</i></div>' +
+      '<select id="ausrcSt" aria-label="筛选认证源状态"><option value="">全部状态</option>' +
+        ["已启用", "已停用"].map(function (o) { return "<option" + (AUS.f.st === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") +
+      "</select>" +
+    "</div>" +
+    /* ★ 2026-10-09：删除「支持方式」（N 种）列 —— 与紧邻的「方式 / 级别」列**同一事实两处**：
+       后者已逐条列出方式名与级别，个数可数得，无需再占一列。 */
+    idTbl(["认证源", "类型", "状态", "来源标注", "方式 / 级别", "展示顺序", "操作"],
+      body || idEmptyRow(7, (AUS.f.k || AUS.f.st) ? "没有符合条件的认证源" : "暂无认证源"), /* ★ 2026-10-10（R12）：同上 —— 「认证源」定宽 160，余量归「方式 / 级别」。 */
+      ["160px", "150px", "92px", "100px", null, "92px", "140px"]) +
+    '<div class="lst-foot"><div id="ausrcPager" style="flex:1"></div></div>' +
+    /* ★ 2026-10-10（R19·A4）：页尾长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 */
+    "</div></div>";
+}
+function auSrcDetail(s) {
+  var _wp = { pg: AUW.pg };
+  var wayRows = auSlice((s.ways || []).map(function (w, i) {
+    var m = auMethod(w.mid);
+    return "<tr><td><b>" + esc(auMethodName(w.mid)) + "</b></td>" +
+      "<td>" + (m && m.srcBind ? '<span class="tag t-ok">抗钓鱼</span>' : '<span class="tag t-gray">—</span>') + "</td>" +
+      '<td><select data-auact="wayLv" data-i="' + i + '" data-id="' + esc(w.mid) + '" aria-label="强度级别">' + [1, 2, 3, 4, 5].map(function (n) { return "<option" + (w.lv === n ? " selected" : "") + ">L" + n + "</option>"; }).join("") + "</select></td>" +
+      '<td><input class="cov-inp" data-auact="wayScope" data-i="' + i + '" data-id="' + esc(w.mid) + '" aria-label="适用范围" value="' + esc(w.scope) + '" readonly title="适用范围（本源 × 本方式联合判定）· 取值域＝资产台账「资产组」，点击设置"></td>' +
+      '<td><label class="chip' + (w.anon ? " on" : "") + '"><input type="checkbox" data-auact="wayAnon" data-i="' + i + '" data-id="' + esc(w.mid) + '"' + (w.anon ? " checked" : "") + ">支持无端</label></td>" +
+      '<td><button class="btn link" data-auact="wayDel" data-i="' + i + '" data-id="' + esc(w.mid) + '">移除</button></td></tr>';
+  }), _wp).join("");
+  AUW.pg = _wp.pg;
+  /* ★ 2026-10-10（R13）：字段映射表页码只在**换源**时归 1 —— 在渲染入口无条件重置会让
+     分页器自己的点击（renderAuSrc → 本函数）每点一次就跳回第 1 页。 */
+  if (AUW.map.for !== s.id) { AUW.map.for = s.id; AUW.map.pg = 1; }
+  var avail = AU_SRC_METHODS.filter(function (m) {
+    return !(s.ways || []).some(function (w) { return w.mid === m.id; })
+      && (AU.dict.methods || []).some(function (d) { return d.id === m.id; });
+  });
+  var conn = auMigrateConn(s.conn || auConnSeed("local", null, false, ""));
+  s.conn = conn;
+  /* ★ 2026-10-10（R13）：字段映射表此前**整张无分页器**（foot=False / pager=False），
+     与本模块「有数据即有分页器（单页也渲染）」的口径冲突；映射字段数在 AD/OIDC/LDAP 常见 8~15 项，
+     一旦增多就没有翻页入口。改为与同页「源 × 方式」表同体例：切片 + `.lst-foot` 分页器。 */
+  var syncMapAll = (s.sync && s.sync.map) || [];
+  var syncMap = syncMapAll.length
+    ? idTbl(["平台字段", "外部来源属性"],
+        auSlice(syncMapAll, AUW.map).map(function (m) {
+          /* ★ 2026-10-10（R14）：判据不能只判「非空」—— 历史种子把**展示层缺省符** `—` 与
+             「—（由管理员手工补录）」当成了外部属性名落库，非空 ⇒ 被渲成「已映射」，
+             映射表因此虚报完整性。此处把这两类占位串显式判为**未映射**（与 srcMap 的
+             「未映射落空串、不落『—』」注释同一口径）。 */
+          var _mv = String(m[1] == null ? "" : m[1]).trim();
+          var _isPh = (_mv === "—" || _mv.indexOf("—（") === 0);
+          return "<tr><td>" + esc(m[0]) + "</td><td>" + (_mv && !_isPh
+            ? '<span class="kr">' + esc(_mv) + "</span>"
+            : '<span class="tag t-gray">未映射</span>') + "</td></tr>";
+        }).join(""),
+        ["160px", null]) +
+      '<div class="lst-foot"><div id="ausrcMapPager" style="flex:1"></div></div>'
+    : "";
+  return idTitle("认证源配置 · " + s.name,
+      "类型 " + esc(s.type) + " · 来源标注 <b>" + esc(s.tag) + "</b> · 状态 " + esc(s.st),
+      '<div class="toolbar"><button class="btn" data-auact="srcList">← 返回列表</button>' +
+      '<button class="btn" data-auact="srcEditAttr" data-id="' + s.id + '">编辑源属性</button>' +
+      (s.st === "已停用" ? '<button class="btn" data-auact="srcDel" data-id="' + s.id + '">删除源</button>' : "") +
+      /* ★ 2026-10-10（R11）：字典方式已全部引用时**不渲染**该入口 —— 「入口随数据出现」不止于挡点击：
+         原实现按钮恒在，点开下拉只有「（字典中的方式均已引用）」，属无意义入口。 */
+      (avail.length ? '<button class="btn primary" data-auact="srcAddWay" data-id="' + s.id + '">添加认证方式</button>' : "") + "</div>") +
+    '<div class="card"><div class="card-h"><h3>源属性<span class="sub">展示与启用状态 · 决定登录页是否呈现</span></h3></div><div class="card-b">' +
+      '<div class="kv" style="grid-template-columns:170px 1fr 170px 1fr">' +
+      '<span class="k">展示名称</span><span class="mini">' + esc(s.name) + "</span>" +
+      '<span class="k">类型</span><span class="mini">' + esc(s.type) + "</span>" +
+      '<span class="k">启用状态</span><span class="mini">' + auStTag(s.st) + "</span>" +
+      '<span class="k">展示顺序</span><span class="mini">' + esc(s.order) + "</span>" +
+      '<span class="k">来源标注</span><span class="mini">' + esc(s.tag) + "</span>" +
+      '<span class="k">说明</span><span class="mini">' + esc(s.desc) + "</span>" +
+      "</div></div></div>" +
+    '<div class="card"><div class="card-h"><h3>' + (conn.kind === "local" ? "账号与口令策略" : "连接参数") +
+      '<span class="sub">' + (conn.kind === "local"
+        ? "平台自管账号的口令与锁定规则 · 参数就地可改"
+        : "对接外部身份源所需的参数 · 参数就地可改；口令与密钥加密存储、界面不回显明文") +
+      '</span></h3></div><div class="card-b">' +
+      auConnForm(conn) +
+      '<div class="toolbar" style="margin-top:12px">' +
+        '<button class="btn primary" data-auact="connSave" data-id="' + s.id + '">保存' + (conn.kind === "local" ? "账号与口令策略" : "连接参数") + "</button>" +
+        (conn.kind === "local" ? "" : '<button class="btn" data-auact="srcTest" data-id="' + s.id + '">连通性测试</button>') +
+        '<span class="mini" style="margin-left:8px">' +
+          (conn.kind === "local" ? "本地账号体系<b>无外部连接</b>，不做连通性测试"
+            : "上次测试：" + (conn.lastTest ? "<b>" + esc(conn.lastTest) + "</b>" : '<span class="tag t-gray">未测试</span>')) +
+        "</span>" +
+      "</div></div></div>" +
+    '<div class="card"><div class="card-h"><h3>同步与映射<span class="sub">账号从哪来、字段怎么落</span></h3></div><div class="card-b">' +
+      '<div class="kv" style="grid-template-columns:170px 1fr">' +
+      '<span class="k">同步方式</span><span class="mini">' + esc(s.sync ? s.sync.mode : "—") + "</span>" +
+      '<span class="k">同步说明</span><span class="mini">' + (s.sync ? s.sync.note : "—") + "</span>" +
+      "</div>" +
+      (syncMap ? '<div style="margin-top:12px">' + syncMap + "</div>" : "") +
+      (s.sync && s.sync.mode === "—"
+        ? ""
+        : (s.sync && s.sync.mode === "登录时按需映射"
+          ? ""
+          : (s.sync && s.sync.mode === "未配置"
+          ? '<div class="mini" style="margin-top:12px">同步方式<b>尚未配置</b> —— 请先用上方<b>「编辑源属性」</b>选定<b>同步方式</b>；配置后「立即同步」与「编辑字段映射」入口才可用。</div>'
+          : '<div class="toolbar" style="margin-top:12px"><button class="btn" data-auact="srcSync" data-id="' + s.id + '">立即同步</button>' +
+            '<button class="btn" data-auact="srcMap" data-id="' + s.id + '">编辑字段映射</button>' +
+            '<span class="mini" style="margin-left:8px">上次同步：' + (s.sync && s.sync.last ? "<b>" + esc(s.sync.last) + "</b>" : '<span class="tag t-gray">从未同步</span>') + "</span></div>"))) +
+            /* ★ 2026-10-10（R19·A4）：页尾长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 */
+      "</div></div>" +
+    '<div class="card"><div class="card-h"><h3>该源支持的认证方式<span class="sub">一对多 · 每条记录各自判定级别与适用范围</span></h3></div>' +
+      '<div class="card-b">' +
+      idTbl(["认证方式", "抗钓鱼（随方式）", "级别（联合判定）", "适用范围（联合判定）", "无端支持", "操作"],
+        /* ★ 2026-10-10（R16）：原两列均为弹性（`null`）⇒ 剩余宽被等比平分，「认证方式」
+           （实测 need 80px）白占 311px、「适用范围」（need 198px）同样只拿到 311px。
+           收紧「认证方式」为定宽、余量全部归「适用范围」（唯一随数据变长的列）。 */
+        wayRows || idEmptyRow(6, "该源尚未配置方式"), ["110px", "140px", "170px", null, "130px", "90px"]) +
+      '<div class="lst-foot"><div id="ausrcWayPager" style="flex:1"></div></div>' +
+      /* ★ 2026-10-10（R19·A4）：页尾长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 */
+      "</div></div>" +
+    '<div class="card"><div class="card-h"><h3>可选方式（取自字典）<span class="sub">字典是唯一取值域 · 本页只能引用、不能自造方式名</span></h3></div>' +
+      '<div class="card-b"><div style="display:flex;flex-wrap:wrap;gap:6px">' +
+      (avail.length ? avail.map(function (m) { return '<span class="tag t-gray">' + esc(m.name) + "（参考 L" + m.defLv + "）</span>"; }).join("") : '<span class="muted">字典中的方式均已引用</span>') +
+      "</div>" +
+      /* ★ 2026-10-10（R19·A4）：页尾长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 */
+      "</div></div></div>";
+}
+
+/* ---------- 5. 页④ 用户代填账号托管（pg-auusercred） ---------- */
+var AUU = { tab: "acct", cur: "", f: { k: "", mode: "", st: "" }, pg: 1 };
+var AUI = { f: { k: "", kind: "", st: "" }, cur: "", sel: [], pg: 1 };
+var AUR = { f: { k: "", lv: "", ctype: "", st: "" }, cur: "", pg: 1 };
+/* 页④「表单契约（引用）」表与页② 详情「源 × 方式」表各自的分页状态 */
+var AUF = { pg: 1 };
+var AUW = { pg: 1, map: { pg: 1, for: null } };
+function auUserCredFiltered() {
+  var f = AUU.f || {};
+  return ((AU.uc || {}).items || []).filter(function (x) {
+    if (f.k) {
+      var hay = (x.asset + " " + x.owner + " " + x.acct + " " + (x.fill || "")).toLowerCase();
+      if (hay.indexOf(String(f.k).toLowerCase()) < 0) return false;
+    }
+    if (f.mode && x.mode !== f.mode) return false;
+    if (f.st && x.st !== f.st) return false;
+    return true;
+  });
+}
+/* ★ 2026-10-10（R25）：代填契约的**单一真源** = 资产「身份适配 → D 档」。
+   页面自述「本页只读引用该契约」，但实现上每条托管记录自带一份副本
+   （`ucNew` 亦以 `seed = dd` **复制**而非引用）⇒ 资产侧改契约本页不同步、两处口径漂移。
+   此处统一取值：资产侧已配 D 档契约 ⇒ **以资产侧为准**；未配 ⇒ 回退本记录快照。
+   `_src` 标注来源，供界面 / 探针区分。 */
+function ucLoginOf(x) {
+  var l = (x && x.login && typeof x.login === "object") ? x.login : {};
+  try {
+    if (typeof ASSETS !== "undefined" && ASSETS) {
+      var a = ASSETS.filter(function (z) { return z.id === x.assetId; })[0]
+           || ASSETS.filter(function (z) { return z.name === x.asset; })[0];
+      if (a && a._adapt && a._adapt.d && a._adapt.d.url) {
+        var d = a._adapt.d;
+        return { url: d.url, urlAlt: d.urlAlt || "—", kind: d.kind || "单步（账号+密码同页）",
+          userSel: d.userSel || "—", pwdSel: d.pwdSel || "—", submitSel: d.submitSel || "—",
+          submit: d.submit || "自动提交", captcha: d.captcha || "无", verify: d.verify || "—",
+          step2: d.step2, tested: l.tested || "未测试", fail: l.fail, _src: "asset" };
+      }
+    }
+  } catch (e) { /* 忽略 */ }
+  var lc = {};
+  for (var k in l) { if (Object.prototype.hasOwnProperty.call(l, k)) { lc[k] = l[k]; } }
+  lc._src = "snapshot";
+  return lc;
+}
+function auUserCredPage() {
+  var uc = AU.uc || { items: [], cfg: {} };
+  var body = auSlice(auUserCredFiltered(), AUU).map(function (x) {
+    var lg = ucLoginOf(x);
+    var host = String(lg.url || "—").replace(/^https?:\/\//, "").split("/")[0];
+    /* ★ 2026-10-09：本列只承载「登录入口」（host，一列一事实）。登录形态原被塞进同一格，
+       与「表单契约（引用）」页签的「登录形态」列重复 ⇒ 移除。 */
+    var _an = (ASSETS.filter(function (a) { return a.id === x.assetId; })[0] || {}).name || x.asset;
+    return "<tr><td><b>" + esc(_an) + "</b></td>" +
+      "<td>" + (x.mode === "用户自管" ? '<span class="tag t-info">用户自管</span>' : '<span class="tag t-gray">管理员托管</span>') + "</td>" +
+      "<td>" + esc(x.owner) + "</td>" +
+      '<td><span class="kr">' + esc(x.acct) + "</span></td>" +
+      /* ★ 2026-10-10（R8）：host 是长 ASCII 串，原 break-all 在窄列里把它切成三行且断点
+         落在字符中间（report.l / egacy.loc / al:8080）。改为**只在 `.` 与 `:` 处**给出断行
+         机会（keep-all + <wbr>），断点落回语义边界；overflow-wrap:anywhere 仅作兜底。 */
+      '<td><span class="mini" style="font-family:ui-monospace,Consolas,monospace;word-break:keep-all;overflow-wrap:anywhere">' + esc(host).replace(/\./g, ".<wbr>").replace(/:/g, "<wbr>:") + "</span></td>" +
+      /* ★ 2026-10-10（R8）：原列直出「自动（字段特征库）」（自然宽 145px）在 88px 列里折
+         3 行。改为**短标签 + 次行细则**两行结构（最宽 62px），列宽随之收到 92px，
+         并让「填充方式」与引擎策略页的「默认填充方式」同名同义（原名「默认表单识别」）。 */
+      "<td>" + (x.fill === "自定义选择器"
+        ? '自定义<div class="mini" style="margin-top:2px">资产契约</div>'
+        : '自动<div class="mini" style="margin-top:2px">字段特征库</div>') + "</td>" +
+      "<td>" + auStTag(x.st) + "</td>" +
+      "<td>" + esc(x.upd) + "</td>" +
+      /* 按钮文案收短（配置契约 / 测试 / 撤销）—— 「去配置契约」「测试代填」「撤销托管」
+         每个多 2 字的字数成本共 40px，是操作列 234px 的主要来源。 */
+      '<td><span class="opgrp"><button class="btn link" data-auact="ucGotoFmt" data-id="' + x.id + '">配置契约</button>' +
+      '<button class="btn link" data-auact="ucTest" data-id="' + x.id + '">测试</button>' +
+      '<button class="btn link' + (x.mode === "用户自管" ? "" : " danger") + '" data-auact="ucDel" data-id="' + x.id + '">' + (x.mode === "用户自管" ? "撤销" : "删除") + "</button></span></td></tr>";
+  }).join("");
+  var c = uc.cfg || {};
+  return idTitle("用户代填账号托管", "平台<b>代用户</b>保管被访问应用的登录账号 · 供<b>无感代填</b> · 凭据 <b>SM4 加密落库</b>",
+      '<div class="toolbar"><button class="btn primary" data-auact="ucNew">新增托管账号</button></div>') +
+    idRefNote("本页只承载<b>凭据本体</b>（存什么、怎么加密、谁能删）。<b>「该资产登录页长什么样、字段选择器怎么填」在「资产详情 → 身份适配」页签的 D 档</b>配置 —— 代填是资产身份适配四档之一。<b>凭据面与配置面分开</b>，同一对象不在两处配。") +
+    /* ★ 2026-10-10（R12）：补 tablist / tab / tabpanel 语义（范式同动态防护 `#dpOvTabs`）。 */
+    '<div class="tabs" id="auucTabs" role="tablist">' +
+      '<button type="button" role="tab" id="auucTabsTab_acct" aria-controls="auucPanel_acct" aria-selected="' + (AUU.tab === "acct" ? "true" : "false") + '" data-aut="acct" class="' + (AUU.tab === "acct" ? "on" : "") + '">托管账号<span class="num">' + auUserCredFiltered().length + "</span></button>" +
+      '<button type="button" role="tab" id="auucTabsTab_fmt" aria-controls="auucPanel_fmt" aria-selected="' + (AUU.tab === "fmt" ? "true" : "false") + '" data-aut="fmt" class="' + (AUU.tab === "fmt" ? "on" : "") + '">表单契约（引用）</button>' +
+      '<button type="button" role="tab" id="auucTabsTab_eng" aria-controls="auucPanel_eng_a auucPanel_eng_b" aria-selected="' + (AUU.tab === "eng" ? "true" : "false") + '" data-aut="eng" class="' + (AUU.tab === "eng" ? "on" : "") + '">引擎策略与安全基石</button></div>' +
+    '<div class="card tbp' + (AUU.tab === "acct" ? " on" : "") + '" role="tabpanel" id="auucPanel_acct" aria-labelledby="auucTabsTab_acct"><div class="card-h"><h3>托管账号清单<span class="sub">两种模式：用户自管 / 管理员托管</span></h3>' +
+      /* ★ 2026-10-10（R19·A4）：页尾长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 */
+      '<div class="card-b">' +
+      '<div class="toolbar" style="margin-bottom:12px">' +
+        '<div class="input-w"><input type="search" id="auucK" placeholder="搜索应用 / 账号 / 归属" aria-label="搜索托管账号" style="width:240px" value="' + esc(AUU.f.k) + '"><i>搜索</i></div>' +
+        '<select id="auucMode" aria-label="筛选托管模式"><option value="">全部托管模式</option>' +
+          ["用户自管", "管理员托管"].map(function (o) { return "<option" + (AUU.f.mode === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") +
+        "</select>" +
+        '<select id="auucSt" aria-label="筛选托管账号状态"><option value="">全部状态</option>' +
+          ["已托管", "待配契约", "代填失败"].map(function (o) { return "<option" + (AUU.f.st === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") +
+        "</select>" +
+      "</div>" +
+      idTbl(["被访问应用", "托管模式", "账号归属", "账号", "登录入口", "填充方式", "状态", "最近更新", "操作"],
+        /* ★ 2026-10-10（R8）重分配：原弹性列是「被访问应用」，但页④ **唯一变长 ASCII 串**是
+           「登录入口」的 host（最长 25 字符 = 193px），弹性宽度给首列反而让它恒定折 3 行。
+           实测（1280 视口，`_probe_r8_layout.py`）：首列自然宽 132 / 登录入口 193 / 填充方式 145。
+           ⇒ ① 首列改**定宽 132**（单行）；② 弹性列移到「登录入口」；
+              ③ 「填充方式」改短标签 + 次行细则后自然宽 91 ⇒ 列宽 92；
+              ④ 操作列按钮文案缩短（配置契约 / 测试 / 撤销·删除）后自然宽 168 ⇒ 列宽 172
+                 （原 234px 中 40px 是「去配置契约 / 测试代填 / 撤销托管」的字数成本）。
+           结果：9 列 1280 下合计 896 定宽 + 登录入口 143px，最长 host 断点落在 `.` 语义边界、≤2 行。 */
+        body || idEmptyRow(9, (AUU.f.k || AUU.f.mode || AUU.f.st) ? "没有符合条件的托管账号" : "暂无托管账号"), ["132px", "108px", "80px", "114px", null, "92px", "96px", "102px", "172px"]) +
+      '<div class="lst-foot"><div id="auucPager" style="flex:1"></div></div>' +
+      /* ★ 2026-10-10（R19·A4）：页尾长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 */
+      "</div></div>" +
+    '<div class="card tbp' + (AUU.tab === "fmt" ? " on" : "") + '" role="tabpanel" id="auucPanel_fmt" aria-labelledby="auucTabsTab_fmt"><div class="card-h"><h3>表单契约（引用）<span class="sub">契约按资产维度配置 · 本页只读引用</span></h3>' +
+      /* ★ 2026-10-10（R12）：入口随数据出现 —— 此前只看「有没有这个页签」，筛无结果时
+         按钮仍可点，点了才由确认框告知「全部 0 个资产」，属「点得动、点了才知道没意义」。
+         口径对齐页⑤ 批量吊销：**保留入口、0 项置灰**（不藏按钮，藏了会被读成「本页没有这个功能」）。 */
+      '<div class="toolbar">' + (auUserCredFiltered().length
+        ? '<button class="btn" data-auact="ucTestAll">批量测试全部（' + auUserCredFiltered().length + "）</button>"
+        : '<button class="btn" data-auact="ucTestAll" disabled>批量测试全部</button>') +
+      '<span class="mini" style="margin-left:8px">最近测试：<b>' + esc(c.tested || "—") + '</b></span></div></div><div class="card-b">' +
+      /* ★ 2026-10-10（R16）：页④ 的搜索 / 筛选控件只在「托管账号」页签渲染，而过滤状态
+         （AUU.f）是**页级共享**的 —— 切到本页签时表体已按筛选收敛，页面上却看不到条件、
+         也无处清除，会被读成「契约本来就只有这些」。此处显式告知并给清除入口。 */
+      (function () {
+        if (!(AUU.f.k || AUU.f.mode || AUU.f.st)) return "";
+        var _bits = [];
+        if (AUU.f.k) _bits.push("搜索「" + esc(AUU.f.k) + "」");
+        if (AUU.f.mode) _bits.push("托管模式「" + esc(AUU.f.mode) + "」");
+        if (AUU.f.st) _bits.push("状态「" + esc(AUU.f.st) + "」");
+        return '<div class="mini" style="margin-bottom:8px">当前筛选（' + _bits.join(" · ") +
+          '）对本页生效，命中 <b>' + auUserCredFiltered().length + '</b> 条 · <button type="button" class="btn link" data-auact="auucClearF">清除筛选</button></div>';
+      })() +
+      idRefNote("代填契约（登录页地址 / 字段选择器 / 两步 / 提交方式 / 验证判据）<b>归属资产维度</b> —— 同一资产的登录页形态对所有用户只有一份，故配在资产侧「身份适配 → D 档 · 账号密码代填」。" +
+        "本页<b>只读引用</b>该契约：改契约请到对应资产的详情页。<b>未配置契约的资产不执行代填</b>，直接回退手动登录。") +
+      /* ★ 2026-10-10（R13）：本表由「10 列裸表 `.spec-tbl`」重构为「7 列 `.lst` 定宽表 + 契约明细副行」。
+         原布局下三个选择器列各需 263px、可用仅 1039px（need 合计 1844）⇒ 选择器被逐字符断成 8 行、
+         「提交方式」列被压成 2 字/行竖排；且页面自述的契约组成之一「验证判据」**没有列**
+         （种子有值、`idRefNote` 与引擎工作链都写了它，列表却整列丢失）。处置：
+         ① 三个选择器 + 登录成功判据收进**整行宽的明细副行**（不再各占一列）；
+         ② 主表回归全站 `.lst` 定宽基线（与资产 / 安全策略各表同视觉语言）；
+         ③ 「最近测试」列按**结果**着色（日期一律判绿的缺陷见下）；④ 副行断点落语义边界。 */
+      (function () {
+        var _fh = ["被访问应用", "登录页地址", "登录形态", "提交方式", "验证码", "最近测试", "操作"];
+        /* 唯一弹性列＝「登录页地址」（URL 长度随资产变化）；其余定宽合计 **824**。
+           ⚠ 2026-10-10（R14）实测：原「登录形态」120px（need 168）与「验证码」120px（need 171）
+           装不下本身取值，中文词组被挤成 2 行，而弹性列在 1440 下余白 122px —— 属**列宽预算错配**，
+           非宽度不足（定宽合计 706 < 可用 1039，本就有余量）。按实测 need 重新配平为
+           136 / auto / 176 / 100 / 180 / 104 / 128（合计 824），留出 auto ≈ 215px@1280、≈ 327px@1440，
+           并保持页内横滚为 0。 */
+        var _fc = ["136px", null, "176px", "100px", "180px", "104px", "128px"];
+        var _frows = auSlice(auUserCredFiltered(), AUF);
+        if (!_frows.length) {
+          return idTbl(_fh, idEmptyRow(7, (AUU.f.k || AUU.f.mode || AUU.f.st) ? "没有符合条件的表单契约" : "暂无表单契约 · 契约按资产维度配置，本页只读引用"), _fc);
+        }
+        return idTbl(_fh, _frows.map(function (x) {
+          var lg = ucLoginOf(x);
+          var _an2 = (ASSETS.filter(function (a) { return a.id === x.assetId; })[0] || {}).name || x.asset;
+          var _sels = [];
+          if (lg.userSel) _sels.push("账号 " + esc(lg.userSel));
+          if (lg.pwdSel) _sels.push("密码 " + esc(lg.pwdSel));
+          if (lg.submitSel) _sels.push("提交 " + esc(lg.submitSel));
+          /* 着色判据按**结果**（原「tested === '未通过'」⇒ 只要 tested 是日期就一律判绿，
+             种子 uc_03 的失败契约被渲成通过色）；失败时 title 回显原因，日期降为次行。 */
+          var _badc = !!lg.fail || lg.tested === "未通过";
+          return "<tr><td><b>" + esc(_an2) + "</b></td>" +
+            '<td><span class="mini" style="font-family:ui-monospace,Consolas,monospace;word-break:keep-all;overflow-wrap:anywhere">' + esc(lg.url || "—").replace(/\./g, ".<wbr>").replace(/:/g, "<wbr>:") + "</span>" +
+              (lg.urlAlt && lg.urlAlt !== "—" ? '<div class="mini" style="opacity:.7">备用：' + esc(lg.urlAlt).replace(/\./g, ".<wbr>").replace(/:/g, "<wbr>:") + "</div>" : "") + "</td>" +
+            "<td>" + esc(lg.kind || "—") + "</td>" +
+            "<td>" + esc(lg.submit || "—") + "</td>" +
+            "<td>" + esc(lg.captcha || "—") + "</td>" +
+            "<td>" + (!lg.tested || lg.tested === "未测试"
+              ? '<span class="muted">未测试</span>'
+              : '<span class="tag ' + (_badc ? "t-err" : "t-ok") + '"' + (_badc && lg.fail ? ' title="' + esc(lg.fail) + '"' : "") + ">" + (_badc ? "未通过" : "通过") + "</span>" +
+                (lg.tested === "未通过" ? "" : '<div class="mini">' + esc(lg.tested) + "</div>")) + "</td>" +
+            '<td><button class="btn link" data-auact="ucTest" data-id="' + x.id + '">测试</button>' +
+              '<button class="btn link" data-auact="ucGotoFmt" data-id="' + x.id + '">配置契约</button></td></tr>' +
+            ((_sels.length || lg.verify)
+              ? '<tr><td colspan="7" class="mini" style="background:rgba(37,99,235,.04);color:#334155;word-break:keep-all;overflow-wrap:anywhere">' +
+                (_sels.length ? "↳ <b>字段选择器</b>：" + _sels.join(" · ") : "") +
+                (lg.verify ? (_sels.length ? "<br>" : "↳ ") + "<b>登录成功判据</b>：" + esc(lg.verify) : "") + "</td></tr>"
+              : "") +
+            (lg.kind && lg.kind.indexOf("多步") === 0 && lg.step2
+              ? '<tr><td colspan="7" class="mini" style="background:rgba(37,99,235,.05);color:#1d4ed8">↳ <b>跳转后页面</b>：' +
+                esc(lg.step2.url || "—") + " · 账号 " + esc(lg.step2.userSel || "—") + " · 密码 " + esc(lg.step2.pwdSel || "—") + " · 提交 " + esc(lg.step2.submitSel || "—") + "</td></tr>"
+              : "") +
+            (lg.fail ? '<tr><td colspan="7" class="mini" style="background:rgba(220,38,38,.06);color:#b91c1c">⚠ ' + esc(lg.fail) + "</td></tr>" : "");
+        }).join(""), _fc);
+      })() +
+      '<div class="lst-foot"><div id="auucFmtPager" style="flex:1"></div></div>' +
+      /* ★ 2026-10-10（R19·A4）：页尾长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 */
+      "</div></div>" +
+    '<div class="card tbp' + (AUU.tab === "eng" ? " on" : "") + '" role="tabpanel" id="auucPanel_eng_a" aria-labelledby="auucTabsTab_eng"><div class="card-h"><h3>代填引擎策略<span class="sub">引擎级默认值 · 未配置契约的资产不执行代填</span></h3></div><div class="card-b">' +
+      '<div class="kv" style="grid-template-columns:170px 1fr 170px 1fr">' +
+      '<span class="k">启用范围</span><span class="mini">' + esc(c.scope) + "（无端网关 / 有端 SDK 共用同一份托管与契约）</span>" +
+      '<span class="k">默认填充方式</span><span class="mini">' + esc(c.form) + "</span>" +
+      '<span class="k">默认登录形态</span><span class="mini">' + esc(c.defaultKind) + "</span>" +
+      '<span class="k">默认提交方式</span><span class="mini">' + esc(c.defaultSubmit) + "</span>" +
+      '<span class="k">验证码策略</span><span class="mini">' + esc(c.captcha) + "（不承诺全免密；识别失败即转人工）</span>" +
+      '<span class="k">凭据绑定范围</span><span class="mini">' + esc(c.bind) + "（一条凭据绑定一个访问主体）</span>" +
+      '<span class="k">代填失败动作</span><span class="mini">' + esc(c.fail) + "（并记录代填失败事件）</span>" +
+      "</div>" +
+      /* ★ 2026-10-10（R19·A4）：页尾长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 */
+      "</div></div>" +
+    '<div class="card tbp' + (AUU.tab === "eng" ? " on" : "") + '" role="tabpanel" id="auucPanel_eng_b" aria-labelledby="auucTabsTab_eng"><div class="card-h"><h3>凭据托管安全基石</h3></div><div class="card-b">' +
+      '<div class="kv" style="grid-template-columns:170px 1fr">' +
+      '<span class="k">加密存储</span><span class="mini">国密 <b>SM4</b> 加密落库，凭据列密文存储</span>' +
+      '<span class="k">密钥管理</span><span class="mini">内置轻量 KMS，主密钥独立存放 + 数据加密密钥（DEK）两级架构，算法全为国密</span>' +
+      '<span class="k">解密边界</span><span class="mini">解密<b>仅在执行代填的组件内存</b>进行（无端＝网关、有端＝SDK）；有端 SDK <b>不保存任何凭据（含加密态）</b>，每次代填<b>实时向服务端请求</b>、内存解密、<b>用毕即销毁</b></span>' +
+      '<span class="k">下发接口</span><span class="mini">双重校验（<b>会话有效</b> + <b>调用方可信</b>），并做频率限制与全量审计</span>' +
+      '<span class="k">轮换</span><span class="mini">支持凭据轮换与主密钥轮换，过程平滑</span>' +
+      "</div>" +
+      /* ★ 2026-10-10（R19·A4）：页尾长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 */
+      "</div></div>";
+}
+
+/* 日期辅助（认证模块演示基准日取 AU_TS_STAMP，页⑤ 新记录的 issued / exp 与它同源）。
+   ★ 2026-09-30 第一轮评审修复：此前「短时有效期（分钟）」被收集后**从不参与落库**
+   （exp 一律取 #isExp，其默认值由基准日派生），且轮换用 `.replace(/^20(\d\d)/,"20$1")`
+   这类**恒等替换** ⇒ 新旧凭据同到期，「轮换」失去意义。此处提供两个纯函数供两处复用。 */
+function auPlusMinutes(base, min) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(String(base || ""));
+  if (!m || !(parseInt(min, 10) > 0)) return "";
+  var d = new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0));
+  d.setMinutes(d.getMinutes() + parseInt(min, 10));
+  var p = function (n) { return (n < 10 ? "0" : "") + n; };
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+function auPlusYears(base, n) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(base || ""));
+  if (!m) return "";
+  return (parseInt(m[1], 10) + n) + "-" + m[2] + "-" + m[3];
+}
+/* 「绑定主体标识」原是序列号列（种子如 BZPC-0007-3A2C），但新签发记录曾把
+   holder 里的**客户端名**（如「白泽客户端（PC）」）写进该列 ⇒ 列语义错位、不可回溯。
+   ★ 2026-09-30 第一轮评审修复：改为按持有主体反查客户端实例的**序列号** cidseq；
+   查不到时才回落到旧行为（客户端名），不做静默丢失。 */
+/* 「终端序列号」= 该主体所在**终端的设备序列号**（身份模块「终端管理」页的 sn）。
+   ⚠ 2026-10-10（R8）列名订正：原名「终端指纹」与 X.509 的**证书指纹**同名不同物 ——
+     本列是终端**设备序列号**，与证书指纹零关系，会同屏并列（页⑤ 签发 CA · 终端序列号）更易误读。
+   与「绑定主体标识」同为**派生事实**、不在弹窗内填写：签署与事后追溯时用于核对
+   「这份凭据确实签给了这台设备」。
+   ⚠ 不取客户端软件的 sn（那是**软件**维度的序列号，与设备不同源）；
+     与 `cnOf` 一样按持有主体反查，查不到返回空串、由渲染侧自然省略该段。 */
+function fpOf(holder) {
+  var h = String(holder || "");
+  /* ★ 2026-10-10（R18）：原先按 `h.indexOf(终端名) >= 0` 做**子串**匹配 —— 两个终端名互为前缀时
+     （如「科技管理部-张伟-PC」与「科技管理部-张伟-PC2」）会命中**先遍历到的**那个，
+     终端序列号张冠李戴（签署与事后追溯核对「这份凭据签给了哪台设备」会打错对象）。
+     改为经 `auHolderRef()` 做**全等**解析后再取该主体的终端 sn —— 与跨模块回写同一处标签构造，
+     杜绝同族两套匹配口径（R17 已把 `auHolderRef` 定为全等；此处补齐另两个消费点）。 */
+  try {
+    var ref = auHolderRef(h);
+    if (ref && ref.obj && typeof ID !== "undefined" && ID && ID.terms) {
+      for (var i = 0; i < ID.terms.length; i++) {
+        if (ID.terms[i].id === ref.obj.term) return ID.terms[i].sn || "";
+      }
+    }
+  } catch (e) { /* 身份数据未装载：返回空串，不抛错 */ }
+  return "";
+}
+function cnOf(holder) {
+  var h = String(holder || "");
+  /* ★ 2026-10-10（R18）：原先按 `h.indexOf(标签) >= 0` 做**子串**匹配 —— 两个主体名互为前缀时
+     （如「探针-终端ABC」与「探针-终端ABC2」）会命中**先遍历到的**那个，绑定主体标识张冠李戴：
+     该标识直接写进新签发 / 轮换凭据的 `cn` 并渲染为「绑定主体标识」列，网关比对与按主体追溯
+     都会打错对象。改为复用 `auHolderRef()` 的**全等**解析（与跨模块回写同一处标签构造），
+     两条路径不再各写一份匹配口径。 */
+  try {
+    var ref = auHolderRef(h);
+    if (ref && ref.kind === "cin") return (ref.obj && ref.obj.cidseq) || "—";
+    /* ★ 智能体实例必须有自己的分支：否则「智能体实例 · 代码助手 Agent @ …」落到下面的
+       泛化回落，绑定主体标识退化成**软件名**（代码助手 Agent）—— 那是软件维度的名字，
+       不是实例标识，按主体吊销 / 追溯都会打错对象。 */
+    if (ref && ref.kind === "ain") {
+      /* ⚠ 不得返回其凭据号：短时凭据每 30 分钟续发一次，用它当「绑定主体标识」
+         会让该列随每次续发而变，标识失去稳定性、按主体追溯也会打错对象。
+         智能体自己不持证书、其可追溯标识＝**宿主客户端实例的序列号 cidseq**
+         （与身份模块「智能体实例管理」页展示的「宿主客户端实例（cidseq）」同源）。 */
+      var hAi = null;
+      if (typeof ID !== "undefined" && ID && ID.cin) {
+        for (var k = 0; k < ID.cin.length; k++) {
+          if (ID.cin[k].id === ref.obj.host) { hAi = ID.cin[k]; break; }
+        }
+      }
+      return (hAi && hAi.cidseq) || ref.obj.id || "—";
+    }
+  } catch (e) { /* 忽略：身份模块状态不可用时不阻断签发 */ }
+  var hs = h.split(" · ");
+  return (hs[1] || "").split("@")[0].trim() || "—";
+}
+
+/* --- 跨模块回写：认证侧 → 身份侧（R17） ------------------------------------------------
+   吊销已按 `no` **单向**回写身份侧（R16-A12：`ID.cin[].lic[].tag` / `ID.ain[].cred.st`），
+   而**签发与轮换只落本页台账** ⇒ 新签出的凭据在身份侧「实例」页看不见：
+     · 「客户端实例」详情的 License 历史缺最新一份；
+     · 「智能体实例」的当前短时凭据仍是上一份（`cred` 不更新 ⇒ 运行状态按过期的判、判错）。
+   X1 轮曾把两侧一次性对齐 10 份，运行时又被拉开 —— 根因就是「回写只有单向」。
+   此处补齐方向：按 `holder` 反查身份对象后按对象类型回写（身份侧无此对象则静默跳过）。 */
+function auHolderRef(holder) {
+  var h = String(holder || "");
+  try {
+    if (typeof ID !== "undefined" && ID && ID.cin) {
+      for (var i = 0; i < ID.cin.length; i++) {
+        var c = ID.cin[i];
+        var cn1 = "客户端实例 · " + idName(ID.csw, c.sw, "id", "name") + " @ " + idName(ID.terms, c.term, "id", "name");
+        if (h === cn1) return { kind: "cin", obj: c };
+      }
+    }
+    if (typeof ID !== "undefined" && ID && ID.ain) {
+      for (var j = 0; j < ID.ain.length; j++) {
+        var g = ID.ain[j];
+        var cn2 = "智能体实例 · " + idName(ID.asw, g.asw, "id", "name") + " @ " + idName(ID.terms, g.term, "id", "name") + "（进程 " + g.pid + "）";
+        if (h === cn2) return { kind: "ain", obj: g };
+      }
+    }
+  } catch (e) { /* 身份数据未装载：返回 null，只落本页台账 */ }
+  return null;
+}
+function auBackfillIdentity(o) {
+  if (!o) return;
+  try {
+    var ref = auHolderRef(o.holder); if (!ref) return;
+    if (ref.kind === "cin") {
+      /* License 证书侧**留历史**：新份追加、旧份保留（由有效期自行派生为「已过期」）。
+         ⚠ **不得**再写一个「当前」：身份侧 idLicTagOf() 按日期派生「当前 / 待生效 / 已过期」，
+           列表取当前份是 `filter(tag==="当前")[0]`（取**首个**）；轮换时旧份仍在册且派生为「当前」，
+           若继任者也写「当前」⇒ 并列出两个「当前」，[0] 取到**旧份**、新份反而不可见。
+         ⇒ 继任者顺延为**在册当前份到期日次日生效**（与身份侧 licRotate 口径一致），标签写「待生效」；
+           无在册当前份时（如「先吊销再签发」）才写 `issued=o.issued / tag="当前"`（保持原行为）。
+         `tag` 在身份侧只承载**显式态**（idLicTagOf 仅读「已吊销」），写「待生效」仅为可读性与体例一致。 */
+      var cc = ref.obj; cc.lic = cc.lic || [];
+      var icur = (cc.lic || []).filter(function (l) {
+        return typeof idLicTagOf === "function" ? idLicTagOf(l) === "当前" : l.tag === "当前";
+      })[0];
+      if (icur) {
+        var sIss = (typeof idYmdShift === "function" && icur.exp) ? idYmdShift(icur.exp, 1, 0) : o.issued;
+        cc.lic.push({ id: "lic_" + Date.now().toString(36), no: o.no, issued: sIss, exp: o.exp, tag: "待生效", ca: o.ca, scope: o.scope });
+      } else {
+        cc.lic.push({ id: "lic_" + Date.now().toString(36), no: o.no, issued: o.issued, exp: o.exp, tag: "当前", ca: o.ca, scope: o.scope });
+      }
+    } else {
+      /* 智能体短时凭据侧**只认当前份**（身份侧 cred 是单值，与「续发即失效」同语义）：
+         整体替换而非追加 —— 顺带清掉上一份可能残留的 `cred.st:"已吊销"`。
+         ⚠ **不得** delete 实例自身的 `st`：那是「已终止」，删掉会把已终止实例复活。 */
+      ref.obj.cred = { no: o.no, issued: o.issued, exp: o.exp };
+    }
+    /* ⚠ 回写的是**身份侧**数据（ID.cin / ID.ain 各有自己的持久化键）—— 不落 `idSave()` 的话
+       本次改动只活在内存里，跳到身份页 / 刷新即被 `idLoad()` 从本地存档覆盖回去（回写形同虚设）。
+       与 `isRevoke` / 批量吊销两处回写同体例（那两处也已调 idSave）。 */
+    if (typeof idSave === "function") idSave();
+  } catch (e2) { /* 身份模块状态不可用时不阻断签发 */ }
+}
+
+/* ---------- 6. 页⑤ 签发凭据管理（pg-auissue） ---------- */
+
+/* 签发凭据的状态由**有效期**推出，不写死 —— CA / mTLS 侧早有 credExpSt 兜底，
+   本页此前全程没有，于是出现「已过期仍显示有效」「有效期未到却写死已过期」两种不自洽。
+   ⚠ 时钟取认证模块统一运行时刻 AU_TS_STAMP，**不取**资产模块的全站基准日 nowD()
+     （两者相差 24 天，混用会把已过期的算成「即将过期」，是修一个错引入另一个错）。
+   ⚠ 粒度分两档：短时凭据的 exp 带时分（本就以分钟计），只有「有效 / 已过期」两态；
+     证书类按日粒度，沿用与 web 侧 credExpSt 相同的 30 天预警窗口。 */
+/* ★ 2026-10-10（R33 · X-2 单源化）：台账中「客户端 License 证书」类条目的**业务值以身份模块为唯一真源**。
+   此前认证段 `is_*` 与身份段 `cin[].lic[]` 各存一份同号同值副本 ⇒ 改一侧即漂移（X1 轮曾一次性对齐，
+   运行期又被拉开）。本函数在装载后按编号把身份侧的 签发日 / 到期日 / 签发 CA / 授权范围 / 绑定主体标识
+   覆盖到台账同号条目，并**实时重建持有主体**（身份侧改软件名 / 改终端即自动跟随，
+   不再依赖 auHolderRef 的字符串全等匹配 —— 那条链路在身份侧改名后必然静默失配）。
+   身份侧缺失的编号在此**不补登**：补登属签发流程职责（见 idRegisterAuthLic 回写）。 */
+function auSyncIssueFromId() {
+  try {
+    if (typeof ID === "undefined" || !ID || !Array.isArray(ID.cin)) return;
+    var idx = {};
+    (ID.cin || []).forEach(function (c) {
+      var holder = "客户端实例 · " + idName(ID.csw, c.sw, "id", "name") + " @ " + idName(ID.terms, c.term, "id", "name");
+      var fp = "";
+      for (var i = 0; i < (ID.terms || []).length; i++) { if (ID.terms[i].id === c.term) { fp = ID.terms[i].sn || ""; break; } }
+      (c.lic || []).forEach(function (l) {
+        if (l.tag === "待生效") return;   /* 未来签发的轮换预告尚未签发 ⇒ 不入台账 */
+        idx[l.no] = { holder: holder, fp: fp, cn: c.cidseq || "", lic: l };
+      });
+    });
+    (AU.issue || []).forEach(function (x) {
+      if (x.kind !== "客户端 License 证书") return;
+      var hit = idx[x.no];
+      if (!hit) return;
+      x.holder = hit.holder; x.fp = hit.fp; x.cn = hit.cn;
+      x.issued = hit.lic.issued; x.exp = hit.lic.exp; x.ca = hit.lic.ca;
+      x.scope = hit.lic.scope;
+      x.st = (typeof auIssueSt === "function" ? auIssueSt(x.exp) : x.st);
+    });
+  } catch (e) { /* 身份段未就绪：保持种子值，不阻断认证模块独立演示 */ }
+}
+function auIssueNow() { return new Date(AU_TS_STAMP.replace(" ", "T") + ":00"); }
+function auIssueSt(exp) {
+  var s = String(exp || "").trim();
+  var d, isShort = false;
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s)) { d = new Date(s.replace(" ", "T") + ":00"); isShort = true; }
+  else if (/^\d{4}-\d{2}-\d{2}$/.test(s)) { d = new Date(s + "T00:00:00"); }
+  else { return "有效"; }
+  if (isNaN(d.getTime())) return "有效";
+  var mins = Math.round((d - auIssueNow()) / 60000);
+  if (mins <= 0) return "已过期";
+  if (isShort) return "有效";
+  if (mins <= 60 * 24 * 30) return "即将过期";
+  return "有效";
+}
+/* 归一化：交 AuLoad 调用。⚠「已吊销」是终态，不被有效期覆盖。 */
+function auIssueNormalize() {
+  (AU.issue || []).forEach(function (x) {
+    if (x.st === "已吊销") return;
+    x.st = auIssueSt(x.exp);
+  });
+}
+
+/* 归一化：RP ID 是平台统一作用域 ⇒ 已存记录一律收敛为平台常量（旧档里逐记录手填的域名叫各不同，
+   会在「登记在哪台设备、属哪个级别」之外多出一个无从解释的差异维度）。交 auLoad 调用。 */
+function auAuthrNormalize() {
+  (AU.authr || []).forEach(function (x) { x.rpid = AU_RP_ID; });
+}
+function auIssueFiltered() {
+  var f = AUI.f || {};
+  return (AU.issue || []).filter(function (x) {
+    if (f.k) {
+      var hay = (x.holder + " " + x.no + " " + x.kind).toLowerCase();
+      if (hay.indexOf(String(f.k).toLowerCase()) < 0) return false;
+    }
+    if (f.kind && x.kind !== f.kind) return false;
+    if (f.st && x.st !== f.st) return false;
+    return true;
+  });
+}
+function auIssuePage() {
+  var rows = auIssueFiltered();
+  var sel = AUI.sel || (AUI.sel = []);
+  /* 勾选 / 全选 / 批量一律限定「当前页可见行」（同 aspPg 口径）。 */
+  var pageRows = auSlice(rows, AUI);
+  var body = pageRows.map(function (x) {
+    var on = sel.indexOf(x.id) >= 0;
+    /* ★ 2026-10-10（R8·§M.4 裁决二）：原判据 st === "有效" 把**仍处生效态的「即将过期」**
+       排除在所有吊销路径之外（既不可勾选、行内亦无「吊销」按钮）—— 生效态却不可操作。
+       判据改为**非终态即可吊销**：终态＝已过期 / 已吊销（吊销一份已失效凭据无意义）。 */
+    var canSel = x.st !== "已过期" && x.st !== "已吊销";
+    return "<tr>" +
+      '<td class="cell-sel">' + (canSel ? '<input type="checkbox" aria-label="勾选凭据 ' + esc(x.no) + '" data-auact="isPick" data-id="' + x.id + '"' + (on ? " checked" : "") + ">" : "") + "</td>" +
+      /* ★ 2026-10-10（R9）：列内文案原为「License 证书 / 短时凭据」，与筛选、弹窗的
+         「客户端 License 证书 / 智能体短时凭据」**同名不同写法**。主体维已由「持有主体」列完整
+         表达 ⇒ 列内保持短标签（全名会超出列宽）、以 title 给全名，hover 可得正式名。 */
+      "<td>" + (x.kind === "客户端 License 证书"
+        ? '<span class="tag t-info" title="客户端 License 证书">License 证书</span>'
+        : '<span class="tag t-gray" title="智能体短时凭据">短时凭据</span>') + "</td>" +
+      /* ★ 2026-10-10（R12k/R12m/R12n）：副行原为**换行块**，与主名叠加把行高从 ~100px 顶到 140px
+         （`_diag_r12_aui_h.py` 逐行盒取证）；行高由副行自身换行决定、与列宽无关。
+         ⚠ R12k 用 `nowrap + overflow:hidden` 压单行 ⇒ 触发渲染门禁「单元格右溢出」：
+           Range 片段 rect **不受祖先 overflow:hidden 裁切**（`_diag_r12_cellover.py` 实测
+           片段宽 335px、range.right 超 td.right 153px）—— 靠裁切掩盖溢出不算数。
+         ⚠ R12m 改自然折行后行高恰为 **120px**（A14 阈上限），**零余量**且随序列号长度浮动。
+         ⇒ 现：副行**定长截断为单行**（序列号前 8 位 + `…`），行高与序列号长度解耦；
+           可见副行只留 `终端序列号`（短时凭据行的追溯判据，`_probe_r8_fixes` F4 要求该词可见）；
+           全量（含 `签发 CA`）在单元格 `title` 内 —— 与同表「类型」列「短标签 / 全名 hover」同范式。 */
+      '<td class="cell-cov"' + ((x.ca || x.fp)
+        ? ' title="' + esc((x.ca ? "签发 CA：" + x.ca : "") + (x.ca && x.fp ? " · " : "") +
+            (x.fp ? "终端序列号：" + x.fp : "")) + '"'
+        : "") + ">" + esc(x.holder) +
+        ((x.ca || x.fp) ? '<div class="mini cov-sub">' +
+          (x.fp ? "终端序列号：" + esc(auSubClip(x.fp)) : "签发 CA：" + esc(auSubClip(x.ca))) +
+          "</div>" : "") + "</td>" +
+      '<td><span class="kr">' + esc(x.no) + "</span></td>" +
+      '<td><span class="mini" style="font-family:ui-monospace,Consolas,monospace">' + esc(x.cn || "—") + "</span></td>" +
+      /* ★ 2026-10-09（R7）：授权范围取值是「A / B / C」形式的清单，而本列在 1280 下
+         只有约 107px —— 整串中文会被浏览器**按任意字断行**（实测渲染成
+         「信贷核心系统 / 客户管理 / 台」，把「客户管理平台」劈成两行）。
+         ⇒ 按「/」拆成**惰性行**，每项独占一行、不再中断词。 */
+      "<td>" + String(x.scope || "—").split(/\s*\/\s*/).map(function (s2) { return "<div>" + esc(s2) + "</div>"; }).join("") + "</td>" +
+      /* ★ 2026-10-10（R8）：短时凭据的签发 / 到期**必须带时分**（TTL 以分钟计），证书类只到
+         日 —— 同列两种精度会把日期列的自然宽从 103px 抬到 138px。改为**日期一行、时分一行
+         （.mini）**，列宽按日期串配平（103px），长精度不再撑列。 */
+      "<td>" + String(x.issued || "—").split(" ").map(function (t3, i3) { return i3 ? '<div class="mini" style="margin-top:2px">' + esc(t3) + "</div>" : esc(t3); }).join("") + "</td>" +
+      "<td>" + String(x.exp || "—").split(" ").map(function (t4, i4) { return i4 ? '<div class="mini" style="margin-top:2px">' + esc(t4) + "</div>" : esc(t4); }).join("") + "</td>" +
+      "<td>" + auStTag(x.st) + "</td>" +
+      /* 同 canSel：非终态即可操作（吊销 / 轮换），不再要求 st === "有效"。 */
+      '<td>' + (x.st !== "已过期" && x.st !== "已吊销" ? '<span class="opgrp"><button class="btn link danger" data-auact="isRevoke" data-id="' + x.id + '">吊销</button><button class="btn link" data-auact="isRotate" data-id="' + x.id + '">轮换</button></span>' : '<span class="muted">—</span>') + "</td></tr>";
+  }).join("");
+  var pickable = pageRows.filter(function (x) { return x.st !== "已过期" && x.st !== "已吊销"; });
+  var allOn = pickable.length > 0 && pickable.every(function (x) { return sel.indexOf(x.id) >= 0; });
+  return idTitle("签发凭据管理", "平台<b>签发</b>给访问主体的凭据 · 管其<b>全生命周期</b>（签发 → 有效 → 轮换 → 吊销）",
+      '<div class="toolbar"><button class="btn" data-auact="isBatchRevoke"' + (sel.length ? "" : " disabled") + ">批量吊销" + (sel.length ? "（" + sel.length + "）" : "") + "</button>" +
+      '<button class="btn primary" data-auact="isIssue">签发凭据</button></div>') +
+    idRefNote("本页凭据由<b>平台签发</b>（非代为保管）。身份模块（客户端实例管理 / 智能体软件 / 实例管理）<b>引用</b>本模块的凭据记录；<b>本模块<b>只按需读取</b>身份台账（用户 / 终端名录）作<b>受控取值域</b>，<b>不建立指向身份实体的持久引用</b>（记录中只存展示名，不存身份主键，避免双向耦合）。") +
+    '<div class="card"><div class="card-b">' +
+    '<div class="toolbar" style="margin-bottom:12px">' +
+      '<div class="input-w"><input type="search" id="auiK" placeholder="搜索持有主体 / 凭据编号" aria-label="搜索签发凭据" style="width:240px" value="' + esc(AUI.f.k) + '"><i>搜索</i></div>' +
+      '<select id="auiKind" aria-label="筛选凭据类型"><option value="">全部类型</option>' +
+        ["客户端 License 证书", "智能体短时凭据"].map(function (o) { return "<option" + (AUI.f.kind === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") +
+      "</select>" +
+      '<select id="auiSt" aria-label="筛选凭据状态"><option value="">全部状态</option>' +
+        /* ★ 取值域必须与 auIssueSt 的返回值域闭合：有效期 ≤30 天时返回「即将过期」，
+           原选项表缺该项 ⇒ 该状态筛不出来。 */
+        ["有效", "即将过期", "已过期", "已吊销"].map(function (o) { return "<option" + (AUI.f.st === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") +
+      "</select>" +
+      '<span class="sel-cnt">' + (sel.length ? "已选 <b>" + sel.length + "</b> 项" : "未勾选") + "</span>" +
+    "</div>" +
+    /* ★ 2026-10-10（R15）：本页**无可吊销行**（全为已过期 / 已吊销）或空态时，表头全选此前仍可点，
+       点击后 `sel` 恒空 ⇒ 静默 no-op（可点控件无任何反馈，读屏还把它当可操作项播报）。
+       改为置 `disabled` + `title` 说明原因。 */
+    idTbl(['<input type="checkbox" aria-label="全选本页可吊销凭据" data-auact="isPickAll"' + (allOn ? " checked" : "") +
+        (pickable.length ? "" : " disabled") + ' title="' + (pickable.length ? "全选本页可吊销凭据" : "本页无可吊销凭据") + '">',
+      "类型", "持有主体", "凭据编号", "绑定主体标识", "授权范围", "签发时间", "有效期至", "状态", "操作"],
+      body || idEmptyRow(10, (AUI.f.k || AUI.f.kind || AUI.f.st) ? "没有符合条件的签发凭据" : "暂无签发凭据"),
+      /* ★ 10 列**全部定宽**（colgroup 无 null 列）⇒ table-layout:fixed 下按容器宽等比铺开。
+         定宽合计 1023px（R12 起）≤ 1280 视口下表外框可用宽 1039px（见 proto.css「14 · 窄视口外壳密度回收」），
+         故 1280 起即不再出现页内横向滚动条；1440 及以上按容器 100% 放大、各列不缩水。
+         各列按**实测需求宽**配平（元素盒 + 文本盒双判据，非仅文本盒）：类型 119（标签列，
+         宽度由内容硬定）/ 凭据编号 90 / 绑定主体标识 102 / 签发时间与有效期至各 103（`YYYY-MM-DD`
+         等宽 10 字符不可断行；时分已拆到次行，见 E1）/ 状态 86 / 操作 102（两个行内按钮 + td 内距）。
+         ⚠ 2026-10-10（R8）实测结论：余下三列（凭据编号需 136 / 绑定主体标识需 124 / 授权范围需 119）
+           在本表**无法同时单行** —— A14 门禁要求「持有主体」列 ≥150px，该列 9 列实测需求合计已
+           恰好等于 1039px 可用宽，无任何腾挪余量；要单行化即需减列（另案评估，不在本轮）。 */
+      /* ★ 2026-10-10（R12）：定宽合计原 1034 / 可用 1039 ⇒ 余量仅 5px，视口再窄 10px 即出横滚条。
+         「持有主体」189 → 178，余量 → 16px。
+         ⚠ 同轮（R12j）曾把 178 记为「本列行高的实测下界」，**该结论已由 R12k 证伪并作废**：
+           所谓「174 / 176 ⇒ 140px、178+ ⇒ 120px」的差，真正来源是**本列副行**
+           （签发 CA · 终端序列号）作为换行块多折的一行 —— `_diag_r12_aui_h.py` 逐行盒取证：
+           主名 3 行 + 副行 3 行 = 140px，与列宽无关（调列宽只挪断点、不改行数）。
+           R12k 先改**单行省略**、R12n 再改为**定长截断为单行**后，`_probe_r12k_colw.py`（1280 / 1440
+           双视口）实测：本列设定宽 **≥178 ⇒ 全表最大行高恒 101px**；170 / 174 ⇒ 个别行 120px
+           （仍 ≤ A14 阈，但属**压线**）⇒ 取 178 同时满足「非压线」与「横滚余量 16px」。
+           178 保留（与 174 实测等价，余量 16px）；放宽到 196（定宽合计 1041 > 1039）即 2px 横溢。 */
+      ["34px", "119px", "178px", "90px", "102px", "106px", "103px", "103px", "86px", "102px"]) +
+    '<div class="lst-foot"><div id="auiPager" style="flex:1"></div></div>' +
+    /* ★ 2026-10-10（R19·A4）：页尾长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 */
+    "</div></div>";
+}
+
+/* 页⑤ 列表「持有主体」列副行用的定长截断：保证副行恒为**单行**，行高不随标识长度浮动
+   （全量文本由单元格 title 承载，hover 可得）。8 位 + 省略号在 1280 视口下实测占 ~142px，
+   小于该列副行可用宽 153px。） */
+function auSubClip(v) {
+  var t = String(v == null ? "" : v);
+  return t.length > 8 ? t.slice(0, 8) + "…" : t;
+}
+
+/* ---------- 7. 页⑥ 强认证器绑定管理（pg-auauthr） ---------- */
+
+/* 认证器**类型 = 认证方式**，取值必须来自字典的方式名（唯一取值域）：
+   · 不得写承载协议 —— WebAuthn（FIDO2）是 L4 / L5 的实现承载，不是方式名；
+   · 不得自造短语 —— 原「设备生物因素（指纹）」「活体人脸」既非字典名、彼此也不一致，且缺虹膜。
+   级别由类型唯一确定（指纹 / USB Key = L4；活体人脸 / 虹膜 = L5），
+   故「类型」与「级别」不是两个独立自由度 —— 选一个类型，级别随之而定。 */
+/* ★ 2026-10-09：原为另写一份硬编码清单 ⇒ 与字典构成**第二真源**（字典增删方式时不会同步，
+   会留下「认证器类型不在字典中」的悬空值）。现改为**由字典派生**。
+   ★ 2026-10-10（R30）：「可否用作强认证器、作哪一档」收为方式的**固有属性 `authrLv`**
+     （与 srcBind / interactive / inSession 同级），**不再由 defLv ≥ 4 反查** ——
+     由参考级别反推「L4 / L5 档由哪些方式构成」正是字典明文禁止的「档位 → 方式集合」视图，
+     也等于把「参考默认级别」当成裁决依据（与本模块自述的字典口径自相矛盾）。
+     取值：可作认证器的方式填 4（硬件令牌 / 设备端生物特征）或 5（需活体检测的生物特征）。 */
+function auAuthrKinds() {
+  var ms = (typeof AU !== "undefined" && AU && AU.dict && AU.dict.methods) ? AU.dict.methods : AU_METHODS;
+  return ms.filter(function (m) { return Number(m.authrLv) >= 4; })
+           .map(function (m) { return { name: m.name, lv: Number(m.authrLv) }; });
+}
+function auAuthrKindLv(name) {
+  var ks = auAuthrKinds();
+  for (var i = 0; i < ks.length; i++) if (ks[i].name === name) return ks[i].lv;
+  return 0;
+}
+function auAuthrKindSync(name) {
+  var lv = auAuthrKindLv(name), sel = document.getElementById("aarLv");
+  if (lv && sel) sel.value = String(lv);
+}
+function auAuthrFiltered() {
+  var f = AUR.f || {};
+  return (AU.authr || []).filter(function (x) {
+    if (f.k) {
+      var hay = (x.user + " " + x.kind + " " + (x.credId || "") + " " + x.dev + " " + x.rpid).toLowerCase();
+      if (hay.indexOf(String(f.k).toLowerCase()) < 0) return false;
+    }
+    if (f.lv && String(x.lv) !== String(f.lv)) return false;
+    if (f.ctype && x.ctype !== f.ctype) return false;
+    if (f.st && x.st !== f.st) return false;
+    return true;
+  });
+}
+function auAuthrPage() {
+  var body = auSlice(auAuthrFiltered(), AUR).map(function (x) {
+    return "<tr><td><b>" + esc(x.user) + "</b></td>" +
+      "<td>" + esc(x.kind) + "</td>" +
+      "<td>" + auLvTag(x.lv) + "</td>" +
+      /* 可同步凭据（passkey）的**可漫游**属性必须落在台账上：此前只有一句说明文案、没有任何落点。 */
+      /* ★ 2026-10-10（R8）：两枚标签原在同一行（自然宽 171px vs 列宽 112px）⇒ 折行。
+         改为**各自成行**（每行一枚标签，最宽 104px），列宽维持 112px。 */
+      "<td>" + (x.ctype === "绑定型" ? '<span class="tag t-gray">绑定型</span>' : '<span class="tag t-info">可同步凭据</span><div style="margin-top:4px"><span class="tag t-gray">可漫游</span></div>') + "</td>" +
+      '<td><span class="kr">' + esc(x.credId || "—") + "</span></td>" +
+      "<td>" + devWbr(x.dev) + "</td>" +
+      '<td><span class="kr">' + esc(x.rpid) + "</span></td>" +
+      "<td>" + esc(x.reg) + "</td>" +
+      "<td>" + auStTag(x.st) + "</td>" +
+      '<td>' + (x.st === "有效" ? '<span class="opgrp"><button class="btn link danger" data-auact="arRevoke" data-id="' + x.id + '">吊销</button></span>' : '<span class="muted">—</span>') + "</td></tr>";
+  }).join("");
+  return idTitle("强认证器绑定管理", "把<b>指纹识别 / USB Key 硬件令牌</b> 等 <b>L4/L5 强认证器</b>绑定到具体用户 · 回答「<b>这位用户的这枚认证器，登记在哪台设备、属哪个级别、现在是否可用</b>」",
+      '<div class="toolbar"><button class="btn" data-auact="arReset">管理员重置</button>' +
+      '<button class="btn primary" data-auact="arNew">登记认证器</button></div>') +
+    idRefNote("平台管的是 <b>「绑定关系」</b>，<b>不是「生物特征本身」</b> —— 生物特征始终留在设备 / 认证器内，<b>永不上传平台</b>；平台承担的是<b>源绑定与凭据生命周期管理</b>，<b>不承担生物特征的活体检测强度承诺</b>。") +
+    '<div class="card"><div class="card-b">' +
+    '<div class="toolbar" style="margin-bottom:12px">' +
+      '<div class="input-w"><input type="search" id="aurK" placeholder="搜索用户 / 认证器 / 设备" aria-label="搜索认证器台账" style="width:240px" value="' + esc(AUR.f.k) + '"><i>搜索</i></div>' +
+      /* 强认证器只涉及 L4 / L5（字典里「硬件与生物特征」「活体生物特征」两档）：
+         列出 L1~L3 只会筛出空集。 */
+      '<select id="aurLv" aria-label="筛选认证级别"><option value="">全部级别</option>' +
+        [4, 5].map(function (n) { return "<option value=\"" + n + "\"" + (String(AUR.f.lv) === String(n) ? " selected" : "") + ">L" + n + "</option>"; }).join("") +
+      "</select>" +
+      '<select id="aurCtype" aria-label="筛选凭据绑定属性"><option value="">全部绑定属性</option>' +
+        ["绑定型", "可同步凭据"].map(function (o) { return "<option" + (AUR.f.ctype === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") +
+      "</select>" +
+      '<select id="aurSt" aria-label="筛选认证器状态"><option value="">全部状态</option>' +
+        ["有效", "已吊销"].map(function (o) { return "<option" + (AUR.f.st === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") +
+      "</select>" +
+    "</div>" +
+    idTbl(["用户", "认证方式", "安全级别", "凭据绑定属性", "凭据 ID", "登记设备", "RP ID", "登记时间", "状态", "操作"],
+      body || idEmptyRow(10, (AUR.f.k || AUR.f.lv || AUR.f.ctype || AUR.f.st) ? "没有符合条件的认证器登记" : "暂无认证器登记"),
+      /* ★ 本行＝页⑥ 认证器登记表各列宽度。唯一弹性列＝「登记设备」（`null`）——设备名是不可断行的
+         自然长值，应由它吃剩余宽度。
+         ★ 2026-10-10（R17）：按 1280 下逐行 need 重分配 —— 用户 68→56、安全级别 78→64、
+           凭据绑定属性 112→98，共让出 40px 给唯一弹性列「登记设备」（111 → 151 ≥ 实测 need 147），
+           **未删任何业务列**。 */
+      ["56px", "140px", "64px", "98px", "118px", null, "158px", "102px", "86px", "66px"]) +
+    '<div class="lst-foot"><div id="aurPager" style="flex:1"></div></div>' +
+    /* ★ 2026-10-10（R19·A4）：页尾长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 */
+    "</div></div>" +
+    '<div class="card"><div class="card-h"><h3>多枚冗余与恢复</h3></div><div class="card-b">' +
+      '<div class="kv" style="grid-template-columns:170px 1fr">' +
+      '<span class="k">多枚冗余</span><span class="mini">同一用户可登记<b>多枚</b>认证器（同级别多枚、跨级别多枚），天然构成冗余 —— 单枚不可用不影响其余凭据继续认证</span>' +
+      '<span class="k">全部不可用</span><span class="mini">走<b>身份核验后的管理员重置</b>流程：吊销该用户<b>全部认证器凭据</b>（L4 / L5 均以 WebAuthn（FIDO2）承载）并允许重新登记；<b>重置全程记审计</b></span>' +
+      "</div>" +
+      /* ★ 2026-10-10（R19·A4）：页尾长解释已按门户「能删就删」收进「关键业务说明 · FL4」。 */
+      "</div></div>";
+}
+
+/* ---------- 8. 统一渲染入口 ---------- */
+function renderAuDict()     { var el = document.getElementById("pg-audict"); if (!el) return; if (!AU) auLoad(); el.innerHTML = auDictPage();
+  auMountPager("#audMPager", auDictFiltered().length, AUD.pg, "audPg", "个方式", "搜索 / 筛选 / 分页只作用于本表");
+  auMountPager("#audLvPager", (AU.dict.levels || []).length, AUD.lv.pg, "audLvPg", "个档位", "档位固定 L1~L5 · 分页只作用于本表"); }
+function renderAuSrc()      { var el = document.getElementById("pg-ausrc"); if (!el) return; if (!AU) auLoad(); el.innerHTML = auSrcPage();
+  auMountPager("#ausrcPager", auSrcFiltered().length, AUS.pg, "ausrcPg", "个源", "搜索 / 筛选 / 分页只作用于本表");
+  var _ws = AU.sources.filter(function (x) { return x.id === AUS.cur; })[0];
+  auMountPager("#ausrcWayPager", _ws ? (_ws.ways || []).length : 0, AUW.pg, "ausrcWayPg", "个源×方式记录", "该源下的「源 × 方式」记录");
+  auMountPager("#ausrcMapPager", (_ws && _ws.sync && _ws.sync.map ? _ws.sync.map.length : 0), AUW.map.pg, "ausrcMapPg", "条字段映射", "该源的「平台字段 → 外部来源属性」映射"); }
+function renderAuUserCred() { var el = document.getElementById("pg-auusercred"); if (!el) return; if (!AU) auLoad(); el.innerHTML = auUserCredPage();
+  auMountPager("#auucPager", auUserCredFiltered().length, AUU.pg, "auucPg", "个账号", "搜索 / 筛选 / 分页只作用于本表");
+  auMountPager("#auucFmtPager", auUserCredFiltered().length, AUF.pg, "auucFmtPg", "份契约", "契约按资产维度配置 · 本页只读引用"); }
+function renderAuIssue()    { var el = document.getElementById("pg-auissue"); if (!el) return; if (!AU) auLoad(); el.innerHTML = auIssuePage();
+  auMountPager("#auiPager", auIssueFiltered().length, AUI.pg, "auiPg", "项", "勾选 / 批量作用于当前页"); }
+function renderAuAuthr()    { var el = document.getElementById("pg-auauthr"); if (!el) return; if (!AU) auLoad(); el.innerHTML = auAuthrPage();
+  auMountPager("#aurPager", auAuthrFiltered().length, AUR.pg, "aurPg", "项", "分页只作用于本表"); }
+
+/* ---------- 9. 交互 ---------- */
+/* ★ 2026-10-10（R15）：ARIA tabs 惯例的**方向键导航**与 roving tabindex 此前未闭合 ——
+   三组页签（页① `#audTabs` / 页③ `#credTabs` / 页④ `#auucTabs`）`role` / `aria-selected` 齐备，
+   但方向键无效、非活动签也在 Tab 序内。用**捕获阶段委托**实现：不随重渲染失效，无需逐轮绑定。
+   ⚠ 本段（含下面的 `auRerender`）属**认证主段**，改动必须落在 `_frag_auth.js` 再跑同步器；
+     直改 `app.js` 会被整段替换悄然抹掉（R15-e 已因之返工一次）。 */
+function auTabsRove(host) {
+  var tabs = host.querySelectorAll('[role="tab"]'), any = false;
+  tabs.forEach(function (o) { if (o.getAttribute("aria-selected") === "true") any = true; });
+  tabs.forEach(function (o) {
+    var sel2 = (o.getAttribute("aria-selected") === "true") || (!any && o === tabs[0]);
+    o.setAttribute("tabindex", sel2 ? "0" : "-1");
+  });
+}
+function auTabsRoveAll() {
+  ["#audTabs", "#credTabs", "#auucTabs"].forEach(function (s8) {
+    var h8 = document.querySelector(s8); if (h8) auTabsRove(h8);
+  });
+}
+document.addEventListener("keydown", function (e6) {
+  var tb = e6.target;
+  if (!tb || !tb.getAttribute || tb.getAttribute("role") !== "tab") return;
+  var host = tb.closest ? tb.closest('[role="tablist"]') : null; if (!host) return;
+  var tabs = Array.prototype.slice.call(host.querySelectorAll('[role="tab"]'));
+  var ix = tabs.indexOf(tb); if (ix < 0) return;
+  var nx = -1;
+  if (e6.key === "ArrowRight" || e6.key === "ArrowDown") nx = (ix + 1) % tabs.length;
+  else if (e6.key === "ArrowLeft" || e6.key === "ArrowUp") nx = (ix - 1 + tabs.length) % tabs.length;
+  else if (e6.key === "Home") nx = 0;
+  else if (e6.key === "End") nx = tabs.length - 1;
+  if (nx < 0) return;
+  e6.preventDefault(); e6.stopPropagation();
+  auTabsRove(host);
+  tabs[nx].focus(); tabs[nx].click();
+}, true);
+document.addEventListener("focusin", function (e7) {
+  var tb = e7.target;
+  if (!tb || !tb.getAttribute || tb.getAttribute("role") !== "tab") return;
+  var host = tb.closest ? tb.closest('[role="tablist"]') : null;
+  if (host) auTabsRove(host);
+}, true);
+function auRerender() {
+  /* ★ 2026-10-10（R12）：整段重渲染会把被点元素（分页器 / 页签 / 行内动作）的节点换掉，
+     浏览器随即把焦点丢到 body ⇒ 翻页、批量动作后键盘焦点丢失。渲染前记「可复定位选择器」，
+     渲染后**仅当焦点已落 body** 时按选择器找回（不抢其它控件的焦点）。
+     基础设施 `domFocusKey/Save/Restore` 在 #dlgCfm 段（全站通用），见 app.js「确认弹窗」节。 */
+  domFocusSave();
+  if (document.getElementById("pg-audict")) renderAuDict();
+  else if (document.getElementById("pg-ausrc")) renderAuSrc();
+  else if (document.getElementById("pg-auusercred")) renderAuUserCred();
+  else if (document.getElementById("pg-auissue")) renderAuIssue();
+  else if (document.getElementById("pg-auauthr")) renderAuAuthr();
+  /* ★ 2026-10-10（R15）：页①/④ 页签 roving —— 见 auTabsRove（委托式方向键导航已在文档级挂好）。 */
+  try { auTabsRoveAll(); } catch (_et) { /* 忽略 */ }
+  /* ★ 2026-10-10（R16）：表头全选复选框的 `indeterminate` 是 **property**、随 `innerHTML`
+     整表重建即复位。原先只在 isPick / isPickAll 两个「勾选驱动」路径重设，走 isRotate /
+     isIssue（auRerender）时勾选集仍在（「批量吊销（N）」照样计数），表头却读作「未选」
+     ⇒ 表头与真实勾选态自相矛盾（视觉与读屏播报同时失真）。改为在**重渲染收尾**统一同步一次。 */
+  try { auSyncPickAll(); } catch (_pk) { /* 忽略 */ }
+  domFocusRestore();
+}
+/* ===== 认证模块 · 受控取值辅助 =====
+   自由文本能造出「台账里根本不存在的取值」，随后所有按名比对的逻辑都会静默失配
+   （吊销/追溯落空、引用数失真）。故凡有既有台账可依的字段，一律从台账派生取值域。 */
+/* 用户清单（账号归属 / 认证器登记共用）；身份台账不可用时退回内置演示清单。 */
+function auUserNames() {
+  var us = [];
+  try { if (typeof ID !== "undefined" && ID && ID.users) ID.users.forEach(function (u) { if (u && u.name) us.push(u.name); }); } catch (e) { /* 忽略 */ }
+  return us.length ? us : ["张伟", "王芳", "李俊", "陈丽"];
+}
+/* ★ 2026-10-10（R13）：用户台账 → 受控取值**对象**（带可用性）。
+   「产生生效材料」的取值域（登记认证器 / …）只收**已启用**用户；「恢复通道」（管理员重置 arReset）
+   面向的正是不可用用户，仍走 auUserNames() 全量 —— 两处不可一并收窄。 */
+function auUserObjs() {
+  var r = [];
+  try { if (typeof ID !== "undefined" && ID && ID.users) ID.users.forEach(function (u) { if (u && u.name) r.push({ name: u.name, st: u.st || "已启用", ok: (u.st || "已启用") === "已启用" }); }); } catch (e) { /* 忽略 */ }
+  if (!r.length) r = ["张伟", "王芳", "李俊", "陈丽"].map(function (n) { return { name: n, st: "已启用", ok: true }; });
+  return r;
+}
+/* 签发 CA / 容器取值域＝**平台签发 CA** 闭集 `GW_SIGN_CAS`。
+   ★ 2026-10-09 订正：原注释称「取值域＝网关凭据页的 CA 台账」，与实现不符 ——
+   实现读的是 `AU.gw.cas`（已撤除的重复页 `pg-augwcred` 的残留种子，页面上无处可查、
+   不可维护），且与页③ 实际展示的 `CA_LIST`（出站信任锚）零交集；而 `CA_LIST` 与
+   本函数的语义本就不同池（见 `GW_SIGN_CAS` 处注释），故作去影子化 + 文案订正，
+   **不**并入 `CA_LIST`。 */
+/* ★ 2026-10-10（R33）：登记认证器的**设备取值域按所选用户收敛** —— 认证器登记在该用户**绑定的终端**上
+   （权威源 `ID.users[].bound`），而非全量终端台账：此前「用户」与「设备」两个下拉互不联动，
+   可登记出「王芳 @ 科技管理部-张伟-PC」这类跨主体组合（绑定关系在身份侧本已明确记载）。
+   该用户历史登记过的设备名一并保留（旧数据不丢，按终端台账状态置灰）。 */
+function auAuthrDevOpts(userName) {
+  var list = [];
+  try {
+    if (typeof ID !== "undefined" && ID && ID.users) {
+      ID.users.forEach(function (u) {
+        if (!u || u.name !== userName) return;
+        (u.bound || []).forEach(function (tid) {
+          for (var i = 0; i < (ID.terms || []).length; i++) {
+            if (ID.terms[i].id === tid && ID.terms[i].name && list.indexOf(ID.terms[i].name) < 0) list.push(ID.terms[i].name);
+          }
+        });
+      });
+    }
+  } catch (e) { /* 忽略 */ }
+  try { (AU.authr || []).forEach(function (a2) { if (a2 && a2.user === userName && a2.dev && a2.dev !== "—" && list.indexOf(a2.dev) < 0) list.push(a2.dev); }); } catch (e2) { /* 忽略 */ }
+  return list.length ? list : ["科技管理部-张伟-PC"];
+}
+/* 随「用户」下拉变更重算「登记设备」选项（保留原选中项若仍可用）。 */
+function auAuthrDevSync() {
+  var el = document.getElementById("aarDev");
+  if (!el) return;
+  var u = document.getElementById("aarUser");
+  var opts = auAuthrDevOpts(u ? u.value : "");
+  var st = {};
+  try { if (typeof ID !== "undefined" && ID && ID.terms) ID.terms.forEach(function (t2) { if (t2 && t2.name) st[t2.name] = t2.st || "已激活"; }); } catch (e) { /* 忽略 */ }
+  var prev = el.value;
+  var pick = (opts.indexOf(prev) >= 0 && (st[prev] || "已激活") === "已激活")
+    ? prev
+    : (opts.filter(function (d) { return (st[d] || "已激活") === "已激活"; })[0] || opts[0]);
+  el.innerHTML = opts.map(function (d2) {
+    var off = (st[d2] || "已激活") !== "已激活";
+    return '<option' + (off ? " disabled" : "") + (d2 === pick ? " selected" : "") + ' value="' + esc(d2) + '">'
+      + esc(d2 + (off ? "（" + (st[d2] || "未激活") + "）" : "")) + "</option>";
+  }).join("");
+}
+function auGwCas() {
+  return GW_SIGN_CAS.map(function (c) { return c.name; });
+}
+/* 托管账号「账号归属」随托管模式切换取值域：
+   用户自管 ⇒ 具体用户（受控取值）；管理员托管 ⇒「组织资产」。
+   ⚠ 展示值不带全角括号：「账号归属」列在 1280 下宽 84px，而「（组织资产）」实测需 106px、
+     会被折成「（组织资」/「产）」；去括号后需 80px，单行容纳，语义不变
+     （该行「托管模式」已写「管理员托管」，归属必为组织资产）。 */
+/* ★ 2026-10-10（R9）：原「用户自管」铺**全部用户**供选 —— 与页面自述「用户自管＝用户本人录入」
+   矛盾（可把「自管」凭据挂到别人名下）。归属由**托管模式唯一决定**、不是第二个自由度：
+   自管 ⇒ 当前登录用户（本人、锁定）；管理员托管 ⇒ 组织资产。 */
+function auOwnerSync() {
+  var m = document.getElementById("aucMode"), o = document.getElementById("aucOwner");
+  if (!m || !o) return;
+  var self = (typeof opUser === "function") ? (String(opUser() || "").trim() || "张伟") : "张伟";
+  o.innerHTML = (m.value === "用户自管") ? "<option>" + esc(self) + "</option>" : "<option>组织资产</option>";
+  o.disabled = true;
+}
+/* ===== 签发凭据 · 弹窗联动 =====
+   「绑定主体标识」由**持有主体**派生（cnOf），在此**只读回显**而非填写位 —— 网关校验
+   与按主体追溯比对的正是该标识，操作者签发前应看得见「到底绑的是谁」。
+   授权范围对两类凭据**都必填**：证书类通常是资产集合；短时凭据通常收敛到具体资产 /
+   资源（例如经无端网关访问某个具体资产的浏览器所持的短时凭据，其授权范围就是那一个资产）。 */
+function isCnSync() {
+  var s = document.getElementById("isSubj"), el = document.getElementById("isCn");
+  if (s && el) el.textContent = cnOf(s.value);
+  /* ★ 2026-10-10（R10）：签发前应看得见「该主体当前到底持有什么」。
+     原先只在提交后被 toast 拦下（同主体同类型已有生效凭据），操作者拿不到做判断所需的下文。 */
+  var hd = document.getElementById("isHold");
+  if (hd && s) {
+    var hs = (AU.issue || []).filter(function (y) { return y.holder === s.value; });
+    var live = hs.filter(function (y) { return y.st === "有效" || y.st === "即将过期"; });
+    hd.innerHTML = hs.length
+      ? "该主体当前持有 <b>" + hs.length + "</b> 条凭据" +
+        (live.length
+          ? "（其中 <b>" + live.length + "</b> 条处于生效态：" + live.map(function (y) {
+              return esc(y.kind) + " · " + esc(y.no) + " · " + esc(y.st);
+            }).join("；") + "）"
+          : "（均已过期 / 已吊销）")
+      : "该主体当前<b>无</b>持有凭据 —— 可直接签发。";
+  }
+}
+/* 授权范围的受控候选：业务系统级取「授权范围受控清单」（资产段 LIC_SCOPE_SET，与台账挂钩），
+   并并入资产台账的资产名（短时凭据常收敛到具体资产）。两处均为权威源，不在认证段自造名称。 */
+function isScopeOpts() {
+  var ns = (typeof licScopeNames === "function" ? licScopeNames() : []).slice();
+  try {
+    if (typeof ASSETS !== "undefined" && ASSETS) {
+      ASSETS.forEach(function (a) { if (a && a.name && ns.indexOf(a.name) < 0) ns.push(a.name); });
+    }
+  } catch (e) { /* 资产段未就绪：仅给业务系统级候选 */ }
+  return ns.map(function (n) { return '<option value="' + esc(n) + '">'; }).join("");
+}
+function isKindSync() {
+  var k = document.getElementById("isKind"), v = k ? k.value : "";
+  var isCert = (v === "客户端 License 证书");
+  var ew = document.getElementById("isExpWrap"), tw = document.getElementById("isTtlWrap");
+  if (ew) ew.style.display = isCert ? "" : "none";
+  if (tw) tw.style.display = isCert ? "none" : "";
+  /* ★ 2026-10-10（R9）：「签发 CA / 容器」只属**证书类**凭据（X.509 需 CA 签发）；短时凭据由
+     平台与 AI 安全 agent 直接颁发、不经 CA ⇒ 切到短时凭据时隐藏该字段，否则会变成
+     「短时凭据也必须选一个 CA 才能签发」的伪必填。 */
+  var cw = document.getElementById("isCaWrap");
+  if (cw) cw.style.display = isCert ? "" : "none";
+  /* ★ 2026-10-10（R20）：**可见必填星号**随类型一并切换 —— R18 只把 required / aria-required
+     同步进无障碍树，页面上可见的 `*` 仍是模板里写死的两套：证书类下「有效期至 / 签发 CA」
+     必填却无星号，短时类下「短时有效期」的星号又落在隐藏字段上 ⇒ 视觉必填与语义必填口径不一。
+     与上方 required 同步同判据（isCert），三个星号一起切。 */
+  [["isExpReq", isCert], ["isCaReq", isCert], ["isTtlReq", !isCert]].forEach(function (p) {
+    var _e = document.getElementById(p[0]); if (_e) _e.style.display = p[1] ? "" : "none";
+  });
+  /* ★ 2026-10-10（R14）：① **条件必填**同步到无障碍树 —— 证书类的「有效期至 / 签发 CA」、短时类的
+     「短时有效期」随类型切换显隐，此前只是视觉显隐，读屏不知道它们此刻是否必填；
+     ② 主体取值域按**凭据类型**收敛 —— 证书绑客户端实例、短时凭据绑智能体实例（与提交处同一判据，
+     只是提前到选择时）。为空的池**不回退成空下拉**（那会让整条路走死），保留全集由提交校验兜底。 */
+  /* ★ 2026-10-10（R18）：`required` 与 `aria-required` 此前**只切了后者**，`required` 恒真 ⇒
+     「短时凭据」下隐藏的「有效期至」仍被读屏当作必填、而真正必填的「短时有效期」却不算。
+     两处随类型一并切换，避免同字段两套必填口径。 */
+  var _ew2 = document.getElementById("isExp"); if (_ew2) { _ew2.setAttribute("aria-required", isCert ? "true" : "false"); if (isCert) _ew2.setAttribute("required", "required"); else _ew2.removeAttribute("required"); }
+  var _cw2 = document.getElementById("isCa");  if (_cw2) { _cw2.setAttribute("aria-required", isCert ? "true" : "false"); if (isCert) _cw2.setAttribute("required", "required"); else _cw2.removeAttribute("required"); }
+  var _tw2 = document.getElementById("isTtl"); if (_tw2) { _tw2.setAttribute("aria-required", isCert ? "false" : "true"); if (isCert) _tw2.removeAttribute("required"); else _tw2.setAttribute("required", "required"); }
+  var _sb2 = document.getElementById("isSubj"), _all2 = window.__auIhSubj;
+  if (_sb2 && _all2 && _all2.length) {
+    var _pre2 = isCert ? "客户端实例" : "智能体实例";
+    var _pool2 = _all2.filter(function (s) { return s.label.indexOf(_pre2) === 0; });
+    if (_pool2.length) {
+      var _pk2 = _pool2.filter(function (s) { return !s.off; })[0] || _pool2[0];
+      _sb2.innerHTML = _pool2.map(function (s) {
+        return '<option' + (s.off ? " disabled" : "") + (s === _pk2 ? " selected" : "") +
+          ' value="' + esc(s.label) + '">' + esc(s.label + (s.off ? "（" + s.st + "）" : "")) + "</option>";
+      }).join("");
+      isCnSync();
+    }
+  }
+  var sc = document.getElementById("isScope"), sh = document.getElementById("isScopeHint");
+  if (sc) sc.placeholder = isCert ? "如 信贷核心系统 / 客户管理平台（资产集合）" : "如 报表中心（具体资产）";
+  if (sh) sh.innerHTML = isCert
+    ? "证书类凭据的授权范围是<b>资产集合</b>，取<b>平台受控的授权范围清单</b>（与资产台账挂钩，不在此自造业务系统名）："
+      + (typeof licScopeNames === "function" ? esc(licScopeNames().join(" / ")) : "") + "。"
+    : "短时凭据的授权范围<b>收敛到具体资产 / 资源</b>，取<b>资产台账</b>中的资产名（如 报表中心）；沙箱 / 代码等受限面用<b>受控清单</b>中的 代码库 / 需求库 / 沙箱环境。";
+}
+
+/* ===== 认证模块 · 生效面动作的统一确认入口 =====
+   口径（同 DP 模块 2026-10-09 裁定）：**改变「生效面」的动作（启停 / 移除 / 删除 / 吊销）
+   一律先经二次认证** —— 认证认的是「改变生效面」，不是动作名称；只改配置内容的保存走
+   普通确认，复制类不认证。本函数把既有的 idAsk(title,msg,cb,okText) 四参签名适配到
+   ask2FA(op, ok, cancel, note)：op 用动作名（「删除认证源」等）、msg 原样进 note；
+   第 4 参（确认按钮文案）由 render2FA 统一为「验证并执行」，故忽略。 */
+function auConfirmEff(title, msg, cb) { ask2FA(title, cb || null, null, msg); }
+/* ★ 2026-10-10（R14）：表头「全选」的**第三态** —— 部分勾选时须置 indeterminate。
+   `indeterminate` 是**属性（property）而非特性（attribute）**，无法在 HTML 字符串里声明，
+   只能在渲染完成后对已挂载节点赋值 ⇒ 独立成函数，由勾选处理器的重渲染之后调用。 */
+function auSyncPickAll() {
+  try {
+    var cb = document.querySelector('#pg-auissue [data-auact="isPickAll"]');
+    if (!cb) return;
+    var rows = auSlice(auIssueFiltered(), AUI).filter(function (x) { return x.st !== "已过期" && x.st !== "已吊销"; });
+    var sel = AUI.sel || [];
+    var n = rows.filter(function (x) { return sel.indexOf(x.id) >= 0; }).length;
+    cb.indeterminate = n > 0 && n < rows.length;
+  } catch (_e) { /* 忽略 */ }
+}
+function auOnClick(e) {
+  /* 页签 */
+  var tb = e.target && e.target.closest ? e.target.closest("[data-aut]") : null;
+  if (tb) {
+    var tv = tb.getAttribute("data-aut");
+    /* ★ 2026-10-10（R15-f）：页签点击**直呼本页渲染器**（不经 `auRerender()`）⇒ 重渲染出的
+       新页签 `tabindex` 会退回 `null`、非活动签重新落回 Tab 序。渲染后各补一次 roving。 */
+    if (document.getElementById("pg-audict")) { AUD.tab = tv; renderAuDict(); auTabsRoveAll(); return; }
+    if (document.getElementById("pg-auusercred")) { AUU.tab = tv; renderAuUserCred(); auTabsRoveAll(); return; }
+  }
+  var t = e.target && e.target.closest ? e.target.closest("[data-auact]") : null;
+  if (!t) return;
+  var act = t.getAttribute("data-auact");
+  var id = t.getAttribute("data-id") || "";
+  var idx = t.getAttribute("data-i");
+  switch (act) {
+    /* 字典 */
+    /* dictAnti 已撤：抗钓鱼 = 源绑定的派生事实（页面不再提供独立开关），读档归一见 auLoad。 */
+    case "dictDel": {
+      var md = auMethod(id); if (!md) break;
+      var rfd = auRefSplit(id), rfdT = rfd.on + rfd.off;
+      /* ★ 2026-10-10（R30）：引用链由「认证源」一条扩为「认证源 + 访问策略」两条 ——
+         策略条件里的「认证方式 ∈ …」按方式名取值，与源侧按 mid 是两条独立链。 */
+      var pfd = auPolRefSplit(md.name), pfdT = pfd.on + pfd.off;
+      /* ★ 2026-09-30：删除门禁改由**方式自身的身份**判定（内置不可删）；
+         旧的「该档唯一方式不可删」依据「档位 → 方式集合」这一已废止的归属关系。 */
+      if (AU_BUILTIN_IDS.indexOf(id) >= 0) {
+        openDlg("不可删除", "「" + esc(md.name) + "」是<b>平台内置认证方式</b>（随版本预置）。删除会让方式名取值域残缺、已落库的「源 × 方式」记录悬空 —— 故不可删除。<b>如不需使用，请在「认证源」页移除对应记录，或停用引用它的源</b>。");
+        break;
+      }
+      if (rfdT || pfdT) {
+        var _seg2 = [];
+        if (rfdT) _seg2.push("被 <b>" + rfdT + "</b> 个认证源引用" + (rfd.off ? "（其中 <b>" + rfd.off + " 个为已停用源</b>）" : ""));
+        if (pfdT) _seg2.push("被 <b>" + pfdT + "</b> 条访问策略引用" + (pfd.off ? "（其中 <b>" + pfd.off + " 条为已停用 / 已下线对象</b>）" : ""));
+        openDlg("不可删除", "该方式" + _seg2.join("、") + "。<b>被引用的方式名不可删除</b> —— 须先在「认证源」页移除对应记录"
+          + (pfdT ? "、并在「资产访问控制策略」/「资源级访问策略」中移除对应的「认证方式」条件行" : "")
+          + "，或删除 / 停用引用它的对象（源删除时其记录一并移除）。");
+        break;
+      }
+      auConfirmEff("删除认证方式", "将删除字典中的方式 <b>" + esc(md.name) + "</b>。<b>此操作入审计</b>。", function () {
+        AU.dict.methods = AU.dict.methods.filter(function (x) { return x.id !== id; }); auSave(); auRerender(); toast("已删除（演示）");
+        AU_SRC_METHODS = (AU.dict.methods || AU_METHODS).slice();
+      }, "删除");
+      break;
+    }
+    case "dictNew": {
+      openDlg("新增认证方式", "新增的方式名加入平台取值域。⚠ <b>不得与既有方式重名</b>。此处登记的<b>参考默认级别</b>只作新建「源 × 方式」记录时的初值，<b>不代表该方式在任何认证源下的实际级别</b>。",
+        '<div class="fld"><label for="aunName">方式名称 <span class="req">*</span></label><input id="aunName" placeholder="如 硬件令牌（PIV）"></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="aunLv">参考默认级别</label><select id="aunLv">' + [1, 2, 3, 4, 5].map(function (n) { return "<option value=\"" + n + "\"" + (n === 2 ? " selected" : "") + ">L" + n + "</option>"; }).join("") + "</select>" +
+          '<div class="mini" style="margin-top:4px">新建「源 × 方式」记录时的<b>初值</b>；<b>实际级别挂在「认证源 × 认证方式」上</b>，落库时可改。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="aunInh">凭据固有属性</label><input id="aunInh" placeholder="如 外接硬件令牌"></div>' +
+        '<div class="fld" style="margin-top:10px"><label><input type="checkbox" id="aunBind"> 具备源绑定能力（登记后不可改）</label>' +
+          '<div class="mini" style="margin-top:4px">判据＝<b>凭据在协议层是否绑定源</b>：认证器断言与发起认证的源（origin / RP ID）绑定，钓鱼站点拿不到有效断言。具备源绑定能力的方式<b>即抗钓鱼</b>；不具备的<b>无法靠任何配置变得抗钓鱼</b>。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label><input type="checkbox" id="aunInter" checked> 交互式（认证过程需用户手工参与）</label>' +
+          '<div class="mini" style="margin-top:4px">非交互式方式<b>不适用于「二次认证」</b>等需人工确认的场景。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label><input type="checkbox" id="aunInSess" checked> 计入会话档位（可提升会话认证强度）</label>' +
+          '<div class="mini" style="margin-top:4px">与「交互式」同属<b>方式的固有属性</b>，登记后随方式生效；字典「计入会话档位」列据此渲染。</div></div>' +
+        /* ★ 2026-10-10（R30）：可否作「强认证器」登记，收为方式的**固有属性**（authrLv）——
+           此前由「参考默认级别 ≥ L4」反推，等于拿参考值当裁决依据，且形成字典明文禁止的
+           「档位 → 方式集合」视图。现改为**显式采集**，级别取本方式的参考默认级别。 */
+        '<div class="fld" style="margin-top:10px"><label><input type="checkbox" id="aunAuthr"> 可作为「强认证器」登记（硬件令牌 / 生物特征类）</label>' +
+          '<div class="mini" style="margin-top:4px">勾选后该方式进入「强认证器绑定管理」的认证方式取值域，<b>认证器级别即取本方式的参考默认级别</b>（须为 <b>L4 / L5</b>）。</div></div>');
+      $("#dlg1Ok").onclick = function () {
+        var nm = ($("#aunName").value || "").trim(); var lv = parseInt($("#aunLv").value, 10) || 1;
+        if (!nm) { markBad($("#aunName"), true); toast("请填写方式名称"); return; }
+        if (AU.dict.methods.some(function (x) { return x.name === nm; })) { markBad($("#aunName"), true); toast("方式名已存在"); return; }
+        var bind = !!($("#aunBind") && $("#aunBind").checked);
+        var authr = !!($("#aunAuthr") && $("#aunAuthr").checked);
+        if (authr && lv < 4) { toast("可作为强认证器登记的方式，其参考默认级别须为 L4 或 L5"); return; }
+        AU.dict.methods.push({ id: "m_" + Date.now(), name: nm, defLv: lv, authrLv: authr ? lv : 0, srcBind: bind,
+          interactive: !!($("#aunInter") && $("#aunInter").checked),
+          inherent: ($("#aunInh").value || "").trim() || "—",
+          inSession: !!($("#aunInSess") && $("#aunInSess").checked) });
+        AU_SRC_METHODS = (AU.dict.methods || AU_METHODS).slice();
+        auPgNew(AUD, AU.dict.methods.length, true);
+        auSave(); closeDlg(); auRerender(); toast("已新增（演示）· 已跳至第 " + AUD.pg + " 页");
+      };
+      break;
+    }
+    /* 认证源 */
+    case "srcView": AUS.cur = id; auRerender(); break;
+    case "srcList": AUS.cur = ""; auRerender(); break;
+    case "srcTest": {
+      var ts = AU.sources.filter(function (x) { return x.id === id; })[0]; if (!ts) break;
+      if (!ts.conn || ts.conn.kind === "local") {
+        openDlg("无需连通性测试",
+          "认证源 <b>" + esc(ts.name) + "</b> 为<b>平台自管账号体系</b>，<b>不连接任何外部目录或 IdP</b>，无外部连接可测。口令与锁定规则请在「账号与口令策略」中维护。");
+        break;
+      }
+      if (ts.st !== "已启用") { openDlg("源已停用", "认证源 <b>" + esc(ts.name) + "</b> 当前为<b>已停用</b>，<b>不发起到外部目录的连接</b>。请先启用后再测试。"); break; }
+      var tcf = {}; (ts.conn.fields || []).forEach(function (f) { tcf[f.k] = f.v; });
+      var tgt = ts.conn.kind === "ldap" ? (tcf.addr || "—") + (tcf.port ? ":" + tcf.port : "")
+        : ts.conn.kind === "oidc" ? (tcf.issuer || "—")
+        : (tcf.root || "—");
+      var probe = ts.conn.kind === "ldap" ? "向 <code>" + esc(tgt) + "</code> 发起 TLS 握手并用 Bind DN 做一次<b>只读绑定</b>"
+        : ts.conn.kind === "oidc" ? "拉取 <code>" + esc((tcf.issuer || "—") + "/.well-known/openid-configuration") + "</code> 与验签公钥（JWKS）并按 <b>" + esc(tcf.alg || "RS256") + "</b> 校验签名"
+        : "校验信任根链完整性并试拉一次 CRL";
+      /* ★ 2026-10-10（R20）：启用「故障转移」时把**主 → 备**两端一并列出 —— 否则备用节点
+         只是填了没人读的装饰（历史上 `port2` 正是因此被删）。 */
+      var _foLine = (ts.conn.kind === "ldap" && tcf.fo && tcf.foAddr)
+        ? '<br><b>故障转移</b>：主 <code>' + esc(tgt) + "</code> → 备 <code>" + esc((tcf.foAddr || "") + (tcf.foPort ? ":" + tcf.foPort : "")) + "</code>（主节点不可用时自动切换，切换事件入审计）"
+        : "";
+      /* ★ 2026-10-10（R21）：把 OIDC / CA 的**能力开关**一并叙述出来 —— 此前 `disc` / `alg` /
+         `jwks` / `crl` / `strict` / `ocsp` 收集后无任何消费点（只存不读）；现它们真被读。 */
+      var _jkLine = (ts.conn.kind === "oidc")
+        ? "<br><b>JWKS</b>：" + (tcf.disc
+            ? "随发现文档自动获取（缓存 <b>" + esc(tcf.jwks || "12") + "h</b>）"
+            : "已关闭发现文档 ⇒ 手工地址 <code>" + esc(tcf.jwksUri || "—") + "</code>（缓存 <b>" + esc(tcf.jwks || "12") + "h</b>）")
+        : "";
+      var _crlLine = (ts.conn.kind === "ca")
+        ? "<br><b>吊销校验</b>：CRL 周期 <b>" + esc(tcf.crl || "12") + "h</b> · 拉取失败 <b>" +
+          (tcf.strict ? "拒绝新会话并告警" : "仅告警") + "</b> · OCSP 兜底 <b>" + (tcf.ocsp ? "启用" : "未启用") + "</b>"
+        : "";
+      openDlg("连通性测试 · " + ts.name, "将" + probe + "。<b>测试使用只读凭据</b>，<b>不写入任何数据</b>；<b>测试结果入审计</b>。",
+        '<div class="mini" style="line-height:2">连接地址：<code>' + esc(tgt) + "</code><br>超时设置：<b>" +
+        esc(tcf.qto || "5") + "s</b> · 重试：<b>1</b> 次" + _foLine + _jkLine + _crlLine + "</div>");
+      $("#dlg1Ok").onclick = function () {
+        ts.conn.lastTest = AU_TS_STAMP + " · 连通 往返 42ms";
+        auSave(); closeDlg(); auRerender(); toast("连通性测试通过（演示）");
+      };
+      break;
+    }
+    case "connSave": {
+      /* 页内保存连接参数 / 账号与口令策略。
+         ★ 与旧版弹窗式编辑的两处根本差别：
+           1) 不再整体重写参数表 —— 只更新本表字段，本表之外的字段无从被抹掉；
+           2) 口令类字段留空＝不修改；首次配置留空则拦截（旧版 OIDC Secret 标了必填却从不读取）。
+         ★ 确认分档（口径：只改配置内容的保存走普通确认，不做二次认证）：
+           已启用源的参数变更**即刻作用于在线认证链路** ⇒ 保存前普通确认；
+           已停用源无生效面 ⇒ 直接保存。 */
+      var cs = AU.sources.filter(function (x) { return x.id === id; })[0]; if (!cs || !cs.conn) break;
+      var cIsLocal = cs.conn.kind === "local";
+      var cfs = cs.conn.fields || [], cnv = {}, cbad = null, cbadName = "";
+      cfs.forEach(function (f) {
+        if (f.ro) return;   /* ★ 平台统一只读项无控件，不参与收集 */
+        var el = document.getElementById("auc_" + f.k); if (!el) return;
+        cnv[f.k] = f.type === "check" ? !!el.checked : (el.value || "").trim();
+      });
+      cfs.forEach(function (f) {
+        if (f.type === "password" || !f.req) return;
+        if (!cnv[f.k] && !cbad) { cbad = document.getElementById("auc_" + f.k); cbadName = f.label; }
+      });
+      if (cbad) { markBad(cbad, true); toast("必填参数未填写：" + cbadName); return; }
+      /* ★ 2026-10-10（R13）：数值语义字段补范围校验 —— input[type=number] 的 min/max 只是浏览器侧提示，
+         脚本 / 回填 / 直接改 DOM 都能绕过；落库前须再拦一道。空值放行（非必填项留空＝不改 / 不设）。 */
+      var cnum = null, cnumMsg = "";
+      cfs.forEach(function (f) {
+        if (f.type !== "number" || cnum) return;
+        var raw = String(cnv[f.k] == null ? "" : cnv[f.k]).trim();
+        if (raw === "") return;
+        if (!/^\d+$/.test(raw)) { cnum = document.getElementById("auc_" + f.k); cnumMsg = f.label + " 须为整数"; return; }
+        var nv = parseInt(raw, 10);
+        if ((f.min != null && nv < f.min) || (f.max != null && nv > f.max)) {
+          cnum = document.getElementById("auc_" + f.k);
+          cnumMsg = f.label + " 取值须在 " + (f.min != null ? f.min : 0) + " ~ " + (f.max != null ? f.max : "无上限") + " 之间";
+        }
+      });
+      if (cnum) { markBad(cnum, true); toast(cnumMsg); return; }
+      /* ★ 2026-10-10（R15）：**跨字段**非法组合 —— 逐字段区间校验挡不住「单看都合法、合起来矛盾」的取值。
+         实例：连接池下限 0~1000 / 上限 1~2000 区间重叠，`下限 100 > 上限 5` 两个字段各自全部通过，
+         原实现照样落库并渲染成「正常」。此处按**字段对**补一次比较（空值放行，与逐字段同口径）。 */
+      var _pairs = [["poolMin", "poolMax"]], _crossBad = [], _crossMsg = "";
+      _pairs.forEach(function (pr) {
+        if (_crossBad.length) return;
+        var _fa = cfs.filter(function (f) { return f.k === pr[0]; })[0];
+        var _fb = cfs.filter(function (f) { return f.k === pr[1]; })[0];
+        if (!_fa || !_fb) return;
+        var _va = String(cnv[_fa.k] == null ? "" : cnv[_fa.k]).trim();
+        var _vb = String(cnv[_fb.k] == null ? "" : cnv[_fb.k]).trim();
+        if (_va === "" || _vb === "") return;
+        if (parseInt(_va, 10) > parseInt(_vb, 10)) {
+          /* ★ 2026-10-10（R15-g）：约束是**成对**的，故**两侧同标** —— 只标一侧（原先只记下限侧）
+             会让用户以为另一侧无问题；想改上限值时更是毫无视觉指引。 */
+          _crossBad = [document.getElementById("auc_" + _fa.k), document.getElementById("auc_" + _fb.k)];
+          _crossMsg = _fa.label + "（" + _va + "）不得大于 " + _fb.label + "（" + _vb + "）";
+        }
+      });
+      if (_crossBad.length) {
+        _crossBad.forEach(function (el9) { if (el9) markBad(el9, true); });
+        toast(_crossMsg); return;
+      }
+      /* ★ 2026-10-10（R20）：**故障转移 = 主备两节点**的成套口径。
+         勾选 `fo` ⇒ 「备用目录地址 / 备用端口」必填（缺一则切换无目标、开关空转），且备用地址**不得与主地址相同**；
+         未勾选 ⇒ 备用项**清空不落库**（不残留上次填过的备节点，避免「开关关了备节点还在」的错觉）。 */
+      var _foF = cfs.filter(function (f) { return f.k === "fo"; })[0];
+      var _foOn = !!(_foF ? cnv[_foF.k] : false);
+      var _foAddrF = cfs.filter(function (f) { return f.k === "foAddr"; })[0];
+      var _foPortF = cfs.filter(function (f) { return f.k === "foPort"; })[0];
+      if (_foOn && _foAddrF) {
+        if (!cnv.foAddr) { markBad(document.getElementById("auc_foAddr"), true); toast(_foAddrF.label + " 未填写：启用「故障转移」须指定备用节点，否则无从切换"); return; }
+        if (_foPortF && !cnv.foPort) { markBad(document.getElementById("auc_foPort"), true); toast(_foPortF.label + " 未填写：启用「故障转移」须指定备用端口"); return; }
+        if (cnv.foAddr === cnv.addr) { markBad(document.getElementById("auc_foAddr"), true); toast("备用目录地址不得与「目录地址」相同 —— 同一节点不构成主备"); return; }
+      } else if (_foAddrF) {
+        cnv.foAddr = ""; cnv.foPort = "";
+      }
+      /* ★ 2026-10-10（R21）：**反义条件字段** —— 「发现文档」关闭时 `verify`（强制开启的
+         ID Token 验签）没有公钥来源 ⇒ JWKS 地址必填；开启时地址随发现文档取得，手填值清空
+         （避免「开关开了、手填地址还在」的错觉）。与 R20 `fo` 同一口径：**能力声明的输入
+         必须齐备、且开关与输入同生同灭**。 */
+      var _discF = cfs.filter(function (f) { return f.k === "disc"; })[0];
+      var _jwksUF = cfs.filter(function (f) { return f.k === "jwksUri"; })[0];
+      if (_discF && _jwksUF) {
+        if (!cnv.disc && !cnv.jwksUri) {
+          markBad(document.getElementById("auc_jwksUri"), true);
+          toast(_jwksUF.label + " 未填写：已关闭「发现文档」，验签公钥无从自动获取，须手工提供 JWKS 地址"); return;
+        }
+        if (cnv.disc) cnv.jwksUri = "";
+      }
+      /* ★ 2026-10-10（R15）：`date` 语义字段（根证书有效期至）此前是纯文本、**零校验** ——
+         与 R14 已给 caUp / mtlsUp 的 `YYYY-MM-DD` 口径不一致。逐字段校格式 + 往返比对真值
+         （`2029-02-31` 形似合法、实为非法，须被 `Date` 往返揭穿）。 */
+      var _cdt = null, _cdtMsg = "";
+      cfs.forEach(function (f) {
+        if (!f.date || _cdt) return;
+        var raw = String(cnv[f.k] == null ? "" : cnv[f.k]).trim();
+        if (raw === "") return;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) { _cdt = document.getElementById("auc_" + f.k); _cdtMsg = f.label + " 须为 YYYY-MM-DD 格式"; return; }
+        var _y = parseInt(raw.slice(0, 4), 10), _mo = parseInt(raw.slice(5, 7), 10), _da = parseInt(raw.slice(8, 10), 10);
+        var _dd = new Date(_y, _mo - 1, _da);
+        if (_dd.getFullYear() !== _y || _dd.getMonth() !== _mo - 1 || _dd.getDate() !== _da) {
+          _cdt = document.getElementById("auc_" + f.k); _cdtMsg = f.label + " 不是有效日期（" + raw + "）";
+        }
+      });
+      if (_cdt) { markBad(_cdt, true); toast(_cdtMsg); return; }
+      /* ★ 2026-10-10（R17）：**地址类字段零格式校验** —— 目录地址 / Issuer / 回调地址三个 URL 语义字段
+         此前只判非空，`随便写` 也能落库；而「测试连接」正是拿目录地址去握手、拿 Issuer 去拉
+         /.well-known/openid-configuration（见 auTestDlg）⇒ 非法地址只是把失败推迟到运行时。
+         此处按字段上的 `url` 标记逐字段校协议与形态：
+           · `ldap`：须 `ldap://` 或 `ldaps://` + **仅主机、不得带路径、不得带端口** —— 测试连接把
+             目标拼成 `addr + ":" + port`（见 auTestDlg），地址里带 `/` 或再带 `:port` 会拼出
+             `ldaps://host/:636` / `ldaps://host:636:636` 这类坏地址（端口由「端口」字段单独填写）；
+           · `https`：须 `https://`（OIDC 规范要求 Issuer 与回调地址走 TLS）。
+         空值放行 —— 非必填留空＝不修改；必填已在上一步拦下（与数值 / 日期 / 跨字段同口径）。 */
+      var _curl = null, _curlMsg = "";
+      cfs.forEach(function (f) {
+        if (!f.url || _curl) return;
+        var rawU = String(cnv[f.k] == null ? "" : cnv[f.k]).trim();
+        if (rawU === "") return;
+        var mu = /^([a-zA-Z][a-zA-Z0-9+.\-]*):\/\/([^\s\/?#]+)(\/[^\s?#]*)?$/.exec(rawU);
+        var okU = !!mu;
+        if (okU && f.url === "ldap") okU = (mu[1] === "ldap" || mu[1] === "ldaps") && !mu[3] && mu[2].indexOf(":") < 0;
+        if (okU && f.url === "https") okU = (mu[1] === "https");
+        if (!okU) {
+          _curl = document.getElementById("auc_" + f.k);
+          _curlMsg = (f.url === "ldap")
+            ? f.label + " 须为 ldap:// 或 ldaps:// 开头的主机地址（如 ldaps://ad.corp.internal）；端口由「端口」字段单独填写"
+            : f.label + " 须为 https:// 开头的地址（如 " + f.ph + "）";
+        }
+      });
+      if (_curl) { markBad(_curl, true); toast(_curlMsg); return; }
+      /* ★ 2026-10-10（R24）：原 R14 在此拦截「传输加密＝不加密 × 强制证书校验」这一组合，
+         但该组合在**现行控件下不可构造** —— `enc` 的取值域只有「TLS 强制（关闭 start_tls）」
+         与「start_tls 升级」两个 TLS 项，枚举里**没有「不加密」**（仅当旧快照遗留值经
+         `auConnForm` 回填时才可能命中）⇒ 本分支属**不可达死代码**。约束已单点落在 `enc`
+         的取值域上，运行期兜底随之撤除：守卫应描述「可能发生的状态」，描述一个取不到的状态
+         只会让读者误以为「不加密」仍是可选项。 */
+      var cpw = cfs.filter(function (f) { return f.type === "password"; })[0];
+      var cpwNew = false;
+      if (cpw) {
+        cpwNew = !!cnv[cpw.k];
+        if (!cpwNew && !cs.conn.pwdSet) {
+          markBad(document.getElementById("auc_" + cpw.k), true);
+          toast(cpw.label + " 首次配置须填写（加密存储）"); return;
+        }
+      }
+      var doConnSave = function () {
+        if (cpw && cpwNew) cs.conn.pwdSet = true;
+        cfs.forEach(function (f) { if (f.type !== "password" && !f.ro) { f.v = cnv[f.k]; } });
+        cs.conn.lastTest = "";
+        auSave(); auRerender();
+        toast((cIsLocal ? "账号与口令策略" : "连接参数") + "已保存（台账已更新）");
+      };
+      if (cs.st === "已启用") {
+        confirmDlg("保存" + (cIsLocal ? "账号与口令策略" : "连接参数") + " · " + cs.name,
+          "认证源 <b>" + esc(cs.name) + "</b> 当前为 <b>已启用</b>，本次参数变更将<b>即刻作用于在线认证链路</b>。<b>确认后入审计</b>。",
+          doConnSave, "保存并下发");
+      } else doConnSave();
+      break;
+    }
+    case "srcSync": {
+      var sy = AU.sources.filter(function (x) { return x.id === id; })[0]; if (!sy) break;
+      var smd = sy.sync ? sy.sync.mode : "";
+      if (!smd || smd === "—") { openDlg("无需同步", "认证源 <b>" + esc(sy.name) + "</b> 为<b>平台自管账号体系</b>，<b>不涉及外部同步</b>。"); break; }
+      /* ★ 2026-10-10（R10）：`登录时按需映射`（OIDC 等）**不建全量副本、也没有可手动触发的同步**
+         —— 账号在用户首次登录时按来源主体建立映射。渲染「立即同步」属入口与业务事实不符
+         （点了只是空跑）。与「未配置」同判据：入口随数据出现，无同步可做就不渲染。 */
+      if (smd === "登录时按需映射") {
+        openDlg("无需手动同步",
+          "认证源 <b>" + esc(sy.name) + "</b> 的同步方式为 <b>登录时按需映射</b>：平台侧<b>不建全量账号副本</b>，账号在用户<b>首次登录时</b>按来源主体建立映射并落库，此后仅更新时间戳。<b>无全量 / 增量同步可手动触发</b>；如需改为定时同步，请用「编辑源属性」调整同步方式。");
+        break;
+      }
+      if (smd === "未配置") {
+        openDlg("尚未配置同步",
+          "认证源 <b>" + esc(sy.name) + "</b> 的<b>同步方式尚未配置</b> —— 须先明确<b>账号从哪来、按什么方式同步</b>，才谈得上执行同步。请先用<b>「编辑源属性」</b>选定<b>同步方式</b>，同步入口随后出现。");
+        break;
+      }
+      if (sy.st !== "已启用") { openDlg("源未启用", "认证源 <b>" + esc(sy.name) + "</b> 当前为 <b>" + esc(sy.st) + "</b>，<b>停用源不执行同步</b>。请先启用后再同步。"); break; }
+      idAsk("立即同步 · " + sy.name,
+        "将立即执行一次同步（方式：<b>" + esc(smd) + "</b>）。<b>同步只管理来源标注为本源的账号，不覆盖内部手工账号</b>；属性冲突时<b>告警而非覆盖</b>。<b>本次同步入审计</b>。",
+        function () {
+          sy.sync.last = AU_TS_STAMP + " · 增量 3 条 / 冲突 1 条（告警，未覆盖）";
+          auSave(); auRerender(); toast("已发起同步（演示）");
+        }, "同步");
+      break;
+    }
+    case "srcMap": {
+      var mp = AU.sources.filter(function (x) { return x.id === id; })[0]; if (!mp) break;
+      var cur = {};
+      (mp.sync && mp.sync.map || []).forEach(function (m) { cur[m[0]] = m[1]; });
+      var keys = ["账号名", "姓名", "邮箱", "部门", "岗位", "状态"];
+      openDlg("编辑字段映射 · " + mp.name,
+        "把平台字段映射到外部来源属性。<b>账号名必填</b>；<b>未映射的字段留空</b>，不猜测默认值。",
+        keys.map(function (k, i) {
+          return '<div class="fld"' + (i ? ' style="margin-top:10px"' : "") + '><label for="aum' + i + '">' + k + (k === "账号名" ? ' <span class="req">*</span>' : "") + "</label>" +
+            '<input id="aum' + i + '" value="' + esc(cur[k] || "") + '" placeholder="' + (k === "账号名" ? "如 sAMAccountName" : "留空表示不映射") + '"></div>';
+        }).join(""));
+      $("#dlg1Ok").onclick = function () {
+        var nm = ($("#aum0").value || "").trim();
+        if (!nm) { markBad($("#aum0"), true); toast("账号名映射必填"); return; }
+        var doMapSave = function () {
+          mp.sync = mp.sync || { mode: "—", note: "—" };
+          /* 未映射落**空串**，不落「—」——「—」在本页是**展示层缺省符**（见 syncMap 与「同步说明」兜底），
+             落成数据后会与「真的映射到一个叫『—』的属性」不可区分。 */
+          mp.sync.map = keys.map(function (k, i) { return [k, ($("#aum" + i).value || "").trim()]; });
+          auSave(); closeDlg(); auRerender(); toast("已保存字段映射（演示）");
+        };
+        /* ★ 2026-10-10（R18）：统一「只改配置内容的保存」口径 —— 字段映射变更**即刻作用于在线认证链路**，
+           与 connSave 同属「改变生效面」的判据（判据认的是生效面、不是动作名称）⇒ **已启用**源保存前
+           走普通确认；未启用源无生效面，直接落库。 */
+        if (mp.st === "已启用") {
+          confirmDlg("保存字段映射 · " + mp.name,
+            "认证源 <b>" + esc(mp.name) + "</b> 当前为 <b>已启用</b>，字段映射的变更将<b>即刻作用于在线认证链路</b>。<b>确认后入审计</b>。",
+            doMapSave, "保存并下发");
+        } else doMapSave();
+      };
+      break;
+    }
+    case "srcEditAttr": {
+      var ea = AU.sources.filter(function (x) { return x.id === id; })[0]; if (!ea) break;
+      openDlg("编辑源属性 · " + ea.name,
+        "维护认证源的<b>展示属性</b>。⚠ <b>类型与连接参数不在此改</b> —— 变更类型等于换一个认证源，请新增后停用旧源。",
+        '<div class="fld"><label for="aueName">展示名称 <span class="req">*</span></label><input id="aueName" value="' + esc(ea.name) + '"></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="aueTag">来源标注</label><input id="aueTag" value="' + esc(ea.tag) + '"><div class="mini" style="margin-top:4px">账号<b>来源标识</b>，须唯一；同步仅管理来源为该标注的账号。<b>改标注会让旧标注下的账号不再被本源同步</b>。类型已定（' + esc(auTagBase(ea.type)) + ' 系），通常无需改动。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="aueOrder">展示顺序</label><input id="aueOrder" type="number" min="1" value="' + esc(ea.order) + '"><div class="mini" style="margin-top:4px">与启用状态共同决定<b>登录页呈现次序</b>。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="aueDesc">说明</label><input id="aueDesc" value="' + esc(ea.desc) + '"></div>' +
+        /* ★ 2026-10-10（R11）：本地源**不渲染**同步方式控件 —— 原实现对本地源同样渲染全量下拉，
+           而保存处强制 smE="—" ⇒ 用户的改动被静默丢弃、界面却提示「源属性已更新」（入口与事实不符）。 */
+        (ea.type === "本地账号体系"
+          ? '<div class="fld" style="margin-top:10px"><label>同步方式</label><div class="mini">本地账号体系由平台<b>自管</b>，<b>无外部同步</b>（固定「—」）。</div></div>'
+          : '<div class="fld" style="margin-top:10px"><label for="aueSync">同步方式</label><select id="aueSync">' +
+            (function () { var cu = (ea.sync && ea.sync.mode) || "未配置"; var ls = auSyncModes(ea.type);
+              if (ls.indexOf(cu) < 0) ls.push(cu);
+              return ls.map(function (o3) { return "<option" + (o3 === cu ? " selected" : "") + ">" + esc(o3) + "</option>"; }).join(""); })() + "</select>" +
+            '<div class="mini" style="margin-top:4px">账号<b>从哪来、按什么方式同步</b>；<b>未配置的源不能启用</b>。</div></div>') +
+        '<div class="fld" style="margin-top:10px"><label>类型</label><div class="mini">' + esc(ea.type) + '（<b>不可改</b>）</div></div>');
+      $("#dlg1Ok").onclick = function () {
+        var nm2 = ($("#aueName").value || "").trim();
+        if (!nm2) { markBad($("#aueName"), true); toast("请填写展示名称"); return; }
+        if (AU.sources.some(function (x) { return x.id !== ea.id && x.name === nm2; })) { markBad($("#aueName"), true); toast("展示名称已存在"); return; }
+        /* ★ 2026-10-10（R13）：标注唯一性（同 srcNew）；改标注会让**旧标注下的账号静默孤儿化**，
+           故保存后按新旧标注是否变化给出后果提示。 */
+        var tgE = ($("#aueTag").value || "").trim() || nm2;
+        if (AU.sources.some(function (x) { return x.id !== ea.id && (x.tag || x.name) === tgE; })) {
+          markBad($("#aueTag"), true); toast("来源标注已被其他认证源使用：" + tgE + "（标注是账号同步的归属键，须唯一）"); return;
+        }
+        var _oldTag = ea.tag || ea.name;
+        var od = parseInt($("#aueOrder").value, 10);
+        if (!(od > 0)) { markBad($("#aueOrder"), true); toast("展示顺序须为不小于 1 的整数"); return; }
+        /* ★ 2026-10-10（R15）：同 srcNew —— 次序须唯一（排除自身）。 */
+        if (AU.sources.some(function (x) { return x.id !== ea.id && x.order === od; })) {
+          markBad($("#aueOrder"), true); toast("展示顺序已被其他认证源占用：" + od + "（次序须唯一）"); return;
+        }
+        /* ★ 2026-10-10（R16）：名称 / 标注此前**在本行之前**就已写进内存对象，而紧随其后的
+           「展示顺序」校验可能 `return` 提前退出 —— 被拦下的改名会留在内存里，用户点「取消」
+           也不回滚，且会被**后续任一次 auSave()** 永久落库（来源标注是账号同步的归属键，
+           误改会让旧标注下的账号静默孤儿化）。改为所有校验通过后统一提交。 */
+        var doAttrSave = function () {
+          ea.name = nm2;
+          ea.tag = tgE;
+          ea.order = od;
+          ea.desc = ($("#aueDesc").value || "").trim() || "—";
+          /* 同步方式就地可改；**方式变更时重写说明** —— 旧说明描述的是旧方式，保留会自相矛盾。 */
+          /* ★ 2026-10-10（R11）：本地源已不渲染 #aueSync ⇒ 取值须先按类型短路（否则空引用） */
+          var smE = (ea.type === "本地账号体系") ? "—" : ((($("#aueSync") || {}).value || "").trim() || "未配置");
+          if (!ea.sync || ea.sync.mode !== smE) {
+            ea.sync = ea.sync || { map: [] };
+            ea.sync.mode = smE;
+            ea.sync.note = auSyncNote(smE);
+          }
+          auSave(); closeDlg(); auRerender();
+          toast(_oldTag !== tgE
+            ? "源属性已更新；来源标注由「" + _oldTag + "」改为「" + tgE + "」—— 旧标注下的账号不再被本源同步（演示）"
+            : "源属性已更新（演示）");
+        };
+        /* ★ 2026-10-10（R18）：统一「只改配置内容的保存」口径 —— 源属性的**展示顺序**与**同步方式**
+           均**即刻作用于在线认证链路**（前者改登录页呈现次序、后者改账号同步行为），与 connSave
+           同一判据 ⇒ 已启用源保存前走普通确认；未启用源无生效面，直接落库。 */
+        if (ea.st === "已启用") {
+          confirmDlg("保存源属性 · " + ea.name,
+            "认证源 <b>" + esc(ea.name) + "</b> 当前为 <b>已启用</b>，展示属性（含<b>展示顺序</b>与<b>同步方式</b>）的变更将<b>即刻作用于在线认证链路</b>。<b>确认后入审计</b>。",
+            doAttrSave, "保存并下发");
+        } else doAttrSave();
+      };
+      break;
+    }
+    case "srcDel": {
+      var dl = AU.sources.filter(function (x) { return x.id === id; })[0]; if (!dl) break;
+      if (dl.st !== "已停用") {
+        openDlg("不可删除", "认证源 <b>" + esc(dl.name) + "</b> 当前为 <b>" + esc(dl.st) + "</b>。<b>须先停用再删除</b> —— 直接删除会让正在使用该源登录的用户被静默剔除。");
+        break;
+      }
+      var dw = (dl.ways || []).length;
+      auConfirmEff("删除认证源",
+        "将删除 <b>" + esc(dl.name) + "</b> 及其 <b>" + dw + " 条「源 × 方式」记录。<b>字典中的方式名不随之删除</b>；本源引用解除后，相关方式在字典页才可删除。<b>此操作入审计</b>。",
+        function () {
+          AU.sources = AU.sources.filter(function (x) { return x.id !== dl.id; });
+          AUS.cur = ""; auSave(); auRerender(); toast("已删除认证源（演示）");
+        }, "删除");
+      break;
+    }
+    case "srcToggle": {
+      var s = AU.sources.filter(function (x) { return x.id === id; })[0]; if (!s) break;
+      var ns = s.st === "已启用" ? "已停用" : "已启用";
+      /* 启用准入校验**前置**到确认之前：旧实现先弹确认、确认后才校验，校验不过时确认框
+         已经关掉，用户看到的是「点完确认什么也没发生」，归因困难、也无从重试。 */
+      if (ns === "已启用") {
+        var ck = s.conn || {}, cfs2 = ck.fields || [], why = "";
+        if (!cfs2.length) why = "请先配置连接参数";
+        else {
+          var cmiss = cfs2.filter(function (f) { return f.req && String(f.v == null ? "" : f.v).trim() === ""; });
+          if (cmiss.length) why = "必填参数未填（" + cmiss[0].label + " 等 " + cmiss.length + " 项）";
+        }
+        if (!why && cfs2.some(function (f) { return f.type === "password"; }) && !ck.pwdSet) why = "请先设置口令 / 密钥";
+        var smNow = s.sync ? String(s.sync.mode || "") : "";
+        if (!why && ck.kind !== "local" && (!smNow || smNow === "未配置" || smNow === "—"))
+          why = "该源尚未配置同步方式（账号从哪来未明确）";
+        if (!why && !(s.ways || []).length) why = "该源尚未配置任何认证方式";
+        if (why) { toast("启用被拒：" + why); break; }
+      }
+      auConfirmEff(ns === "已停用" ? "停用认证源" : "启用认证源",
+        "将把认证源 <b>" + esc(s.name) + "</b> 置为 <b>" + ns + "</b>。" + (ns === "已停用"
+          ? "停用后该源<b>不在登录页展示</b>，已使用该源方式登录的用户将无法再选择该源。"
+          : "启用后该源<b>即刻在登录页对用户可见</b>。") + "<b>本次变更入审计</b>。",
+        function () { s.st = ns; auSave(); auRerender(); toast("已" + ns.slice(1) + "（演示）"); });
+      break;
+    }
+    case "srcNew": {
+      openDlg("新增认证源", "新增一个身份来源（本地 / AD / LDAP / OIDC 等）。新增后须在详情页为其配置<b>支持的认证方式</b>。",
+        '<div class="fld"><label for="ausName">展示名称 <span class="req">*</span></label><input id="ausName" placeholder="如 分行 AD 域"></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="ausType">类型</label><select id="ausType" onchange="auSrcTypeSync(this.value)"><option>本地账号体系</option><option>AD / LDAP</option><option>OIDC 外部 IdP</option><option>CA / 证书体系</option></select></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="ausTag">来源标注</label><input id="ausTag" data-auto="1" oninput="auTagDirty(this)" placeholder="随类型自动带出"><div class="mini" style="margin-top:4px">默认按<b>类型自动带出</b>（本地→LOCAL / AD·LDAP→AD / OIDC→OIDC / CA→CA，同类型多源自动编号）；<b>如需自定义可覆盖</b>。标注是账号来源标识，须唯一。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="ausDesc">说明</label><input id="ausDesc" placeholder="如 面向分行柜面的目录服务"></div>' +
+        '<div class="fld" id="ausSyncWrap" style="margin-top:10px"><label for="ausSync">同步方式</label><select id="ausSync">' +
+          AU_SYNC_MODES.map(function (o2) { return "<option" + (o2 === "未配置" ? " selected" : "") + ">" + esc(o2) + "</option>"; }).join("") + "</select>" +
+          '<div class="mini" style="margin-top:4px">账号<b>从哪来、按什么方式同步</b> —— <b>未配置的源不能启用</b>；本地账号体系选「—」（无外部同步）。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="ausOrder">展示顺序</label><input id="ausOrder" type="number" min="1" value="' + (AU.sources.reduce(function (mx, x) { return Math.max(mx, parseInt(x.order, 10) || 0); }, 0) + 1) + '"><div class="mini" style="margin-top:4px">与启用状态共同决定<b>登录页呈现次序</b>；默认排在末位，可在「编辑源属性」中调整。</div></div>');
+      /* ★ 2026-10-10（R10）：类型默认即「本地账号体系」，但同步方式字段只在 onchange 时收起
+         ⇒ 打开弹窗时该字段可见且可选，与「本地无外部同步」自相矛盾（首屏即错）。开窗即同步一次。 */
+      auSrcTypeSync(($("#ausType") || {}).value || "本地账号体系");
+      $("#dlg1Ok").onclick = function () {
+        var nm = ($("#ausName").value || "").trim();
+        if (!nm) { markBad($("#ausName"), true); toast("请填写展示名称"); return; }
+        if (AU.sources.some(function (x) { return x.name === nm; })) { markBad($("#ausName"), true); toast("展示名称已存在"); return; }
+        /* ★ 2026-10-10（R13）：来源标注是**账号同步的归属键**（同步只管理标注为本源的账号）
+           ⇒ 必须唯一。原实现只查重名、不查标注 ⇒ 两源可共用同一标注，争抢同一批账号、归属歧义。 */
+        var tgNew = ($("#ausTag").value || "").trim() || nm;
+        if (AU.sources.some(function (x) { return (x.tag || x.name) === tgNew; })) {
+          markBad($("#ausTag"), true); toast("来源标注已被其他认证源使用：" + tgNew + "（标注是账号同步的归属键，须唯一）"); return;
+        }
+        var ord = parseInt($("#ausOrder").value, 10);
+        if (!(ord >= 1)) { markBad($("#ausOrder"), true); toast("展示顺序须为 ≥1 的整数"); return; }
+        /* ★ 2026-10-10（R15）：展示顺序是**登录页源的呈现次序**，必须唯一 —— 原实现只在新增时
+           取 `length + 1` 作默认值、**不查重**，删掉中间一条再新增就与既有 order 撞车，次序不定。
+           与来源标注同族（归属键须唯一），此处同判。 */
+        if (AU.sources.some(function (x) { return x.order === ord; })) {
+          markBad($("#ausOrder"), true); toast("展示顺序已被其他认证源占用：" + ord + "（次序须唯一）"); return;
+        }
+        var _tyNew = $("#ausType").value;
+        var _smNew = (_tyNew === "本地账号体系") ? "—" : (($("#ausSync").value || "").trim() || "未配置");
+        /* 🎯 2026-10-10（R12）：兜底 —— 提交值必须落在该类型可用集内（下拉已收敛，此处防脚本 / 回填绕过）。 */
+        if (auSyncModes(_tyNew).indexOf(_smNew) < 0) { markBad($("#ausSync"), true); toast("该类型不支持此同步方式：" + _smNew); return; }
+        AU.sources.push({ id: "src_" + Date.now(), name: nm, type: $("#ausType").value, st: "已停用", order: ord, tag: tgNew, desc: ($("#ausDesc").value || "").trim() || "—",
+          conn: auConnSeed($("#ausType").value === "AD / LDAP" ? "ldap" : ($("#ausType").value === "OIDC 外部 IdP" ? "oidc" : ($("#ausType").value === "CA / 证书体系" ? "ca" : "local")), null, false, ""),
+          sync: { mode: _smNew, note: auSyncNote(_smNew), map: [] },
+          ways: [] });
+        auPgNew(AUS, AU.sources.length, true);
+        auSave(); closeDlg(); auRerender(); toast("已新增（演示）· 已跳至第 " + AUS.pg + " 页");
+      };
+      break;
+    }
+    case "srcAddWay": {
+      var as = AU.sources.filter(function (x) { return x.id === id; })[0]; if (!as) break;
+      var avail = AU_SRC_METHODS.filter(function (m) {
+        return !(as.ways || []).some(function (w) { return w.mid === m.id; })
+          && (AU.dict.methods || []).some(function (d) { return d.id === m.id; });
+      });
+      openDlg("添加认证方式", "为该源添加一种认证方式，并<b>联合判定</b>其级别与适用范围 —— <b>级别与适用范围是「本源 × 本方式」这条记录的属性，不是方式本身的属性</b>。⚠ 方式名取自<b>字典</b>（唯一取值域），本页<b>不能自造</b>。字典给的档位只是<b>参考初值</b>。",
+        '<div class="fld"><label for="auwMid">认证方式</label><select id="auwMid" onchange="(function(s){var o=s.options[s.selectedIndex];if(o&&o.dataset.lv)document.getElementById(\'auwLv\').value=o.dataset.lv;})(this)">' +
+          (avail.length ? avail.map(function (m) { return '<option value="' + m.id + '" data-lv="' + m.defLv + '">' + esc(m.name) + "（参考 L" + m.defLv + "，落库后可改）</option>"; }).join("") : '<option value="">（字典中的方式均已引用）</option>') + "</select>" +
+          '<div class="mini" style="margin-top:4px">级别是<b>本源 × 本方式</b>这条记录的属性；下拉里的档位只是<b>参考初值</b>。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="auwLv">级别（本源下联合判定）</label><select id="auwLv">' + [1, 2, 3, 4, 5].map(function (n) { return "<option value=\"" + n + "\"" + (n === (avail.length ? (avail[0].defLv || 2) : 2) ? " selected" : "") + ">L" + n + "</option>"; }).join("") + "</select></div>" +
+        '<div class="fld" style="margin-top:10px"><label>适用范围（本源下联合判定） <span class="req">*</span></label>' + auScopeChips("auwScope", "") +
+          '<div class="mini" style="margin-top:4px">取值域＝资产台账的<b>「资产组」</b>（全部资产 / 核心业务 / 办公协同 / 数据平台 / 开发测试 / 对外服务）。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label><input type="checkbox" id="auwAnon"> 支持无端（浏览器）</label></div>');
+      $("#dlg1Ok").onclick = function () {
+        var mid = $("#auwMid").value;
+        /* 字典里的方式都被本源引用后，下拉只剩空占位 —— 原实现静默关窗，用户以为卡死。 */
+        if (!mid) { toast("字典中的方式均已在本源登记，无可添加项"); return; }
+        as.ways = as.ways || [];
+        /* ★ 2026-10-10（R14）：适用范围是该记录**联合判定**的结果列之一（列表与判定结果同列展示），
+           落「—」等于判定结果留空 ⇒ 与「来源标注」「授权范围」同类，须为实名。 */
+        var _wsc = auScopeRead(document.querySelector('[data-scope-box="auwScope"]'));
+        if (!_wsc) { toast("请至少选择一项适用范围（取值域＝资产台账「资产组」）"); return; }
+        as.ways.push({ mid: mid, lv: parseInt($("#auwLv").value, 10) || 1, scope: _wsc, anon: !!($("#auwAnon") && $("#auwAnon").checked) });
+        /* ★ 2026-10-10（R16）：新增记录落在**末页**，而页② 详情表的「源 × 方式」可能有
+           多页 —— 原实现不跳页（对照 srcNew / ucNew / isIssue / arNew 均已补 `auPgNew`），
+           已有 ≥10 条时再添加一条，屏幕无任何变化、toast 也不含页码 ⇒ 读成「点了没反应」。 */
+        auPgNew(AUW, as.ways.length, true);
+        auSave(); closeDlg(); auRerender(); toast("已添加（演示）· 已跳至第 " + AUW.pg + " 页");
+      };
+      break;
+    }
+    case "wayDel": {
+      var ws = AU.sources.filter(function (x) { return x.id === AUS.cur; })[0]; if (!ws) break;
+      var wi = parseInt(idx, 10); if (isNaN(wi) || !ws.ways[wi]) break;
+      auConfirmEff("移除认证方式", "将从该源移除 <b>" + esc(auMethodName(ws.ways[wi].mid)) + "</b> 这条记录（含其级别与适用范围）。<b>此操作入审计</b>。",
+        function () { ws.ways.splice(wi, 1); auSave(); auRerender(); toast("已移除（演示）"); }, "移除");
+      break;
+    }
+    /* 网关凭据托管 */
+    /* 用户代填账号托管 */
+    case "ucNew": {
+      var avOpts = [];
+      /* ★ 2026-10-10（R16）：被访问应用须是**有登录页、可代填**的对象 —— 原实现直取资产全量，
+         远程主机 / 文件服务 / 其他 TCP 类资产同样可选，等于声明一条不可能被执行的代填记录
+         （这些资产也没有「身份适配」页签可配契约）。收敛为「网页应用」类。 */
+      try {
+        if (typeof ASSETS !== "undefined" && ASSETS) {
+          ASSETS.forEach(function (a) {
+            if (a.type !== "网页应用" || a.en === 0) return;
+            /* ★ 2026-10-10（R25）：**档位自洽** —— 代填 ≡ 资产身份适配的 **D 档**。
+               已配 A（token 注入）/ B（key + userinfo）/ C（协议级 SSO）的资产走各自的
+               适配路径，**不由平台代填账号密码**；把它们列为托管对象会让同一资产被赋
+               两个互斥档位（如「统一身份门户」为 C 档协议级 SSO）。未配置（N）的资产
+               可现场配 D 档，故一并保留。 */
+            var _md = (a._adapt && a._adapt.mode)
+              || (typeof ADAPT_MODE_OF !== "undefined" && ADAPT_MODE_OF[a.name]) || "N";
+            if (_md === "D" || _md === "N") avOpts.push(a.name);
+          });
+        }
+      } catch (e0) { /* 忽略 */ }
+      /* ★ 2026-10-10（R25）：台账中无可代填对象时**直接拦截** —— 原实现在此处回落一份硬编码列表
+         （且含「客户数据仓库」这类**数据库**资产），等于为录入侧开了一条绕过「网页应用 + 启用」约束的第二来源。 */
+      if (!avOpts.length) {
+        toast("资产台账中暂无「启用中的网页应用」类资产：代填对象须有登录页，请先在「资产列表」登记或启用");
+        break;
+      }
+      openDlg("新增托管账号", "录入一条被访问应用的登录账号（<b>凭据本体</b>）。<b>登录页地址与字段选择器属资产维度</b>，不在此配置 —— 保存后到该资产的「身份适配」页签配契约。⚠ 首次录入的确认动作<b>即构成用户授权</b>（告知-同意）。",
+        '<div class="fld"><label for="aucAsset">被访问应用 <span class="req">*</span></label><select id="aucAsset">' +
+          avOpts.map(function (o) { return "<option>" + esc(o) + "</option>"; }).join("") + "</select>" +
+          '<div class="help">须为已在「资产列表」登记的资产 —— 只有登记过的资产才有身份适配页签可配契约。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="aucMode">托管模式</label><select id="aucMode" onchange="auOwnerSync()"><option>用户自管</option><option>管理员托管</option></select></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="aucOwner">账号归属</label><select id="aucOwner" disabled></select>' +
+          '<div class="mini" style="margin-top:4px">由<b>托管模式</b>唯一决定、不另行选择：<b>用户自管</b>＝<b>当前登录用户</b>（本人）；<b>管理员托管</b>＝组织资产。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="aucAcct">账号 <span class="req">*</span></label><input id="aucAcct" placeholder="登录账号"></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="aucFill">填充方式</label><select id="aucFill"><option>自动（字段特征库）</option><option>自定义选择器</option></select>' +
+          '<div class="mini" style="margin-top:4px"><b>自动</b>＝按平台内置<b>字段特征库</b>识别账号 / 密码框；<b>自定义选择器</b>＝按<b>该资产契约</b>配置的选择器填充（契约在资产「身份适配 → D 档」配置）。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="aucPwd">密码 <span class="req">*</span></label><input id="aucPwd" type="password" placeholder="录入后 SM4 加密落库，明文不回显"></div>');
+      auOwnerSync();
+      $("#dlg1Ok").onclick = function () {
+        var av = ($("#aucAsset").value || "").trim();
+        if (!av) { markBad($("#aucAsset"), true); toast("请选择被访问应用"); return; }
+        var pw = ($("#aucPwd").value || "").trim();
+        if (!pw) { markBad($("#aucPwd"), true); toast("请录入密码（用于代填，SM4 加密落库）"); return; }
+        var ac = ($("#aucAcct").value || "").trim();
+        if (!ac) { markBad($("#aucAcct"), true); toast("请录入登录账号"); return; }
+        /* 以 assetId 为主键（资产改名后仍可反查）；资产名仅作历史数据回退。 */
+        var avId = "";
+        try { if (typeof ASSETS !== "undefined" && ASSETS) { var _av = ASSETS.filter(function (x) { return x.name === av; })[0]; if (_av) avId = _av.id; } } catch (e4) { avId = ""; }
+        /* 若该资产已在资产侧配好 D 档契约，直接引用同一份；否则留空契约，标记待配置。 */
+        var seed = null;
+        try {
+          if (typeof ASSETS !== "undefined" && ASSETS) {
+            var aa = ASSETS.filter(function (x) { return x.name === av; })[0];
+            if (aa && aa._adapt && aa._adapt.d && aa._adapt.d.url) {
+              var dd = aa._adapt.d;
+              seed = { url: dd.url, urlAlt: dd.urlAlt || "—", kind: dd.kind || "单步（账号+密码同页）",
+                userSel: dd.userSel || "—", pwdSel: dd.pwdSel || "—", submitSel: dd.submitSel || "—",
+                submit: dd.submit || "自动提交", captcha: dd.captcha || "无",
+                verify: dd.verify || "—", tested: "未测试" };
+              if (dd.step2 && dd.step2.url) seed.step2 = JSON.parse(JSON.stringify(dd.step2));
+            }
+          }
+        } catch (e1) { seed = null; }
+        /* ★ 2026-10-10（R8）：原实现把 fill **写死**成「自动（字段特征库）」⇒ 列表该列与
+           契约实际形态脱钩（弹窗里也无处可选）。改为读控件，并校验取值与契约的**可满足性**：
+           「自定义选择器」的唯一来源是该资产契约，尚无契约时选它等于声明一条不存在的填充路径。 */
+        /* ★ 2026-10-10（R25）：**档位自洽**再拦一道（下拉已收敛，但回填 / 脚本仍可绕过）。 */
+        var _mdSel = "";
+        try {
+          if (typeof ASSETS !== "undefined" && ASSETS) {
+            var _as2 = ASSETS.filter(function (x) { return x.name === av; })[0];
+            if (_as2) _mdSel = (_as2._adapt && _as2._adapt.mode)
+              || (typeof ADAPT_MODE_OF !== "undefined" && ADAPT_MODE_OF[_as2.name]) || "N";
+          }
+        } catch (e6) { /* 忽略 */ }
+        if (_mdSel && _mdSel !== "D" && _mdSel !== "N") {
+          toast("该资产的身份适配档位为 " + _mdSel + " 档（非 D 档 · 账号密码代填），不走平台代填：请改选 D 档 / 未配置的资产");
+          return;
+        }
+        var fillSel = ($("#aucFill").value || "").trim() || "自动（字段特征库）";
+        if (fillSel === "自定义选择器" && !seed) { toast("该资产尚未配置契约：「自定义选择器」的取值来自资产契约，请先到「身份适配 → D 档」配置契约，或改用「自动（字段特征库）」"); return; }
+        /* ★ 2026-10-10（R10）：同「被访问应用 + 账号」＝同一登录位，只应有一条托管记录。
+           页①（同名方式）· 页②（同名源）· 页⑤（同主体同类型）· 页⑥（同凭据 ID）均有查重，
+           唯本页此前没有 ⇒ 同一登录位可被录入两条，代填时按行取值将产生不确定命中。 */
+        if ((AU.uc.items || []).some(function (x) { return x.asset === av && x.acct === ac; })) {
+          markBad($("#aucAcct"), true);
+          toast("该应用下已托管账号「" + ac + "」：同一登录位只应有一条托管记录，请先删除原记录后重新录入");
+          return;
+        }
+        AU.uc.items.unshift({
+          id: "uc_" + Date.now(), asset: av, assetId: avId, mode: $("#aucMode").value,
+          owner: ($("#aucOwner").value || "").trim() || "—",
+          acct: ac,
+          st: seed ? "已托管" : "待配契约", upd: AU_TS_STAMP.slice(0, 10), fill: fillSel,
+          /* ★ 2026-10-10（R27 · C-4）：契约不自持副本（唯一真源＝资产侧 _adapt.d）；
+             此处只初始化**测试留痕**。上方 `seed` 仍用于「自定义选择器」可行性校验。 */
+          login: { tested: "未测试" }
+        });
+        auPgNew(AUU, AU.uc.items.length, false);
+        auSave(); closeDlg(); auRerender();
+        toast(seed ? "已新增（演示）；已引用该资产既有契约" : "已新增（演示）；请到该资产「身份适配」页签署契约后方可代填");
+      };
+      break;
+    }
+    case "auucClearF":
+      /* 与 A8 配套：清空页级筛选并回第 1 页（本页签与「托管账号」页签共用同一份过滤状态）。 */
+      AUU.f = { k: "", mode: "", st: "" }; AUU.pg = 1; auRerender();
+      break;
+    case "ucGotoFmt": {
+      /* 契约不再在本页编辑 —— 跳到该资产详情的「身份适配」页签（D 档）。 */
+      var ug = (AU.uc.items || []).filter(function (x) { return x.id === id; })[0]; if (!ug) break;
+      var hit = null;
+      try { if (typeof ASSETS !== "undefined" && ASSETS) hit = ASSETS.filter(function (a) { return a.id === ug.assetId; })[0] || ASSETS.filter(function (a) { return a.name === ug.asset; })[0]; } catch (e2) { hit = null; }
+      /* ★ 2026-10-10（R25）：跳转前先判**可配契约的三个前提**（已在台账 / 网页应用 / 启用中）：
+         此前只判「在不在台账」，数据库类或已停用资产照样跳，落到资产详情却无「身份适配」页签，
+         表现为**点了没反应**（实测 uc_02 / uc_04 均 `_adaptAid=null`）。不可用时按因提示并给两条处置路径。 */
+      var _mdHit = "";
+      if (hit) {
+        try { _mdHit = (hit._adapt && hit._adapt.mode)
+          || (typeof ADAPT_MODE_OF !== "undefined" && ADAPT_MODE_OF[hit.name]) || "N"; } catch (e5) { /* 忽略 */ }
+      }
+      var _why = !hit ? "未在资产管理登记"
+        : (hit.en === 0 ? "已停用"
+        : (hit.type !== "网页应用" ? "非网页应用（" + hit.type + "）"
+        : (_mdHit && _mdHit !== "D" ? "身份适配为 " + _mdHit + " 档（非 D 档 · 账号密码代填）" : "")));
+      if (!_why) { window._adaptAid = hit.id; goPage("pg-detail", { aid: hit.id, tab: "t6" }); }
+      else {
+        toast("该资产" + _why + "，无处配置代填契约（须为启用中的网页应用）：请到「资产列表」登记 / 启用该资产，或删除本条托管记录后重新选择");
+      }
+      break;
+    }
+    case "ucFmt": {
+      /* 兼容旧按钮：一律改为跳转（契约已迁至资产维度）。 */
+      var uo = (AU.uc.items || []).filter(function (x) { return x.id === id; })[0]; if (!uo) break;
+      var ho = null;
+      try { if (typeof ASSETS !== "undefined" && ASSETS) ho = ASSETS.filter(function (a) { return a.name === uo.asset; })[0]; } catch (e3) { ho = null; }
+      if (ho) { window._adaptAid = ho.id; goPage("pg-detail", { aid: ho.id, tab: "t6" }); }
+      else { toast("契约按资产维度配置：请在资产详情 →「身份适配」页签配置"); }
+      break;
+    }
+    case "ucTest": {
+      var ut = (AU.uc.items || []).filter(function (x) { return x.id === id; })[0]; if (!ut) break;
+      var lt = ucLoginOf(ut);
+      if (!lt.url || lt.url === "—") { toast("该资产尚未配置表单契约，无法测试"); break; }
+      var miss = [];
+      if (!lt.userSel || lt.userSel === "—") miss.push("账号字段选择器");
+      if (!lt.pwdSel || lt.pwdSel === "—") miss.push("密码字段选择器");
+      idAsk("测试代填 · " + esc(ut.asset),
+        "将按该资产的表单契约执行一次<b>模拟填充</b>：<br>· 登录页：" + esc(lt.url) + "<br>· 账号字段：" + esc(lt.userSel || "—") + "<br>· 密码字段：" + esc(lt.pwdSel || "—") + "<br>· 提交方式：" + esc(lt.submit || "—") +
+        (miss.length ? "<br><b style='color:#b91c1c'>⚠ 缺少：" + esc(miss.join("、")) + "，预计填充失败</b>" : ""),
+        function () {
+          if (miss.length) { ut.st = "代填失败"; ut.upd = AU_TS_STAMP.slice(0, 10); ut.login.tested = "未通过"; ut.login.fail = "缺少" + miss.join("、") + " → 回退手动登录"; toast("代填测试未通过，已标记失败"); }
+          else { ut.st = "已托管"; ut.upd = AU_TS_STAMP.slice(0, 10); ut.login.tested = AU_TS_STAMP.slice(0, 10); delete ut.login.fail; toast("代填测试通过（演示）"); }
+          auSave(); auRerender();
+        }, "开始测试");
+      break;
+    }
+    case "ucTestAll": {
+      var tot = auUserCredFiltered().length;
+      /* ★ 2026-10-10（R12）：入口已置灰，此处再挡一次 —— 键盘 / 脚本仍可触发，0 项不该进确认框。 */
+      if (!tot) { toast("当前筛选结果为空，没有可测试的资产"); break; }
+      idAsk("批量测试全部契约", "将对<b>当前筛选结果的全部 " + tot + " 个资产</b>（含未显示在当前页的）逐一执行模拟填充：<b>契约完整 → 已托管</b>、<b>选择器缺失 → 代填失败</b>、<b>未配置契约 → 保持「待配契约」</b>。", function () {
+        var bad = 0, skip = 0, ok = 0;
+        auUserCredFiltered().forEach(function (x) {
+          /* ★ 2026-10-10（R27 · C-4）：契约现读资产侧（走 ucLoginOf 单一入口），不再读记录快照。 */
+          var l2 = ucLoginOf(x);
+          /* 与单项测试（ucTest）同判据：「尚未配置契约」不等于「代填失败」——
+             前者是待办，后者是执行出了问题，二者混判会把未开工的资产标成故障。 */
+          if (!l2.url || l2.url === "—") { x.st = "待配契约"; skip++; return; }
+          var miss = [];
+          if (!l2.userSel || l2.userSel === "—") miss.push("账号字段选择器");
+          if (!l2.pwdSel || l2.pwdSel === "—") miss.push("密码字段选择器");
+          /* ★ 2026-10-10（R33）：留痕须写回**记录本体**（x.login）—— ucLoginOf 返回的是**新对象**
+             （asset 分支返字面量、snapshot 分支返浅拷贝），写副本等于丢弃：批量测试后「最近测试」列
+             恒为 —，与单项测试（写 ut.login）两制。 */
+          x.login = x.login || {};
+          if (miss.length) { x.st = "代填失败"; x.upd = AU_TS_STAMP.slice(0, 10); x.login.tested = "未通过"; x.login.fail = "缺少" + miss.join("、") + " → 回退手动登录"; bad++; }
+          else { x.st = "已托管"; x.upd = AU_TS_STAMP.slice(0, 10); x.login.tested = AU_TS_STAMP.slice(0, 10); delete x.login.fail; ok++; }
+        });
+        AU.uc.cfg = AU.uc.cfg || {}; AU.uc.cfg.tested = AU_TS_STAMP.slice(0, 10);
+        auSave(); auRerender();
+        toast("批量测试完成：" + ok + " 项通过，" + bad + " 项失败" + (skip ? "，" + skip + " 项未配置契约已跳过" : "") + "（演示）");
+      }, "开始测试");
+      break;
+    }
+    case "ucDel": {
+      var uv = (AU.uc.items || []).filter(function (x) { return x.id === id; })[0]; if (!uv) break;
+      auConfirmEff(uv.mode === "用户自管" ? "撤销托管" : "删除托管账号",
+        "将删除 <b>" + esc(uv.asset) + "</b> 的托管账号。<b>删除后停止代填</b>，需重新录入才恢复；<b>本动作全量审计</b>。",
+        function () { AU.uc.items = AU.uc.items.filter(function (x) { return x.id !== id; }); auSave(); auRerender(); toast("已删除（演示）"); }, uv.mode === "用户自管" ? "撤销" : "删除");
+      break;
+    }
+    /* 签发凭据管理 */
+    case "isIssue": {
+      /* ★ 2026-10-10（R13）：受控取值域按**生命周期状态**收口 —— 原实现直取 ID.cin / ID.ain 全量，
+         已卸载 / 已禁用 / 已终止的主体也能被选中并签发，等于**签出一份没有任何组件会消费的凭据**
+         （与下方「类型 × 主体」校验同一理由）。做法：置灰 + 状态后缀（**不隐藏** —— 用户要看得出主体为何不可选），
+         默认选中挪到**首个可用**主体。 */
+      var ihSubj = [];
+      try { if (typeof ID !== "undefined" && ID && ID.cin) ID.cin.forEach(function (c) {
+        var _nmC = "客户端实例 · " + idName(ID.csw, c.sw, "id", "name") + " @ " + idName(ID.terms, c.term, "id", "name");
+        var _offC = (c.st === "已卸载" || c.st === "已禁用");
+        ihSubj.push({ label: _nmC, st: c.st, off: _offC });
+      }); } catch (e) { /* 忽略 */ }
+      try { if (typeof ID !== "undefined" && ID && ID.ain) ID.ain.forEach(function (a) {
+        var _nmA = "智能体实例 · " + idName(ID.asw, a.asw, "id", "name") + " @ " + idName(ID.terms, a.term, "id", "name") + "（进程 " + a.pid + "）";
+        var _offA = (a.st === "已终止" || a.st === "已禁用");
+        ihSubj.push({ label: _nmA, st: a.st, off: _offA });
+      }); } catch (e) { /* 忽略 */ }
+      if (!ihSubj.length) ihSubj = [{ label: "客户端实例 · 白泽客户端（PC） @ 科技管理部-张伟-PC", st: "", off: false }];
+      var _ihPick = ihSubj.filter(function (s) { return !s.off; })[0] || ihSubj[0];
+      /* ★ 2026-10-10（R14）：主体全集留一份给 isKindSync —— 切换凭据类型时按「类型 × 主体维」
+         收敛取值域（此前只有**提交时**校验，用户要走「提交被拒 → 手动改选」一趟）。 */
+      window.__auIhSubj = ihSubj;
+      openDlg("签发凭据", "为访问主体签发凭据。<b>先选主体，再定类型与授权范围</b>；<b>签约对象是主体，不是连接</b>。<b>本次签发入审计</b>。",
+        '<div class="fld"><label for="isSubj">持有主体 <span class="req">*</span></label><select id="isSubj" onchange="isCnSync()">' +
+          ihSubj.map(function (s) { return '<option' + (s.off ? " disabled" : "") + (s === _ihPick ? " selected" : "") + ' value="' + esc(s.label) + '">' + esc(s.label + (s.off ? "（" + s.st + "）" : "")) + "</option>"; }).join("") + "</select>" +
+          '<div class="mini" style="margin-top:4px">' + (ihSubj.some(function (s) { return !s.off; })
+            ? "仅<b>已卸载 / 已禁用 / 已终止</b>的主体置灰不可选 —— 其凭据无任何组件会消费。"
+            : "<b>当前无可用主体</b>：全部主体均处于已卸载 / 已禁用 / 已终止状态，签出的凭据无任何组件会消费，<b>无法签发</b>。") + "</div></div>" +
+        '<div class="fld" style="margin-top:6px"><div class="mini" id="isHold"></div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="isKind">凭据类型</label><select id="isKind" onchange="isKindSync()">' +
+          '<option>客户端 License 证书</option><option>智能体短时凭据</option></select>' +
+          '<div class="mini" style="margin-top:4px">类型同时决定<b>有效期位</b>与<b>适用主体维</b>（证书绑客户端实例、短时凭据绑智能体实例）。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label>绑定主体标识</label>' +
+          '<div class="mini" id="isCn" style="font-family:ui-monospace,Consolas,monospace">' + esc(cnOf(_ihPick.label)) + '</div>' +
+          '<div class="mini" style="margin-top:4px">由<b>持有主体</b>派生、不在此处填写 —— 网关校验与按主体追溯比对的正是该标识；短时凭据取<b>宿主客户端实例</b>序列号，<b>不取</b>每次续发都会变的凭据号。列表并列展示的<b>终端序列号</b>同样由主体派生（取该主体所在终端的设备序列号）。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="isScope">授权范围 <span class="req">*</span></label><input id="isScope" list="isScopeList" placeholder="如 信贷核心系统 / 客户管理平台">' +
+          '<datalist id="isScopeList">' + isScopeOpts() + '</datalist>' +
+          '<div class="mini" id="isScopeHint" style="margin-top:4px"></div></div>' +
+        '<div class="fld" id="isExpWrap" style="margin-top:10px"><label for="isExp">有效期至<span class="req" id="isExpReq">*</span></label><input id="isExp" value="' + esc(auPlusYears(AU_TS_STAMP.slice(0, 10), 1)) + '" placeholder="例如 ' + esc(auPlusYears(AU_TS_STAMP.slice(0, 10), 1)) + '"></div>' +
+        '<div class="fld" id="isTtlWrap" style="margin-top:10px;display:none"><label for="isTtl">短时有效期（分钟） <span class="req" id="isTtlReq">*</span></label><input id="isTtl" type="number" min="1" max="1440" value="30"></div>' +
+        '<div class="fld" id="isCaWrap" style="margin-top:10px"><label for="isCa">签发 CA / 容器<span class="req" id="isCaReq">*</span></label><select id="isCa"' +
+          (auGwCas().length ? "" : " disabled") + ">" +
+          (auGwCas().length
+            ? auGwCas().map(function (c) { return "<option>" + esc(c) + "</option>"; }).join("")
+            : '<option value="">（无可用签发 CA）</option>') + "</select>" +
+          '<div class="mini" style="margin-top:4px">取值自<b>平台签发 CA 清单</b>（受控取值域，不在此处自造 CA 名 —— 自造会让签出的凭据归属无从追溯）。<br>此清单与页③「网关凭据托管」的 CA <b>不是同一份</b>：此处 CA 用于<b>签发</b>下游凭据，页③ 的 CA 是<b>出站信任锚</b>（校验上游服务端证书），两者用途不同、取值域不相通。</div></div>');
+      isKindSync();
+      isCnSync();
+      $("#dlg1Ok").onclick = function () {
+        var sv = ($("#isScope").value || "").trim();
+        if (!sv) { markBad($("#isScope"), true); toast("请填写授权范围"); return; }
+        var kd = $("#isKind").value;
+        var holder = $("#isSubj").value;
+        /* ★ 2026-10-10（R24）：主体可用性须在提交侧兜住（同上：全部不可用时默认选中项是置灰项）。 */
+        var _selS = (ihSubj || []).filter(function (s) { return s.label === holder; })[0];
+        if (!_selS || _selS.off) {
+          toast("持有主体当前不可用" + (_selS ? "（" + _selS.st + "）" : "") + "：其凭据无任何组件会消费，无法签发"); return;
+        }
+        /* 类型 × 主体：两类凭据各有唯一适用主体维（证书绑客户端实例、短时凭据绑智能体实例），
+           选错主体等于签出一份没有任何组件会消费的凭据。 */
+        if (kd === "智能体短时凭据" && holder.indexOf("智能体实例") !== 0) {
+          toast("「智能体短时凭据」只面向智能体实例主体；当前选中的是：" + holder); return;
+        }
+        if (kd === "客户端 License 证书" && holder.indexOf("客户端实例") !== 0) {
+          toast("「客户端 License 证书」只面向客户端实例主体；当前选中的是：" + holder); return;
+        }
+        /* ★ 2026-10-10（R8·§M.4 裁决二）：查重原只挡 st === "有效"，「即将过期」的凭据不挡 ⇒
+           同一主体同类型可重复签发。判据改为**占用的就是生效态**（有效 / 即将过期）。 */
+        var dup = AU.issue.filter(function (y) { return y.holder === holder && y.kind === kd && (y.st === "有效" || y.st === "即将过期"); })[0];
+        if (dup) { toast("该主体已有同类型生效凭据（" + dup.no + "，" + dup.st + "）；如需更换请用「轮换」"); return; }
+        /* 数值域：短时有效期 1~1440 分钟；证书有效期须为 YYYY-MM-DD 且晚于当前基准日。
+           原实现把非法输入静默吞成默认值（0 / 负数 / 乱串 → 一律 30 分钟或原样落库）。 */
+        var ttlRaw = ($("#isTtl").value || "").trim();
+        var expRaw = ($("#isExp").value || "").trim();
+        if (kd !== "客户端 License 证书") {
+          if (!/^\d+$/.test(ttlRaw) || parseInt(ttlRaw, 10) < 1 || parseInt(ttlRaw, 10) > 1440) {
+            markBad($("#isTtl"), true); toast("短时有效期须为 1~1440 分钟的整数"); return;
+          }
+        } else {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(expRaw)) { markBad($("#isExp"), true); toast("有效期须为 YYYY-MM-DD 格式，如 " + auPlusYears(AU_TS_STAMP.slice(0, 10), 1)); return; }
+          if (expRaw <= AU_TS_STAMP.slice(0, 10)) { markBad($("#isExp"), true); toast("有效期须晚于当前基准日 " + AU_TS_STAMP.slice(0, 10)); return; }
+        }
+        /* 签发 CA / 容器只属**证书类**凭据（X.509 需 CA 签发）；短时凭据由平台直接颁发、不经 CA
+           ⇒ 不参与校验、落库空串（与 isKindSync 的字段显隐同判据）。证书类仍取自受控清单：
+           清单为空时**不下发** —— 否则会签出一份归属无从追溯的凭据。 */
+        var caSel = (kd === "客户端 License 证书") ? ($("#isCa").value || "").trim() : "";
+        if (kd === "客户端 License 证书" && !caSel) { markBad($("#isCa"), true); toast("当前无可用签发 CA，无法签发"); return; }
+        var n = AU.issue.length + 1;
+        var no = kd === "客户端 License 证书"
+          ? "LC-" + AU_TS_STAMP.slice(0, 4) + "-" + String(700 + n).padStart(6, "0")
+          : "AT-" + Math.random().toString(16).slice(2, 6).toUpperCase() + "-" + (4000 + n);
+        var expNew = (kd !== "客户端 License 证书") ? (auPlusMinutes(AU_TS_STAMP, ttlRaw) || AU_TS_STAMP) : expRaw;
+        /* ★ 2026-10-10（R33）：签发与吊销 / 轮换**同族**（凭据即访问授权载体，三者都在改变生效面）
+           ⇒ 统一走**二次认证**。此前签发 0 确认、轮换二次认证、吊销二次认证，同族三制。
+           校验所需控件值已全部读入局部变量 ⇒ 先关弹窗再起认证，避免两层弹窗叠加。 */
+        closeDlg();
+        auConfirmEff("签发凭据",
+          "将为 <b>" + esc(holder) + "</b> 签发" + esc(kd) + "（授权范围 <b>" + esc(sv) + "</b>，编号 " + esc(no)
+          + "）。签发后该主体即持有可访问上述范围的凭据。<b>本次签发入审计</b>。",
+          function () {
+            AU.issue.unshift({
+              id: "is_" + Date.now(), kind: kd, holder: holder, no: no,
+              /* ★ 2026-10-10（R9）：短时凭据 TTL 以分钟计 ⇒ 签发时间须与 exp 同精度（带时分）；证书类保持到日。 */
+              issued: (kd === "客户端 License 证书" ? AU_TS_STAMP.slice(0, 10) : AU_TS_STAMP), exp: expNew,
+              st: auIssueSt(expNew), ttl: (kd !== "客户端 License 证书") ? parseInt(ttlRaw, 10) : 0,
+              cn: cnOf(holder),
+              scope: sv, ca: caSel, fp: fpOf(holder)
+            });
+            /* ★ 2026-10-10（R17）：签发后回写身份侧 —— 否则「页⑤ 台账已记、身份侧实例页看不见」，
+               与吊销的单向回写（R16-A12）拼成**半套**：改一半、漂移照旧。unshift 已把它放在 [0]。 */
+            auBackfillIdentity(AU.issue[0]);
+            auPgNew(AUI, AU.issue.length, false);
+            auSave(); auRerender(); toast("已签发 " + no + "（演示）");
+          });
+      };
+      break;
+    }
+    case "isPick": {
+      var pk = t.getAttribute("data-id") || "";
+      var psel = AUI.sel || (AUI.sel = []);
+      var at = psel.indexOf(pk);
+      if (at >= 0) psel.splice(at, 1); else psel.push(pk);
+      auRerender(); auSyncPickAll();
+      break;
+    }
+    case "isPickAll": {
+      var psel2 = AUI.sel || (AUI.sel = []);
+      var pkRows = auSlice(auIssueFiltered(), AUI).filter(function (x) { return x.st !== "已过期" && x.st !== "已吊销"; });
+      var allOn2 = pkRows.length > 0 && pkRows.every(function (x) { return psel2.indexOf(x.id) >= 0; });
+      if (allOn2) AUI.sel = psel2.filter(function (i) { return !pkRows.some(function (x) { return x.id === i; }); });
+      else { AUI.sel = psel2.slice(); pkRows.forEach(function (x) { if (AUI.sel.indexOf(x.id) < 0) AUI.sel.push(x.id); }); }
+      auRerender(); auSyncPickAll();
+      break;
+    }
+    case "isBatchRevoke": {
+      /* 双保险：只吊销「当前可见（符合筛选）且仍存在」的记录，防脏勾选穿透。 */
+      var psel3 = (AUI.sel || []).filter(function (i2) {
+        return auIssueFiltered().some(function (y2) { return y2.id === i2; });
+      });
+      if (!psel3.length) { toast("请先勾选要吊销的凭据"); break; }
+      auConfirmEff("批量吊销凭据", "将吊销已勾选的 <b>" + psel3.length + "</b> 项凭据。<b>吊销后立即失效</b>，持有主体须重新签发方可使用。<b>本动作全量审计</b>。", function () {
+        var nos = {};
+        AU.issue.forEach(function (y) { if (psel3.indexOf(y.id) >= 0) { y.st = "已吊销"; nos[y.no] = 1; } });
+        if (typeof ID !== "undefined" && ID && Array.isArray(ID.cin)) { ID.cin.forEach(function (c) { (c.lic || []).forEach(function (l) { if (nos[l.no]) l.tag = "已吊销"; }); }); }
+        /* ★ 2026-10-10（R16）：**短时凭据**是回写的另一半 —— 原先只覆盖证书类
+           （ID.cin[].lic[].tag），智能体短时凭据（ID.ain[].cred）零感知：页⑤ 示「已吊销」，
+           而身份侧 idAgInSt() 只按 cred.exp 判定 ⇒ 仍示「运行中」，同一份凭据在两页矛盾。
+           按 cred.no 对号回写（吊销后凭据即失效，状态须落到凭据本身）。 */
+        if (typeof ID !== "undefined" && ID && Array.isArray(ID.ain)) { ID.ain.forEach(function (a) { if (a.cred && nos[a.cred.no]) a.cred.st = "已吊销"; }); }
+        if (typeof ID !== "undefined" && ID && typeof idSave === "function") idSave();
+        AUI.sel = []; auSave(); auRerender(); toast("已吊销 " + psel3.length + " 项（演示）");
+      }, "批量吊销");
+      break;
+    }
+    case "isRevoke":
+      auConfirmEff("吊销凭据", "将吊销该凭据。<b>吊销后立即失效</b>，持有主体须重新签发方可使用。<b>此操作入审计</b>。", function () {
+        var x = AU.issue.filter(function (y) { return y.id === id; })[0]; if (x) x.st = "已吊销";
+        if (x && typeof ID !== "undefined" && ID && Array.isArray(ID.cin)) { ID.cin.forEach(function (c) { (c.lic || []).forEach(function (l) { if (l.no === x.no) l.tag = "已吊销"; }); }); }
+        /* ★ 2026-10-10（R16）：同批量吊销 —— 短时凭据侧一并回写（详见该分支注释）。 */
+        if (x && typeof ID !== "undefined" && ID && Array.isArray(ID.ain)) { ID.ain.forEach(function (a) { if (x.no && a.cred && a.cred.no === x.no) a.cred.st = "已吊销"; }); }
+        if (typeof ID !== "undefined" && ID && typeof idSave === "function") idSave();
+        /* 单条吊销同样要清勾选集：否则该已吊销项仍留在 AUI.sel 里，
+           后续「批量吊销（N）」的计数与吊销对象会包含它（与批量吊销分支同口径）。 */
+        AUI.sel = []; auSave(); auRerender(); toast("已吊销（演示）");
+      }, "吊销");
+      break;
+    case "isRotate": {
+      var ir = AU.issue.filter(function (y) { return y.id === id; })[0]; if (!ir) break;
+      /* ★ 2026-10-10（R18）：轮换前必须挡「已有待生效继任者」—— 身份侧 licRotate 正因
+         「单一当前证书」这一硬不变量才写 `if (pend) { toast(…); break; }`；认证侧此前**无任何守卫**
+         ⇒ 对同一主体连续轮换会**堆叠多条待生效**，且它们的生效窗口完全相同（均由同一「当前份
+         到期次日」派生）⇒ 届时并列出多个「当前」，不变量被破坏（触发路径由「tag 写错」变为
+         「继任者堆叠」）。此处与身份侧同判据对齐。 */
+      try {
+        var _hrf = auHolderRef(ir.holder);
+        if (_hrf && _hrf.kind === "cin" && typeof idLicTagOf === "function") {
+          var _pend = (_hrf.obj.lic || []).filter(function (l) { return idLicTagOf(l) === "待生效"; })[0];
+          if (_pend) { toast("该主体已存在待生效凭据 " + _pend.no + "，无需重复轮换"); break; }
+        }
+      } catch (_e) { /* 身份侧不可用时按原行为放行 */ }
+      /* 轮换会**生成新的有效凭据**，改变生效面 ⇒ 与吊销 / 启停 / 移除同档，走**二次认证**
+         （原走 idAsk 普通确认，是生效面动作里唯一的分档不一致处）。 */
+      auConfirmEff("轮换凭据", "将为 <b>" + esc(ir.holder) + "</b> 签发一份新凭据（编号 <b>" + esc(ir.no) + "</b> 的继任者），旧的<b>保留至其到期</b>（过渡期<b>新旧共存</b>）。<b>此操作入审计</b>。", function () {
+        /* ★ 2026-10-10（R17）：证书编号里的年份语义必须唯一＝**签发年**（与 isIssue、身份侧 idLicNo 同口径）。
+           原用 `parseInt(ir.exp.slice(0,4))+1` 指的是「上一份证书到期年 + 1」，同一命名空间里语义随路径漂移。 */
+        var nn = ir.kind === "客户端 License 证书"
+          ? "LC-" + AU_TS_STAMP.slice(0, 4) + "-" + String(800 + AU.issue.length).padStart(6, "0")
+          : "AT-" + Math.random().toString(16).slice(2, 6).toUpperCase() + "-" + (5000 + AU.issue.length);
+        /* ★ 2026-10-10（R9）：轮换出的继任者此前**不带 `ttl`** ⇒ 该短时凭据再被轮换一次时
+           `parseInt(ir.ttl, 10) || 30` 退化成 30 分钟，原 TTL 被静默丢弃；`st` 写死「有效」、
+           `issued` 只到日 —— 而短时凭据的 TTL 以分钟计，签发时间必须与 exp 同精度
+           （否则这一条 30 分钟的有效期从何时起算无从得知）。三处一并按类型分档派生。 */
+        var irKdCert = (ir.kind === "客户端 License 证书");
+        var irExpNew = irKdCert ? (auPlusYears(ir.exp, 1) || ir.exp)
+                                : (auPlusMinutes(AU_TS_STAMP, parseInt(ir.ttl, 10) || 30) || ir.exp);
+        AU.issue.unshift({
+          id: "is_" + Date.now(), kind: ir.kind, holder: ir.holder, no: nn,
+          issued: irKdCert ? AU_TS_STAMP.slice(0, 10) : AU_TS_STAMP, exp: irExpNew,
+          st: auIssueSt(irExpNew), cn: ir.cn, fp: ir.fp, scope: ir.scope, ca: ir.ca,
+          ttl: irKdCert ? 0 : (parseInt(ir.ttl, 10) || 30)
+        });
+        /* ★ 2026-10-10（R17）：轮换同样要回写身份侧 —— 轮换产出的是**新的当前份**，
+           客户端实例侧追加一份 License、智能体实例侧替换 `cred`（与 A2 同一条 helper）。 */
+        auBackfillIdentity(AU.issue[0]);
+        auSave(); auRerender(); toast("已轮换：新凭据 " + nn + "（演示）");
+      }, "轮换");
+      break;
+    }
+    /* 强认证器绑定管理 */
+    case "arNew": {
+      /* ★ 2026-10-10（R9）：用户取值域与页④ 共用一处（auUserNames），不再各写一份兜底清单。
+         ★ 2026-10-10（R13）：登记认证器＝**产生新的生效因子** ⇒ 用户域只收**已启用**用户
+          （为已锁定 / 已禁用用户登记认证器无意义）；置灰不可用项 + 状态后缀，默认选中首个可用。
+          ⚠ 管理员重置（arReset）面向的正是不可用用户，**仍走 auUserNames() 全量**，勿一并收窄。 */
+      var usersO = auUserObjs();
+      var _arPick = usersO.filter(function (o) { return o.ok; })[0] || usersO[0];
+      /* 登记设备取自「终端管理」台账 ∩ 该用户**绑定终端**（并入该用户历史登记过的设备名，避免旧数据丢失）。 */
+      /* ★ 2026-10-10（R13）：登记设备＝该认证器的宿主 ⇒ 只取**已激活**终端（已禁用 / 未激活终端上
+         登记认证器无落点）；历史记录里的设备名保留（旧数据不丢，按台账状态标注可用性）。 */
+      var _devSt = {};
+      try { if (typeof ID !== "undefined" && ID && ID.terms) ID.terms.forEach(function (t2) { if (t2 && t2.name) _devSt[t2.name] = t2.st || "已激活"; }); } catch (e5) { /* 忽略 */ }
+      /* ★ 2026-10-10（R33）：设备取值域随**所选用户**收敛到其**绑定终端**（权威源 ID.users[].bound），
+         并并入该用户历史登记过的设备名（旧数据不丢，按台账状态置灰）。此项随「用户」下拉联动。 */
+      var devOpts = auAuthrDevOpts(_arPick.name);
+      var _devPick = devOpts.filter(function (d3) { return (_devSt[d3] || "已激活") === "已激活"; })[0] || devOpts[0];
+      openDlg("登记认证器", "为某用户登记一枚认证器。⚠ <b>登记须由已认证会话发起</b>（禁止匿名登记）；<b>challenge 一次性</b>消费。<b>本次登记入审计</b>。",
+        '<div class="fld"><label for="aarUser">用户</label><select id="aarUser" onchange="auAuthrDevSync()">' + usersO.map(function (o) { return '<option' + (o.ok ? "" : " disabled") + (o === _arPick ? " selected" : "") + ' value="' + esc(o.name) + '">' + esc(o.name + (o.ok ? "" : "（" + o.st + "）")) + "</option>"; }).join("") + "</select></div>" +
+        '<div class="fld" style="margin-top:10px"><label for="aarKind">认证方式</label><select id="aarKind" onchange="auAuthrKindSync(this.value)">' +
+          auAuthrKinds().map(function (k) { return "<option>" + esc(k.name) + "</option>"; }).join("") + "</select>" +
+          '<div class="mini" style="margin-top:4px">类型取值自<b>认证方式字典</b>（唯一取值域，随字典增删自动同步）；<b>级别由类型唯一确定</b>，不是可自由组合的第二个维度。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="aarLv">安全级别（由认证方式唯一确定）</label><select id="aarLv" disabled><option value="4">L4</option><option value="5">L5</option></select>' +
+          '<div class="mini" style="margin-top:4px">随「认证方式」联动、<b>不可单独修改</b> —— 级别由类型唯一确定，不是可自由组合的第二个维度。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="aarCtype">凭据绑定属性</label><select id="aarCtype"><option>绑定型</option><option>可同步凭据</option></select>' +
+          '<div class="mini" style="margin-top:4px">描述该凭据<b>能否随账号漫游</b>：绑定型＝锁定在本设备；可同步凭据＝passkey 可跨设备同步。与上方的「认证方式」不是同一维度。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="aarDev">登记设备</label><select id="aarDev">' +
+          devOpts.map(function (d2) { var _o2 = (_devSt[d2] || "已激活") !== "已激活"; return '<option' + (_o2 ? " disabled" : "") + (d2 === _devPick ? " selected" : "") + ' value="' + esc(d2) + '">' + esc(d2 + (_o2 ? "（" + (_devSt[d2] || "未激活") + "）" : "")) + "</option>"; }).join("") + "</select>" +
+          '<div class="mini" style="margin-top:4px">取自<b>该用户已绑定的终端</b>（身份侧绑定关系，随上方「用户」联动）；历史登记过的设备名一并列出但按台账状态置灰 —— 手填设备名会让登记记录与终端台账对不上，吊销与追溯都会落空。</div></div>' +
+        /* ★ 2026-10-10（R24）：RP ID 由**逐记录手填**改为**平台统一只读派生** —— 同一弹窗内
+           「安全级别」已由认证方式唯一确定（disabled）、「登记设备」已改从终端管理台账取，
+           两者都不是运营自定的第二个维度；RP ID 同理，此前却是唯一仍在手填的项（同型遗漏）。 */
+        '<div class="fld" style="margin-top:10px"><label>RP ID（平台统一作用域）</label><span class="chip on">' + esc(AU_RP_ID) + "</span>" +
+          '<div class="mini" style="margin-top:4px">RP ID 是 WebAuthn 的<b>平台统一作用域</b>：同一平台下所有认证器共用同一个 RP 域名（随平台部署域名确定），<b>不逐条登记</b> —— 逐记录手填会让登记记录与平台域名对不上，凭据校验与追溯都会落空。</div></div>' +
+        '<div class="fld" style="margin-top:10px"><label for="aarCredId">凭据 ID</label><input id="aarCredId" placeholder="留空则由平台在登记时生成"></div>');
+      /* ★ 2026-10-10（R9）：级别初值此前**依赖「认证方式」下拉首项恰好是 L4** 这一隐式前提；
+         显式按当前方式同步一次，避免字典顺序一变就出现「未操作却级别不符」。 */
+      auAuthrKindSync($("#aarKind").value);
+      $("#dlg1Ok").onclick = function () {
+        /* ★ 2026-10-10（R24）：RP ID 已收为平台统一常量（弹窗只读展示）⇒ 此处不再校验手填值。
+           取值域单点收敛后，「须为域名形态」由常量本身保证，运行期正则兜底随之撤除
+           （原 R14 校验针对的正是「手填可任意串」这一已消除的入口）。 */
+        /* ★ 2026-10-10（R24）：用户 / 设备可用性须在**提交侧**兜住 —— 渲染层只把不可用项置灰，
+           而「全部不可用」时默认选中项恰是一个置灰项（disabled 的 option 其 selected 仍为真），
+           不校验即可把认证器登记到已卸载 / 已禁用用户、未激活终端上，产出一枚没有任何组件
+           会消费的认证器（与本模块「受控取值域按生命周期状态收口」的自述自相矛盾）。 */
+        var _selU = (usersO || []).filter(function (o) { return o.name === $("#aarUser").value; })[0];
+        if (!_selU) { toast("请选择用户"); return; }
+        if (!_selU.ok) { toast("用户「" + _selU.name + "」当前为 " + _selU.st + "：认证器登记须落在可用用户上"); return; }
+        var _selD = ($("#aarDev").value || "").trim();
+        if (!_selD) { toast("请选择登记设备"); return; }
+        if ((_devSt[_selD] || "已激活") !== "已激活") {
+          toast("登记设备「" + _selD + "」当前为 " + (_devSt[_selD] || "未激活") + "：登记须落在已激活终端上"); return;
+        }
+        /* ★ 2026-10-10（R24）：字典中若已无 L4 / L5 方式，上方「认证方式」下拉渲染为空，而
+           `kdLv` 为 0 时又会跳过级别校验 ⇒ 会落一条 kind 为空串的登记记录。空取值域须在入口截住。 */
+        var kd2 = $("#aarKind").value;
+        if (!kd2) { toast("认证方式字典中暂无 L4 / L5 方式，无法登记认证器"); return; }
+        /* 类型 × 级别一致性：级别由类型决定，不是第二个自由维度。 */
+        var kdLv = auAuthrKindLv(kd2);
+        if (kdLv && parseInt($("#aarLv").value, 10) !== kdLv) {
+          toast("认证方式与安全级别不一致：" + kd2 + " 对应 L" + kdLv); return;
+        }
+        var cid = ($("#aarCredId").value || "").trim();
+        if (cid && AU.authr.some(function (y) { return y.credId === cid && y.st === "有效"; })) {
+          markBad($("#aarCredId"), true); toast("凭据 ID 已存在（" + cid + "）；同一凭据 ID 只能有一枚有效记录"); return;
+        }
+        AU.authr.unshift({ id: "ar_" + Date.now(), user: $("#aarUser").value, kind: kd2, lv: kdLv || parseInt($("#aarLv").value, 10), ctype: $("#aarCtype").value, dev: ($("#aarDev").value || "").trim() || "—", rpid: AU_RP_ID, credId: ($("#aarCredId").value || "").trim() || ("CID-" + Math.random().toString(16).slice(2, 10).toUpperCase()), reg: AU_TS_STAMP.slice(0, 10), st: "有效" });
+        auPgNew(AUR, AU.authr.length, false);
+        auSave(); closeDlg(); auRerender(); toast("已登记（演示）");
+      };
+      break;
+    }
+    case "arRevoke": {
+      /* ★ 2026-10-10（R24）：不可逆动作须交代**影响面** —— 若这是该用户最后一枚有效认证器，
+         吊销会直接把他锁出 L4 / L5；本页「多枚构成冗余」的结论只在剩余 ≥1 时成立。 */
+      var _rvA = (AU.authr || []).filter(function (y) { return y.id === id; })[0];
+      var _rvLeft = _rvA ? (AU.authr || []).filter(function (y) { return y.user === _rvA.user && y.st === "有效" && y.id !== _rvA.id; }).length : 0;
+      var _rvTail = (_rvA && _rvLeft === 0)
+        ? "⚠ <b>" + esc(_rvA.user) + "</b> 当前<b>唯一一枚有效认证器</b> —— 吊销后该用户将<b>失去 L4 / L5 强认证能力</b>，须走<b>管理员重置</b>重新登记。<b>此操作入审计</b>。"
+        : "<b>此操作入审计</b>。";
+      auConfirmEff("吊销认证器", "将吊销该枚认证器凭据。<b>吊销后立即失效</b>；若为可同步凭据，<b>按凭据 ID 单独执行、不依赖设备状态</b>。" + _rvTail, function () {
+        var a = AU.authr.filter(function (y) { return y.id === id; })[0];
+        if (a) AU.authr.forEach(function (y) { if (y.credId === a.credId && y.st === "有效") y.st = "已吊销"; });
+        auSave(); auRerender(); toast("已吊销（演示）");
+      }, "吊销");
+      break;
+    }
+    case "arReset": {
+      var rusers = auUserNames();
+      openDlg("管理员重置", "当某用户<b>全部认证器均不可用</b>时走此流程：经<b>身份核验</b>后吊销该用户<b>全部认证器凭据</b>（L4 / L5 均以 WebAuthn（FIDO2）承载）并允许重新登记。⚠ <b>重置全程记审计</b>。",
+        '<div class="fld"><label for="aarRst">目标用户</label><select id="aarRst">' + rusers.map(function (n) { return "<option>" + esc(n) + "</option>"; }).join("") + "</select></div>" +
+        /* 身份核验是本流程的前置动作：此前文案要求了、界面却没有落点，点确定即直接吊销。 */
+        '<div class="fld" style="margin-top:10px"><label><input type="checkbox" id="aarRstChk"> 已完成身份核验（窗口 / 证件 / 上级审批）</label>' +
+        '<div class="mini" style="margin-top:4px">重置会吊销该用户<b>全部</b>认证器凭据，属高风险动作，<b>须先完成身份核验</b>方可执行。</div></div>' +
+        /* 重置是「吊销全部 + 全程记审计」的高风险动作，此前只宣称记审计、却没有备注落点。 */
+        '<div class="fld" style="margin-top:10px"><label for="aarRstNote">重置原因 / 核验依据 <span class="req">*</span></label><input id="aarRstNote" placeholder="如 窗口核验身份证 + 上级审批单号"></div>');
+      $("#dlg1Ok").onclick = function () {
+        var u = $("#aarRst").value;
+        if (!($("#aarRstChk") && $("#aarRstChk").checked)) { toast("请先完成身份核验（勾选确认项）"); return; }
+        /* 0 枚不是「重置成功」：原实现无论吊销几枚都回同一句成功口径，把「本来就没有」说成
+           「已重置」；且先判空再走二次认证 —— 无事可做时不该索要凭据。 */
+        if (!(AU.authr || []).some(function (a) { return a.user === u && a.st === "有效"; })) {
+          toast(u + " 当前没有有效认证器凭据，无需重置"); return;
+        }
+        var rnote = ($("#aarRstNote").value || "").trim();
+        if (!rnote) { markBad($("#aarRstNote"), true); toast("请填写重置原因 / 核验依据（入审计）"); return; }
+        closeDlg();
+        auConfirmEff("管理员重置认证器",
+          "将吊销用户 <b>" + esc(u) + "</b> 的<b>全部</b>认证器凭据（L4 / L5 均以 WebAuthn（FIDO2）承载）；吊销后该用户可重新登记。<b>核验依据：</b>" + esc(rnote) + "。",
+          function () {
+            var cnt = 0;
+            AU.authr.forEach(function (a) { if (a.user === u && a.st === "有效") { a.st = "已吊销"; cnt++; } });
+            /* ★ 2026-10-10（R17）：重置依据（核验方式 / 审批单号）此前只拼进确认文案、**无任何落点**，
+               事后无从追溯。现落入 AU.authrResetLog 随 auSave() 持久化（供审计看板消费，本页不做展示面）。 */
+            AU.authrResetLog = AU.authrResetLog || [];
+            AU.authrResetLog.push({ user: u, at: AU_TS_STAMP, note: rnote, cnt: cnt });
+            auSave(); auRerender();
+            toast("已吊销 " + u + " 的 " + cnt + " 枚认证器凭据（该用户可重新登记）");
+          });
+      };
+      break;
+    }
+    /* ★ 2026-10-10（R31）：**修正 R25 的接入位置错位** —— 「适用范围」列在 R25 改为
+       「只读 + 点击弹窗多选」后，分支被写进了 `auOnChange`（绑定 change / input /
+       compositionend），却带着 `if (e.type !== "click") return;` 守卫 ⇒ 该分支**恒不执行**、
+       `auScopeDlg` 不可达 ⇒ 页面提示「点击设置」但点了毫无反应（该字段彻底不可编辑）。
+       点击类分支归 `auOnClick`。 */
+    case "wayScope": {
+      var s3 = AU.sources.filter(function (x) { return x.id === AUS.cur; })[0];
+      var i3 = parseInt(idx, 10);
+      if (s3 && s3.ways[i3]) {
+        auScopeDlg(s3.ways[i3].scope, function (nv3) {
+          if (nv3 !== s3.ways[i3].scope) { s3.ways[i3].scope = nv3; auSave(); toast("适用范围已更新（本源 × 本方式）"); }
+          auRerender();
+        });
+      }
+      break;
+    }
+  }
+}
+function auOnChange(e) {
+  var t = e.target;
+  if (!t || !t.getAttribute) return;
+
+  /* 筛选控件（按 id 分派；命中即返回，避免落入 data-auact 分支） */
+  if (t.id) {
+    /* ★ 2026-10-10（R9）：IME 组合态守卫 —— 组合中的 input 若走整页重渲染，搜索框节点会被
+       innerHTML 替换销毁，中文候选被逐字打断（拼音串丢失、需重输）。组合期间只跳过，
+       组合结束由 compositionend 监听触发一次最终渲染（见下）。 */
+    if (e.type === "input" && e.isComposing) return;
+    var sv = t.value;
+    switch (t.id) {
+      /* 筛选改变可见集 ⇒ 页码回到第 1 页（否则会停在旧结果集的第 N 页上显示空表）。 */
+      case "audK":     AUD.k = sv; AUD.pg = 1; auRerender(); break;
+      case "ausrcK":   AUS.f.k = sv; AUS.pg = 1; auRerender(); break;
+      case "ausrcSt":  AUS.f.st = sv; AUS.pg = 1; auRerender(); break;
+      case "auucK":    AUU.f.k = sv; AUU.pg = 1; AUF.pg = 1; auRerender(); break;
+      case "auucMode": AUU.f.mode = sv; AUU.pg = 1; AUF.pg = 1; auRerender(); break;
+      case "auucSt":   AUU.f.st = sv; AUU.pg = 1; AUF.pg = 1; auRerender(); break;
+      /* 筛选即改变可见集 ⇒ 勾选集必须同步清空：否则「批量吊销（N）」的计数与吊销对象
+         都包含当前筛选下不可见的记录，用户以为只吊销了眼前这些。 */
+      case "auiK":     AUI.f.k = sv; AUI.sel = []; AUI.pg = 1; auRerender(); break;
+      case "auiKind":  AUI.f.kind = sv; AUI.sel = []; AUI.pg = 1; auRerender(); break;
+      case "auiSt":    AUI.f.st = sv; AUI.sel = []; AUI.pg = 1; auRerender(); break;
+      case "aurK":     AUR.f.k = sv; AUR.pg = 1; auRerender(); break;
+      case "aurLv":    AUR.f.lv = sv; AUR.pg = 1; auRerender(); break;
+      case "aurCtype": AUR.f.ctype = sv; AUR.f.st = AUR.f.st || ""; AUR.pg = 1; auRerender(); break;
+      case "aurSt":    AUR.f.st = sv; AUR.pg = 1; auRerender(); break;
+      default: break;
+    }
+    /* 搜索框**仅输入过程**保持焦点与光标位。
+       原实现对 change（失焦 / 回车）也无条件 refocus ⇒ 一按 Tab 或点筛选下拉就被抢回
+       搜索框，形成键盘陷阱；且 pos 从已被 innerHTML 替换的脱离节点上读，位置不可靠。 */
+    if (/^(aud|ausrc|auuc|aui|aur)K$/.test(t.id)) {
+      /* ★ 2026-10-10（R15）：caret 保持此前只守 `input` —— `compositionend`（中文上屏）走的是
+         通用 `domFocusRestore`，焦点回来了但 caret 落 0 ⇒ 后续键入会插到串首。此处同守。 */
+      if (e.type === "input" || e.type === "compositionend") {
+        var el = document.getElementById(t.id);
+        if (el) {
+          var pos = Math.min(Number(t.selectionStart) || 0, el.value.length);
+          el.focus();
+          try { el.setSelectionRange(pos, pos); } catch (x) { /* 忽略 */ }
+        }
+      }
+      return;
+    }
+    if (/^(ausrcSt|auucMode|auucSt|auiKind|auiSt|aurLv|aurCtype|aurSt)$/.test(t.id)) return;
+  }
+
+  var act = t.getAttribute("data-auact");
+  if (act === "wayLv") {
+    var s = AU.sources.filter(function (x) { return x.id === AUS.cur; })[0];
+    var i = parseInt(t.getAttribute("data-i"), 10);
+    if (!s || !s.ways[i]) return;
+    var w0 = s.ways[i], lvOld = Number(w0.lv) || 1, lvNew = parseInt(t.value.replace("L", ""), 10) || 1;
+    var applyLv = function () { w0.lv = lvNew; auSave(); auRerender(); toast("已更新级别（演示）"); };
+    /* 级别是「源 × 方式」的**裁决属性**：**降档**会让该源下所有用户的认证强度即刻下降。
+       升级直接生效；降档且源为已启用时先普通确认（不属二次认证枚举，故走 confirmDlg）。
+       confirmDlg 没有取消回调 ⇒ 先自行把控件回滚回原值，再弹窗。 */
+    if (lvNew < lvOld && s.st === "已启用") {
+      t.value = "L" + lvOld;
+      confirmDlg("降低认证级别 · " + s.name + " × " + auMethodName(w0.mid),
+        "该方式在本源下的级别将由 <b>L" + lvOld + "</b> 降为 <b>L" + lvNew + "</b>。认证源 <b>" + esc(s.name) + "</b> 当前为<b>已启用</b>，降档将<b>即刻作用于在线认证链路</b>。<b>确认后入审计</b>。",
+        applyLv, "确认降级");
+      return;
+    }
+    applyLv();
+    return;
+  }
+  /* ★ 2026-10-10（R31）：`wayScope`（点击 → 弹窗多选）分支原**错放在本函数** ——
+     本函数绑定 change / input / compositionend，而分支自带 `if (e.type !== "click") return;`
+     守卫 ⇒ 恒不执行（适用范围不可编辑）。已迁至 `auOnClick`；本函数不再承载点击类动作。 */
+  if (act === "wayAnon") {
+    var s2 = AU.sources.filter(function (x) { return x.id === AUS.cur; })[0];
+    var i2 = parseInt(t.getAttribute("data-i"), 10);
+    if (s2 && s2.ways[i2]) { s2.ways[i2].anon = !!t.checked; auSave(); auRerender(); toast("已更新无端支持（演示）"); }
+    return;
+  }
+}
+
+/* ---------- 10. 事件挂载（追加到 idMountEvents 的页清单） ---------- */
+function auMountEvents() {
+  ["pg-audict", "pg-ausrc", "pg-auusercred", "pg-auissue", "pg-auauthr"].forEach(function (pid) {
+    var el = document.getElementById(pid);
+    if (!el) return;
+    el.addEventListener("click", auOnClick);
+    el.addEventListener("change", auOnChange);
+    el.addEventListener("input", auOnChange);
+    /* 组合结束（候选上屏）后补一次渲染：组合期间被 A1 守卫跳过的那次筛选在此落地。 */
+    el.addEventListener("compositionend", auOnChange);
+  });
+}
+
+/* ============================================================================
+   资产侧「身份适配」（出站方向）· 渲染与交互
+   ----------------------------------------------------------------------------
+   ★ 2026-09-29：原「认证族」7 页（认证场景工作台 / 认证源 / 认证能力字典 /
+     认证策略与场景 / 生物识别绑定 / 机器与智能体身份 / 免认证访问）
+     **已从本原型撤除** —— 改由全新的「身份」「认证」两个模块承接。
+   ★ 本节只保留**身份适配**（资产级 · 「用户 / 主体 → 资产」注入 + 免认证跳转）：
+     它归**资产管理**，是本模块的页面，故随本模块一并保留。
+   ★ 与 v18 口径一致：本页是「用户 / 主体 → 资产」注入的**唯一配置面**；
+     「网关 → 上游」连接级机器凭据在资产管理的「代理与上游」—— 两层不混用。
+   ========================================================================== */
+
+/* —— 以下段落属「身份适配」，与上方切除段无依赖 —— */
+function authTag(txt, cls){ return '<span class="tag ' + (cls || "t-info") + '">' + esc(txt) + "</span>"; }
+
+/* —— 以下段落属「身份适配」，与上方切除段无依赖 —— */
+function authRole(){
+  /* 权威取值：顶栏操作者全称（含角色前缀，如「安全管理员 张伟」）。
+     ⚠ 不能用只返回姓名的 opUser() 作首选 —— 它没有角色前缀，会导致角色恒为默认值。 */
+  var full = "";
+  var t = document.getElementById("topbarUser");
+  if (t) full = String(t.textContent || "");
+  if (!full) { try { if (typeof opUser === "function") full = String(opUser() || ""); } catch (e) { full = ""; } }
+  if (full.indexOf("系统管理员") >= 0) return "系统管理员";
+  if (full.indexOf("审计管理员") >= 0) return "审计管理员";
+  if (full.indexOf("安全管理员") >= 0) return "安全管理员";
+  return "安全管理员";
+}
+function authCanEdit(k){ return true; }   /* 原型不做角色门禁（见 §2b）：恒可编辑 */
+function authToolbar(k, resetAct, saveAct, saveLabel){
+  /* 恒出保存类动作；不再有「🔒 对本页只读」分支（原型不做角色门禁，见 §2b） */
+  return '<div class="toolbar"><button class="btn" type="button" data-auth="' + resetAct + '">恢复出厂默认</button>' +
+    '<button class="btn primary" type="button" data-auth="' + saveAct + '">' + esc(saveLabel || "保存并生效") + "</button></div>";
+}
+function authRoNote(k, pageName){ return ""; }   /* 原型不出「只读态」横幅（见 §2b） */
+function authApplyRo(el, k){ return; }   /* 原型不置灰任何控件（见 §2b） */
+
+/* ---------- 2c. 弹窗表单小件（统一 id 约定，便于校验与取值） ---------- */
+function ack(id){ var e = document.getElementById(id); return !!(e && e.checked); }
+
+/* —— 以下段落属「身份适配」，与上方切除段无依赖 —— */
+var SS = {
+  modes: { A: { on: 12, opened: 9, err: 1 }, B: { on: 6, opened: 5, err: 0 }, C: { on: 3, opened: 3, err: 0 }, D: { on: 2, opened: 2, err: 0 } },
+  vault: { entries: 5, highRiskOff: true, reviewDue: false }
+};
+var SSO_MODE_DEF = [
+  { k: "A", name: "token 注入",    desc: "平台持有资产业务 token，注入请求头 / 参数",         strength: "强", risk: "低" },
+  { k: "B", name: "key ＋ userinfo", desc: "注入 key，业务侧回调 userinfo 换取身份",            strength: "强", risk: "低" },
+  { k: "C", name: "协议级 SSO",    desc: "平台作 IdP，业务侧走标准协议信任联合身份",          strength: "强", risk: "低" },
+  { k: "D", name: "账号密码代填",  desc: "平台在资产登录页代填表单（托管口令，受资产实现约束）", strength: "弱", risk: "高" }
+];
+
+/* —— 以下段落属「身份适配」，与上方切除段无依赖 —— */
+var ADAPT_MODES = [
+  { k: "N", name: "不注入（仅平台鉴权）" },
+  { k: "A", name: "token 注入" },
+  { k: "B", name: "key ＋ userinfo" },
+  { k: "C", name: "协议级 SSO" },
+  { k: "D", name: "账号密码代填" }
+];
+
+/* —— 以下段落属「身份适配」，与上方切除段无依赖 —— */
+function adaptAsset(){
+  if (typeof byId !== "function") return null;
+  /* ★ 2026-09-30（第十六轮）：改走 adaptCurAid() 单一入口 ——
+     原「window._adaptAid || window._detailAid」把**未持久化的页内变量**排在**已持久化的
+     _detailAid** 之前，而该变量又被旧版 adaptCurAid 覆写成常量 CUR，导致整个 t6 锚定 a1。
+     函数声明提升保证此处可安全引用定义在 11711 的 adaptCurAid。 */
+  var aid = (typeof adaptCurAid === "function") ? adaptCurAid()
+    : (window._detailAid || window._adaptAid || "");
+  return byId(aid) || null;
+}
+function adaptSt(){ var a = adaptAsset(); return (a && a._adapt) || null; }
+function adaptAssetName(){
+  var a = adaptAsset(); if (a && a.name) return a.name;
+  var t = document.getElementById("detName");
+  var nm = t ? String(t.textContent || "").trim() : "";
+  return nm || "当前资产";
+}
+/* 演示种子：资产**未配置过**（无 `_adapt`）时按名称给出初始档位；一旦保存过，以 `a._adapt.mode` 为准。
+   ⚠ 种子非「不注入」的资产视为**已作信任声明**（信任声明是 A 档前置条件，配置过即已声明）；
+     未配置资产默认「不注入 + 未声明」，可现场演示 A 档的信任门禁。
+   ★ 2026-09-30 修复：本常量此前**只有引用、没有定义** ——
+     renderDetAdapt() / renderAdaptPage() 一执行即抛「ADAPT_MODE_OF is not defined」，
+     身份适配页从未真正渲染出来过。此处按原定义恢复，键名对齐当前资产台账。 */
+var ADAPT_MODE_OF = {
+  "核心网银门户": "A", "对公网银体验门户": "A", "统一身份门户": "C", "信贷审批系统": "B",
+  "运维审计堡垒机": "C", "监管报送接口": "B", "客户数据仓库": "A",
+  /* ★ 2026-10-10（R25/R26）：**D 档（账号密码代填）的承载面判据** —— 代填须有可填的登录表单，
+     故 D 档资产必须同时满足：① type=网页应用；② 存在**非「显式公开」**的页面路径（有登录页）；
+     ③ 已启用。按此判据全台账仅三条合格 ⇒ 报表中心 / 报表导出网关 / 运维堡垒机 Web 控制台。
+     ⚠ R25 曾把「手机银行后台」（res 仅 `kind:"API"`，无页面可填）与「对外行情资讯门户」
+       （整站 `显式公开（public）`，无需登录）也标为 D 档 ⇒ 对无表单资产做代填，自相矛盾
+       （R26 跨模块评审 A-3 指出，本条为 R25 引入的缺陷）。 */
+  "报表中心": "D", "报表导出网关": "D", "运维堡垒机 Web 控制台": "D"
+};
+function adaptSeedMode(){ return ADAPT_MODE_OF[adaptAssetName()] || "N"; }
+
+/* —— 以下段落属「身份适配」，与上方切除段无依赖 —— */
+var ADAPT_MODE_TMP = {}, ADAPT_TRUST_TMP = {}, ADAPT_F_TMP = {};
+/* ★ 2026-09-30（第七轮）：机器身份草稿仓 —— 单选 / 凭据选择只写这里，
+   「保存并下发」才落 a._inj / a._injCred（与用户身份卡的草稿语义对齐）。 */
+var UP_INJ_DRAFT = {};
+/* ★ 2026-09-30（第十七轮 · 全量评审修复）：**D 档契约草稿仓** ——
+   弹窗内的改动只写这里，「保存契约」/「保存并下发」才落 a._adapt.d。
+   此前弹窗控件一 change 就 adaptStashD() 直写资产对象，用户点 X 取消后改动已进内存，
+   随后任意一次 saveDemoState（点机器身份「保存并下发」、切页跳转）就把它持久化了
+   —— 取消形同虚设，且与 A/B/C 档「控件＝草稿 / 保存＝落库」的统一语义不对称。
+   ⚠ 无参调用 adaptStashD() 仍是**就地写资产**（保存路径与既有门禁依赖该语义）。 */
+var ADAPT_D_TMP = {};
+function adaptKey(){ var a = adaptAsset(); return a ? a.id : "_"; }
+function adaptMode(){
+  /* ★ 2026-09-30（第七轮）：草稿优先 —— 与 adaptF 同一优先级链。
+     档位条点击只写 ADAPT_MODE_TMP（草稿），保存（adaptSave）才落 a._adapt.mode；
+     此前档位点击直写资产对象，机器身份卡任何一次 saveDemoState 都会把
+     未保存的档位选择一并持久化 —— 同页两套保存语义，演示即穿帮。 */
+  var k = adaptKey();
+  if (ADAPT_MODE_TMP[k]) return ADAPT_MODE_TMP[k];
+  var st = adaptSt();
+  if (st && st.mode) return st.mode;
+  return adaptSeedMode();
+}
+
+/* —— 以下段落属「身份适配」，与上方切除段无依赖 —— */
+function adaptTrust(){
+  /* ★ 2026-09-30（第七轮）：草稿优先 —— 原链「已存值优先」会让
+     「已保存 trust=true 后取消勾选」不生效（与 adaptF 优先级反转同款缺陷）；
+     信任声明勾选只写 ADAPT_TRUST_TMP，保存时随 adaptSave 落库。 */
+  var k = adaptKey();
+  if (typeof ADAPT_TRUST_TMP[k] === "boolean") return ADAPT_TRUST_TMP[k];
+  var st = adaptSt();
+  if (st && typeof st.trust === "boolean") return st.trust;
+  return adaptSeedMode() !== "N";
+}
+
+/* ---------- 2c-2. 身份适配表单小件（曾被漏定义 —— 整个适配表单层会 ReferenceError） ----------
+   ⚠ 2026-09-30 修复：adaptCard / adaptFld / adaptIn / adaptSel / adaptF / adaptScopeRow /
+     adaptContentSel 此前**只有调用、没有定义**，renderDetAdapt() 一执行即抛
+     「adaptCard is not defined」，页签因此从来渲染不出来。此处按原有调用签名补齐。
+   取值约定：adaptF(档位, 字段, 默认) —— 从当前资产 _adapt.f 覆盖位取，无则回默认；
+             写回统一在 adaptSave 里按同名字段落 _adapt.f。 */
+/* 参数卡卡头右侧的状态标签（保存态 / 信任态）。原属已删的「当前档位参数」空卡头，
+   2026-09-30 迁到此处的唯一理由：状态需要可见，但不值得为它单开一张 86px 空卡。 */
+/* 参数子节头：参数区并入「用户身份」卡后的分节行（非卡头）——
+   档名 + 副题 + 状态 chips 一行，替代原「token 注入参数」独立卡的卡头。 */
+function adaptSecHead(title, sub){
+  return '<div class="adapt-sec-h"><b>' + esc(title) + '</b>' +
+    (sub ? '<span class="sub">' + esc(sub) + '</span>' : "") +
+    '<span class="chips">' + adaptStatusChips() + '</span></div>';
+}
+function adaptStatusChips(){
+  var a0 = adaptAsset(), saved = !!adaptSt(), tr = adaptTrust();
+  /* chips 挂参数子节头（adaptSecHead）：保存态各档都有；信任态仅 A 档 ——
+     ★ 2026-09-30（第五轮）：原文案「未声明信任 · A 档不可配」在 B/C/D 档下也照出，
+     而信任声明只是 A 档的前置，别档出现即误导。 */
+  /* ★ 2026-09-30（第七轮）：保存态 chip 三态 —— 已保存 / 未保存 / 未保存的切换 ——
+     档位草稿（ADAPT_MODE_TMP）与已存 mode 不同即提示，避免「切换即生效」误读。 */
+  var stC = adaptSt();
+  var dm = ADAPT_MODE_TMP[adaptKey()] || null;
+  var savedMode = (stC && stC.mode) || null;
+  var chipSave = (dm && dm !== savedMode)
+    ? '<span class="tag t-warn" title="档位已切换但尚未保存 —— 点「保存并下发」后写入资产对象">未保存的切换：' + esc(dm) + "</span>"
+    : (savedMode
+      ? '<span class="tag t-ok" title="已写入资产对象并随 ASSETS 落盘（DEMO_KEY）">已保存' + (a0 ? " · " + esc(a0.id) : "") + "</span>"
+      : '<span class="tag t-gray" title="当前档位尚未保存 —— 保存后写入资产对象">未保存</span>');
+  var chipTrust = "";
+  if (adaptMode() === "A") {
+    chipTrust = tr
+      ? '<span class="tag t-info">已声明信任</span>'
+      : '<span class="tag t-warn">未声明信任 · 本档不可配</span>';
+  }
+  return chipSave + chipTrust;
+}
+
+function adaptCard(title, sub, body, footNote, chips){
+  /* chips（选填）：卡头右侧状态标签。用于承载原「当前档位参数」空卡里的保存态 / 信任态 ——
+     2026-09-30 用户裁定删除该空卡（卡体为空、档名重复），信息并入本卡头。 */
+  return '<div class="card"><div class="card-h"><h3>' + esc(title) +
+    (sub ? '<span class="sub">' + esc(sub) + "</span>" : "") + "</h3>" +
+    (chips ? '<div class="toolbar"><span class="mini">' + chips + "</span></div>" : "") + "</div>" +
+    '<div class="card-b">' + body + "</div>" +
+    (footNote ? '<div class="card-b" style="border-top:1px dashed var(--line);padding-top:8px"><div class="mini">' + footNote + "</div></div>" : "") +
+    "</div>";
+}
+function adaptFld(label, control, help){
+  /* 支持两种调用：adaptFld(label, control, help) 与
+     adaptFld(label, control, help, wide) —— wide=true 时占满两列（长文本框 / 长说明用）。 */
+  var wide = arguments.length > 3 && arguments[3];
+  /* ★ 2026-09-30：label 允许携带**唯一白名单标记** `<span class="req">*</span>`（必填星号）。
+     此前一律 esc(label)，把 D 档「资产登录页地址 <span class="req">*</span>」整串当文本转义，
+     页面上直接显示出标签源码（实测踩到）。这里先转义、再把白名单标记还原，其余标签仍被转义。 */
+  var lb = esc(label);
+  if (lb.indexOf("&lt;span class=&quot;req&quot;&gt;*&lt;/span&gt;") >= 0) {
+    lb = lb.split("&lt;span class=&quot;req&quot;&gt;*&lt;/span&gt;").join('<span class="req">*</span>');
+  }
+  /* ★ 2026-09-30（第十七轮 · 无障碍）：label 与控件建立 for 关联 ——
+     此前页内表单（#detAdaptForm 内 A/B/C 档约 20 个控件）的 <label> 与控件是**兄弟**且无 for，
+     读屏读不出控件名称（openDlg 的兜底只作用于 #dlg1Body）。此处从 control 串里取 id 建立关联；
+     取不到 id（纯展示型 fld，如「注入范围」）则不加 for，行为与原来一致。 */
+  var idm = /\sid="([^"]+)"/.exec(control);
+  return '<div class="fld' + (wide ? " wide" : "") + '" style="margin-bottom:10px"><label' +
+    (idm ? ' for="' + idm[1] + '"' : "") + ">" + lb + "</label>" + control +
+    (help ? '<div class="help">' + help + "</div>" : "") + "</div>";
+}
+/* 参数字段的双列网格容器：短字段两列并排，窄屏（<720px）回落单列。
+   实测 A 档 7 字段单列堆叠达 1033px（1.36 屏）→ 双列后约减半。 */
+function adaptGrid(inner){
+  return '<div class="fld-grid">' + inner + "</div>";
+}
+/* 长段说明（原「注入纪律」「注入范围」这类）改为行内提示块 ——
+   不再逐条占据表单垂直空间，只在需要时一眼扫到。 */
+function adaptNote(text, title){
+  return '<div class="adapt-inline-note"><b>' + esc(title || "说明") + "</b>" + text + "</div>";
+}
+function adaptIn(id, val, ph, width, disabled){
+  /* ★ 2026-09-30：必须显式 type="text"。
+     proto.css 的输入框规则是 input[type=text] 属性选择器，无 type 的 <input> 匹配不上，
+     回落浏览器原生外观（实测 h=21px / border-radius:0 / border:1.6px inset rgb(118,118,118)），
+     与同页 <select>（h=32px / 圆角 9px）并排即为「同页同类控件风格不统一」。 */
+  return '<input type="text" id="' + id + '" value="' + esc(val == null ? "" : val) + '"' +
+    (ph ? ' placeholder="' + esc(ph) + '"' : "") +
+    (width ? ' style="width:' + width + 'px"' : "") +
+    (disabled ? " disabled" : "") + ">";
+}
+function adaptSel(id, opts, val, width, disabled){
+  /* ★ 2026-09-30（第十六轮 · 全量评审修复）：**渲染层统一归一** ——
+     原实现 o === val 严格匹配且**无兜底 option**：存量值 / 旧版本值不在选项内时，
+     没有任何 option 带 selected，浏览器静默回落显示第一项，而状态（草稿、落库值）仍是旧值
+     —— 「显示的」与「生效的」不是一个值。最典型是 bdPath：下拉显示「资产直连（默认）」，
+     下方完整调用地址却按旧值「网关代理」拼接，同卡自相矛盾。
+     归一收在渲染层 → 25 处调用点零改动，且草稿回收（adaptStashF）读到的即归一后的值。 */
+  if (opts && opts.length && opts.indexOf(val) < 0) val = opts[0];
+  return '<select id="' + id + '"' + (width ? ' style="width:' + width + 'px"' : "") + (disabled ? " disabled" : "") + ">" +
+    opts.map(function(o){ return "<option" + (o === val ? " selected" : "") + ">" + esc(o) + "</option>"; }).join("") +
+    "</select>";
+}
+/* 当前资产在该档位下的已存取值；无则回默认。优先 adaptSt().f[field]，其次 _TMP 草稿。 */
+/* 当前资产在该档位下的已存取值；无则回默认。
+   ★ 2026-09-30（第六轮 b）：取值优先级反转 —— **草稿（ADAPT_F_TMP）优先于已保存值（_adapt.f）**。
+     此前已保存值优先：用户保存 V1 后再输入 V2（未保存）→ 切档 → 切回，看到的是旧值 V1
+     而不是自己刚输入的 V2（最新输入被旧存值掩盖，实测坐实）。
+     配套：adaptStashF(true) 保存落库后即清本档草稿，避免旧草稿盖住新存值。 */
+function adaptF(mode, field, dflt){
+  var tmp = ADAPT_F_TMP[adaptKey()];
+  if (tmp && tmp[mode] && tmp[mode][field] != null) return tmp[mode][field];
+  var st = adaptSt();
+  if (st && st.f && st.f[mode] && st.f[mode][field] != null) return st.f[mode][field];
+  return dflt;
+}
+
+/* 注入范围：平台安全基线固定不可改（仅非 public 路径），此处只呈现不提供控件。
+   ★ 2026-09-30：并入一条 .mini 单行 + help，去掉重复的「仅非 public 路径」表述（标题已说明）。 */
+function adaptScopeRow(){
+  return '<div class="fld wide" style="margin-bottom:0"><label>注入范围</label>' +
+    '<div class="mini" style="line-height:1.7"><b>仅非 public 路径</b>　·　平台安全基线，固定不可改</div>' +
+    '<div class="help">显式公开（public）路径不回送主体身份；如需注入，须先在其细粒度策略中取消 public 标记。</div></div>';
+}
+/* 注入内容：本档**固定**为「平台重签的短时 JWT」，无第二选项。
+   ★ 2026-09-30（用户裁定）：「仅用户标识」**撤除** —— 裸标识（X-User-Id 类）不带签名，
+     客户端可伪造、资产无从验证；只用用户标识的资产改走 B 档（key ＋ userinfo）换取，
+     或直接读 JWT 的标准 claim（sub）。「原样透传」亦不在资产配置面（针对生态内部平台）。
+   ⚠ 两类凭据的网关行为不同，勿混（用户定义四要素）：
+   · 原始 Bearer token —— **一次访问一次有效 / 短时间有效 / 不出网关 /
+     在网关内被还原成明文**（还原后供网关侧完成认证，资产永远见不到）；
+   · 重签短时 JWT —— 服务端签发的**成品**，网关**只转发、不解析**
+     （§3.6：实时向服务端请求签发后注入）。 */
+function adaptContentSel(val, trust){
+  var opts = ["重签短时 token"];
+  /* 存量已存「仅用户标识」/「原样透传…」值 → 回落唯一选项（选项已撤，select 不得悬空） */
+  if (opts.indexOf(val) < 0) val = opts[0];
+  return adaptSel("adContent", opts, val, 260, !trust);
+}
+
+/* —— 以下段落属「身份适配」，与上方切除段无依赖 —— */
+function adaptFormA(){
+  var trust = adaptTrust(), dis = !trust;
+  /* ★ 2026-09-30（第八轮 d · 用户裁定）：**字段映射功能整体撤除** ——
+     平台自身即 JWT 签发方，claim 名直签即成，「签发后 rename」属多余环节；
+     资产按 OIDC 标准 claim（sub / name / email…）读取，标准客户端免适配。
+     （内部事实 · 用户裁定：原始 Bearer token＝一次访问一次有效 / 短时间有效 / 不出网关 /
+     网关内还原明文认证；重签短时 token 是 JWT 成品、网关只转发不解析、携带用户身份声明；
+     「原样透传」针对生态内部平台，对资产不可选。） */
+  var content = adaptF("A","content","重签短时 token");
+  return adaptSecHead("A · token 注入参数", "平台签发短时 token，注入上游请求") +
+    /* 前置：信任声明（FR-1.4「前置，默认否」）—— 未声明信任的资产不得配置注入（AC-F2.2-4）。 */
+    '<div class="fld wide" style="margin-bottom:10px"><label>信任声明 <span class="req">*</span></label>' +
+      '<label class="chk"><input type="checkbox" id="adTrust" data-auth-adapt-trust="1"' + (trust ? " checked" : "") + ">" +
+      "<span>本资产声明信任平台注入的身份（<b>前置条件</b>；未声明时本档不可配置，「保存并下发」将被拒绝 —— 二期 PRD <b>AC-F2.2-4</b>）</span></label>" +
+    "</div>" +
+    adaptGrid(
+      adaptFld("启用范围", adaptSel("adScope", ["两者（默认）", "无端", "有端"], adaptF("A","scope","两者（默认）"), 200, dis), "在哪些接入路径生效；有端由<b>端侧 SDK</b> 承载（§2.3）。") +
+      adaptFld("注入位置", adaptSel("adPos", ["请求头（默认）", "Cookie", "查询参数"], adaptF("A","pos","请求头（默认）"), 200, dis), "<b>查询参数</b>会使 token 落入访问日志，仅用于存量资产。") +
+      adaptFld("令牌字段名", adaptIn("adField", adaptF("A","field","Authorization"), "", 200, dis), "默认 <b>Authorization</b>。") +
+      adaptFld("注入内容", adaptContentSel(content, trust), "本档固定为<b>平台重签的短时 JWT</b>（OIDC 标准 claim：sub / name / email…）；<b>不提供「只注入用户 ID」</b>（裸标识可伪造、资产无从验证，需标识者改用 B 档或读 <code class=\"kr\">sub</code>）。") +
+      adaptFld("透传策略", adaptSel("adPass", ["覆盖为白泽 token（默认）", "透传用户自带"], adaptF("A","pass","覆盖为白泽 token（默认）"), 200, dis), "<b>用户请求自带</b>同名字段（可能是其他系统凭据）时怎么办：默认以平台签发值<b>覆盖</b>——用户已过白泽认证，平台签发值才是本会话的权威凭据；透传自带值会让资产被其他凭据误导，造成身份混淆（§3.7 透传冲突）。") +
+      adaptFld("未认证跳转", adaptSel("adRedirect", ["平台登录页（默认）", "拒绝访问"], adaptF("A","redirect","平台登录页（默认）"), 200, dis), "未登录用户访问时的处理（FR-1.2：未认证不放行）。")
+    ) +
+    /* ★ 2026-09-30（用户裁定 · 去重）：配置区**不再重复承载端点交付内容** ——
+       本档「给资产侧开发者什么」统一由下方「配套信息 → 接入信息交付」卡按档位产出
+       （adaptDeliverInfo()：注入位置 / 字段名 / JWT 形态 / OIDC 标准验签端点 / 内容解析）；
+       配置区只留**可配置项**，避免同一件事两处表述、两处漂移。 */
+    adaptNote("注入前<b>先删除同名客户端字段</b>再写可信值（顺序颠倒会被客户端自带值覆盖，<b>F6.2 规则 8</b>）；不并存、不双写。"
+      + "「查询参数」仅对存量资产开放并按 <b>F8.1</b> 脱敏。", "注入纪律与边界") +
+    adaptScopeRow();
+}
+
+/* ★ 2026-09-30（第六轮 · 同日订正）：勾选组控件族 ——
+   「按需声明的字段集」勾选组（B 档 userinfo 返回字段集）走这里。
+   ⚠ 原注释所称的「源 → 目标」成对控件**两处均已撤除**：A 档注入的是平台重签 JWT
+   （资产按 OIDC 标准 claim 读取）、C 档主标识由协议规范封装 —— 两档都不存在字段映射。 */
+/* B 档 userinfo 返回字段集 —— **单一真源**：控件选项与旧值白名单此前是两处硬编码同名数组，
+   增删一项要改两处，漏改则勾选值被静默回落为默认。 */
+var B_FIELD_OPTS = ["用户标识", "姓名", "工号", "组织", "会话上下文"];
+function adaptChkGrp(id, opts, curArr){
+  return '<span class="chkgrp" id="' + id + '" data-chkgrp="1" style="display:flex;flex-wrap:wrap;gap:8px 16px">' +
+    opts.map(function(o){
+      var on = (curArr || []).indexOf(o) >= 0;
+      return '<label class="chk"><input type="checkbox" value="' + esc(o) + '"' + (on ? " checked" : "") + '><span>' + esc(o) + "</span></label>";
+    }).join("") + "</span>";
+}
+function adaptChkVal(saved){
+  /* 旧存量值（如 "sub, name, dept"）不含已知选项时回落默认「用户标识」 */
+  var known = B_FIELD_OPTS;
+  var arr = String(saved || "").split(/[,，、;；\s]+/).filter(Boolean);
+  var hit = arr.filter(function(x){ return known.indexOf(x) >= 0; });
+  return hit.length ? hit : ["用户标识"];
+}
+function adaptFormB(){
+  /* ★ 2026-09-30（用户裁定口径 · 权威源 §4.4「调用路径（双路径，按资产网络可达性选择）」）：
+     资产服务端能否访问平台服务，取决于**网络位置与网络策略**：可访问（内网互通）⇒ 直连平台
+     userinfo 接口；网络隔离不可达 ⇒ 经网关代理端点（https://{无端网关}/sso/userinfo）。
+     ⚠ 另一条独立约束：**资产的网页前端只能访问网关** —— 由前端发起的换取须走网关代理地址。
+     「换取路径」字段保留（源 §4.4 双路径），完整调用地址随选择联动展示，管理员可复制给资产侧开发者。 */
+  /* ★ 2026-09-30（第十六轮）：取值**先归一**再判定 —— adaptSel 已在渲染层兜底，
+     本处若仍拿未归一的原值判 proxy，会出现「下拉显示资产直连、完整调用地址却是网关代理」。 */
+  var bPath = adaptF("B","path","资产直连（默认）");
+  if (["资产直连（默认）","网关代理"].indexOf(bPath) < 0) bPath = "资产直连（默认）";
+  var proxy = bPath.indexOf("网关代理") === 0;
+  var full = proxy ? "https://{无端网关}/sso/userinfo" : "https://<平台>/api/v1/sso/userinfo";
+  return adaptSecHead("B · key ＋ userinfo 参数", "一次性 key ＋ userinfo 换取") +
+    adaptGrid(
+      adaptFld("启用范围", adaptSel("bdScope", ["两者（默认）", "无端", "有端"], adaptF("B","scope","两者（默认）"), 200), "该 key 注入规则生效的接入路径；有端由<b>端侧 SDK</b> 承载（§2.3）。") +
+      adaptFld("注入位置", adaptSel("bdPos", ["请求头（默认）", "Cookie", "查询参数"], adaptF("B","pos","请求头（默认）"), 200), "key 注入<b>换取入口请求</b>的位置。") +
+      adaptFld("key 字段名", adaptIn("bdField", adaptF("B","field","X-SSO-Key"), "", 200), "注入到资产的字段名，默认 <b>X-SSO-Key</b>；资产回调 userinfo 时 key 一律经该请求头传递。") +
+      adaptFld("key 有效期", adaptIn("bdTtl", adaptF("B","ttl","300"), "秒", 120), "默认 300 秒；仅接受正整数（秒），超期作废。") +
+      /* ★ 2026-09-30（第十四轮 · 用户裁定）：原「注入入口 URL」「换取路径」两行**并为一块** ——
+         key 进哪（入口）与从哪换（路径）是同一件事的两端，分两行既费高度、又把一条链拆成两截。
+         完整调用地址随「换取路径」联动呈现，管理员可直接复制给资产侧开发者。 */
+      '<div class="fld" style="margin-bottom:10px"><label>key 注入与换取</label>' +
+        '<div class="adapt-pair" style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;">' +
+          '<div style="flex:1;min-width:240px">' +
+            '<div class="mini" style="margin-bottom:4px">注入入口 URL（资产侧）· 仅注入该 URL 的请求</div>' +
+            adaptIn("bdUrl", adaptF("B","url",""), "/sso/entry", 320) +
+          "</div>" +
+          '<div style="flex:none;width:210px">' +
+            '<div class="mini" style="margin-bottom:4px">换取路径（资产 → 平台）</div>' +
+            adaptSel("bdPath", ["资产直连（默认）", "网关代理"], bPath, 200) +
+          "</div>" +
+        "</div>" +
+        '<div class="mini" style="margin-top:8px;line-height:1.8">完整调用地址（交资产侧开发者）：<br><code class="kr">GET ' + esc(full) + '</code>　请求头 <code class="kr">X-SSO-Key: &lt;key&gt;</code></div>' +
+        '<div class="help">按资产<b>服务端</b>的网络可达性选择；资产<b>前端</b>发起的换取只能走网关代理。</div>' +
+      "</div>" +
+      adaptFld("userinfo 返回字段集", adaptChkGrp("bdFields", B_FIELD_OPTS, adaptChkVal(adaptF("B","fields","用户标识"))), "<b>最小集合</b>：按资产注册声明，要什么给什么。") +
+      adaptFld("来源限制", adaptIn("bdSrc", adaptF("B","src",""), "IP 网段 / 域名（可叠加，多条）", 320), "允许回调 userinfo 的请求来源（FR-2.4），白名单外一律拒绝并告警。", true)
+    ) +
+    adaptNote("key <b>单次消费</b>、与会话绑定、登出即作废；仅经 HTTPS 通道传输，HTTP 资产<b>不建议启用</b>本模式。"
+      + "有端路径 key 由 SDK <b>实时向服务端请求签发</b>，注入后不保存、用完即弃。", "key 安全设计") +
+    adaptScopeRow();
+}
+
+/* ★ 2026-09-30（第十五轮 · 用户裁定）：C 档**协议规格表** —— 协议不是标签，
+   它决定**配什么、交付什么**：
+   · §5.2 / FR-3.1：平台自动生成的接入配置三种协议各不相同
+     （**CAS 服务地址、SAML 元数据、OIDC client 凭据**）；
+   · §5.5「元数据发布」的适用对象只写 **SAML / OIDC**（CAS 无标准 metadata 文档）；
+   · FR-3.4 的签名针对**断言 / 票据**：SAML 签断言、OIDC 签 ID Token，
+     CAS 的 ST 是随机会话标识、不做签名（§5.2「签发服务票据（ST），提供票据校验端点」）。
+   ⚠ 配置区 help 内**不写协议标准端点**（交付内容单点在「接入信息交付」卡承载）。 */
+var CD_PROTO_DEF = {
+  "OIDC": {
+    /* ★ 2026-09-30（用户裁定 · 对齐 A 档）：**本档不存在「映射」** ——
+       标准协议的主标识由**协议规范**规定，平台以**用户主标识**直接封装，
+       不提供「源字段 → 目标标识」的选择（与 A 档撤除字段映射同理）。
+       OIDC Core 1.0 §2：sub 为 REQUIRED 且「Issuer 内本地唯一、永不复用」；
+       preferred_username / email 属 profile / email scope 的**可变** claim，不保证唯一稳定。 */
+    idName: "sub",
+    idField: "ID Token 的 subject",
+    cert: true,
+    meta: true,
+    protoHelp: "选型后平台<b>自动生成</b>该资产的协议接入配置（<b>client 凭据 + 发现文档</b>），见下方「接入信息交付」（FR-3.1）。",
+    idNote: "平台以<b>用户主标识</b>直接封装为 <b>sub</b>，无字段映射可配（FR-3.3：决定该用户显示为谁）。OIDC 规定 sub 在签发方内<b>唯一且永不复用</b>。",
+    certHelp: "ID Token 签名证书（标准 RP <b>强制校验签名</b>，不可关闭）；到期续期纳入证书生命周期管理。",
+    metaHelp: "对外发布 <b>OIDC 发现文档</b>（含授权 / 令牌 / 用户信息端点与公钥集），资产侧 RP 据此自动完成对接配置（FR-3.4）。",
+    sloHelp: "登出白泽时按 OIDC 规范向资产的 <b>end_session</b> 端点发起登出；依赖资产侧实现完整度，<b>尽力而为并记录</b>（FR-3.5）。",
+    ttlHelp: "ID Token 有效期（<b>exp</b> 声明）。留空＝按协议惯例。",
+    note: "协议握手在<b>浏览器层</b>完成（无端＝用户浏览器、有端＝SDK 内置浏览器），<b>不依赖端侧 SDK 注入能力</b>，可独立排期；资产侧配置由双方按交付的接入信息联调完成。"
+  },
+  "SAML 2.0": {
+    /* ★ 2026-09-30（用户裁定 · 对齐 A 档）：同 OIDC，本档不存在「映射」——
+       SAML 2.0 Core §2.2.2 规定断言主体为**单一** <NameID>，平台直接封装。 */
+    idName: "NameID",
+    idField: "断言的 NameID",
+    cert: true,
+    meta: true,
+    protoHelp: "选型后平台<b>自动生成</b>该资产的协议接入配置（<b>IdP 元数据</b>），见下方「接入信息交付」（FR-3.1）。",
+    idNote: "平台以<b>用户主标识</b>直接封装为断言的 <b>NameID</b>，无字段映射可配；资产侧 SP 以此为登录主体（FR-3.3）。",
+    /* ★ 2026-09-30 调研补全（SAML 2.0 Core §8.3 NameID Policy）：Format 是**双方必须对齐**的项 ——
+       资产 SP 在 AuthnRequest 的 NameIDPolicy 中声明其支持的 Format，返回不匹配的格式会直接登录失败；
+       transient 仅对单次 SSO 有效、不能用于识别用户（SAML 2.0 规范与各 IdP 实现文档一致）。
+       默认取 unspecified：此时 NameID 值即平台封装的主标识（与 FR-3.3 的口径一致）。 */
+    nameIdFmt: ["未指定 unspecified（默认）", "邮箱地址 emailAddress", "持久标识 persistent", "临时标识 transient"],
+    nameIdFmtHelp: "须与资产 SP 的 <b>NameIDPolicy</b> 一致，不一致资产侧会拒绝登录；<b>未指定</b>时 NameID 值为平台封装的主标识；<b>持久标识</b>由平台按「用户 × 资产」生成<b>不透明</b>持久标识（主标识不参与）；<b>临时标识</b>仅对单次 SSO 有效、<b>不能用于识别用户</b>。",
+    certHelp: "断言（Assertion）签名证书；资产侧按元数据中的证书校验签名，<b>到期未续期会导致校验失败</b>（§5.6）。",
+    metaHelp: "对外发布 <b>IdP 元数据</b>（EntityID / SSO 端点 / 签名证书），资产侧导入即完成基础对接配置（FR-3.4）。",
+    sloHelp: "登出白泽时按 <b>SAML Logout profile</b> 向资产发起登出；依赖资产侧实现完整度，<b>尽力而为并记录</b>（FR-3.5）。",
+    ttlHelp: "断言的 <b>NotOnOrAfter</b> 有效期。留空＝按协议惯例。",
+    note: "协议握手在<b>浏览器层</b>完成（无端＝用户浏览器、有端＝SDK 内置浏览器），<b>不依赖端侧 SDK 注入能力</b>，可独立排期；资产侧配置由双方按交付的接入信息联调完成。"
+  },
+  "CAS": {
+    /* ★ 2026-09-30（用户裁定 · 对齐 A 档）：同 OIDC / SAML，本档不存在「映射」——
+       CAS 票据校验返回**单值** Principal-Id，平台直接封装。 */
+    idName: "Principal-Id",
+    idField: "票据校验返回的 Principal-Id",
+    cert: false,
+    meta: false,
+    protoHelp: "选型后平台<b>自动生成</b>该资产的协议接入配置（<b>CAS 服务地址与票据校验端点</b>），见下方「接入信息交付」（FR-3.1）。",
+    idNote: "平台以<b>用户主标识</b>直接封装为票据校验返回的 <b>Principal-Id</b>（单值），无字段映射可配；资产侧以此为登录主体（FR-3.3）。",
+    /* ★ 2026-09-30 调研补全（CAS Protocol 2.0 §2.5 / 3.0）：**校验端点决定能否拿到属性** ——
+       2.0 的 /serviceValidate 只回 cas:user；3.0 的 /p3/serviceValidate 才回属性。
+       ⚠ 主标识（Principal-Id）两版本均提供；版本差异只影响**附加属性**（扩展需求），
+       本项按「交予资产的票据校验端点」设。 */
+    casVer: ["CAS 3.0（默认）", "CAS 2.0"],
+    casVerHelp: "3.0 的票据校验端点<b>返回用户属性</b>；2.0 <b>仅返回用户名</b>（主标识 Principal-Id 两版本均提供）。需向资产传递附加属性时须用 3.0。",
+    certHelp: "",
+    metaHelp: "",
+    sloHelp: "登出白泽时调用资产的 <b>CAS 登出端点</b>；依赖资产侧实现完整度，<b>尽力而为并记录</b>（FR-3.5）。",
+    ttlHelp: "签发票据（TGT / ST）的有效期。留空＝按协议惯例。",
+    note: "协议握手在<b>浏览器层</b>完成（无端＝用户浏览器、有端＝SDK 内置浏览器），<b>不依赖端侧 SDK 注入能力</b>。CAS 票据为随机会话标识、<b>不做签名</b>，真实性由 <b>HTTPS 通道 + 资产侧回平台校验票据</b>保证；该协议无标准元数据文档，故本档无「签名证书 / 元数据发布」两项。"
+  }
+};
+/* C 档协议取值**归一** —— 存量 / 旧版本值不在 CD_PROTO_DEF 时回落 OIDC。
+   ★ 2026-09-30（第十七轮 · 全量评审修复）：表单（adaptFormC）与交付卡（adaptDeliverInfo）
+     此前各自判定，存量非法值会让「表单按 OIDC 渲染、交付卡按旧串拼 SAML 分支」
+     （交付卡判据是 indexOf("SAML") === 0，旧串 "SAML" 也命中）—— 同页两处结论相反。 */
+function adaptProto(){
+  var p = adaptF("C", "proto", "OIDC");
+  return CD_PROTO_DEF[p] ? p : "OIDC";
+}
+/* ★ 2026-09-30（用户裁定）：原 `adaptProtoSlug`（协议短名，仅用于 mapDst 跨协议分键）
+   随「身份标识映射」一并撤除 —— 本档已无映射类字段，无键可分。 */
+/* C 档待落库控件表 —— 字段集**随协议**：CAS 无签名证书 / 元数据发布。
+   写死 id 表会让页面上不存在的两项被静默跳过，配置面与落库面口径不一。
+   ★ 2026-09-30（用户裁定）：本档**无映射类字段**（主标识由协议规范封装），
+   mapSrc / mapDst@<协议> 一对键随之失去读取方，不再列入。 */
+function adaptCIds(){
+  var pp = adaptProto();
+  var ids = { proto:"cdProto", slo:"cdSlo", ttl:"cdTtl" };
+  var P = CD_PROTO_DEF[pp] || CD_PROTO_DEF["OIDC"];
+  if (P.nameIdFmt) ids.nameFmt = "cdNameFmt";
+  if (P.casVer) ids.casVer = "cdCasVer";
+  if (P.cert) ids.cert = "cdCert";
+  if (P.meta) ids.meta = "cdMeta";
+  return ids;
+}
+function adaptFormC(){
+  /* ★ 2026-09-30（第十五轮 · 用户裁定）：C 档**协议驱动** —— 协议不是标签，
+     它决定**配什么、交付什么**：
+     · §5.2 / FR-3.1：平台自动生成的接入配置三种协议各不相同
+       （**CAS 服务地址、SAML 元数据、OIDC client 凭据**）；
+     · §5.5「元数据发布」的适用对象只写 **SAML / OIDC**（CAS 无标准 metadata 文档）；
+     · FR-3.4 的签名针对**断言 / 票据**：SAML 签断言、OIDC 签 ID Token，
+       CAS 的 ST 是随机会话标识、不做签名（§5.2「签发服务票据（ST），提供票据校验端点」）。
+     故字段集与交付内容按协议分叉，而非「协议一选、其余照旧」。 */
+  var proto = adaptProto();
+  var P = CD_PROTO_DEF[proto] || CD_PROTO_DEF["OIDC"];
+  var inner =
+    adaptFld("协议类型", adaptSel("cdProto", ["OIDC", "SAML 2.0", "CAS"], proto, 200), P.protoHelp) +
+    /* ★ 2026-09-30（用户裁定 · 对齐 A 档「注入内容」的只读体例）：**本档没有映射** ——
+       标准协议的主标识由**协议规范**规定（OIDC 的 sub 在签发方内唯一且永不复用 /
+       SAML 断言的 NameID / CAS 票据校验的 Principal-Id），平台以**用户主标识**直接封装，
+       不存在「源字段 → 目标标识」这一层可配，故本行为**只读陈述**、不是配置项。
+       ⚠ 边界：向资产传递**附加属性**（工号 / 邮箱 / 组织 → 资产的 claim / assertion attribute）
+         不在本条覆盖内，属扩展需求 —— 须先在需求侧立项（OIDC claims / SAML AttributeStatement /
+         CAS 3.0 attributes 均具备承载能力），再在原型补「附加属性」表。 */
+    adaptFld("对外主标识", '<span class="tag t-info">' + esc(P.idName) + "</span>" +
+      '<span class="mini" style="margin-left:8px">' + esc(P.idField) + "</span>", P.idNote, true);
+  if (P.nameIdFmt) inner += adaptFld("NameID 格式", adaptSel("cdNameFmt", P.nameIdFmt, adaptF("C","nameFmt",P.nameIdFmt[0]), 240), P.nameIdFmtHelp);
+  if (P.casVer) inner += adaptFld("CAS 协议版本", adaptSel("cdCasVer", P.casVer, adaptF("C","casVer",P.casVer[0]), 200), P.casVerHelp);
+  if (P.cert) inner += adaptFld("签名证书", adaptSel("cdCert", ["平台默认证书", "指定证书"], adaptF("C","cert","平台默认证书"), 200), P.certHelp);
+  if (P.meta) inner += adaptFld("元数据发布", adaptSel("cdMeta", ["是（默认）", "否"], adaptF("C","meta","是（默认）"), 200), P.metaHelp);
+  inner +=
+    adaptFld("SLO（单点登出）", adaptSel("cdSlo", ["启用（默认）", "关闭"], adaptF("C","slo","启用（默认）"), 200), P.sloHelp) +
+    adaptFld("票据有效期", adaptIn("cdTtl", adaptF("C","ttl","按协议默认"), "需覆盖协议默认时再填秒数", 200), P.ttlHelp);
+  return adaptSecHead("C · 协议级 SSO 参数", "平台作 IdP · 自动生成接入配置 · 身份标识为唯一主标识（单条）") +
+    adaptGrid(inner) + adaptNote(P.note, "边界");
+}
+
+/* D 档「账号密码代填」—— ★ 代填契约在此按【资产】配置（这是本页签存在的关键理由之一）。
+   凭据本体（谁在哪个资产用什么账号）由《认证模块》的「用户代填账号托管」承载；
+   而「该资产登录页长什么样、字段选择器怎么填、提交方式与验证判据」是**资产属性**，
+   同一资产下所有用户共用一份，故只能配在资产侧 —— 不能配在用户托管账号上。 */
+/* 登录形态历史值归一（第十四轮 f）：旧三档「两步（账号页 → 密码页）」/「多步 + 动态挑战」
+   → 现行两档「多步（两步及以上）」。d 就地改写，随下一次保存落库即完成收敛。
+   adaptSel 是 o === val 严格匹配、无兜底项 —— 不归一会让下拉静默落回「单步」，
+   与已按多步展开的字段组状态自相矛盾。 */
+function adaptNormKind(d){
+  if (d && d.kind && (d.kind.indexOf("两步") === 0 || d.kind.indexOf("多步 +") === 0)) d.kind = "多步（两步及以上）";
+  return (d && d.kind) || "单步（账号+密码同页）";
+}
+function adaptFormD(){
+  /* ★ 2026-09-30（第五轮）：去卡化 —— 摘要区并入「用户身份」卡（adaptSecHead 分节）；
+     弹窗录入（完整契约，adaptContractDlg）逻辑不变。
+     ★ 2026-09-30（第六轮）：摘要行补「表单识别规则 / 凭据托管方式」（§6.6 配置项可见性）。 */
+  var d = adaptDRead();
+  var hasUrl = !!(d.url && d.url !== "—");
+  var rec = String(d.recogn || "").indexOf("自定义") === 0;
+  var hasSel = !!(d.userSel && d.userSel !== "—" && d.pwdSel && d.pwdSel !== "—");
+  var conf = hasUrl && (!rec || hasSel);
+  var kind = adaptNormKind(d);
+  var rows =
+    '<div class="kv" style="grid-template-columns:130px 1fr;margin-bottom:6px"><span class="k">登录页地址</span><span class="mini">' +
+      (hasUrl ? '<code class="kr">' + esc(d.url) + "</code>" : '<span style="color:var(--err)">未配置</span>') + "</span></div>" +
+    '<div class="kv" style="grid-template-columns:130px 1fr;margin-bottom:6px"><span class="k">表单识别</span><span class="mini">' +
+      (rec ? ("自定义选择器 · " + (hasSel ? "账号 / 密码 / 提交 三组已配置" : '<span style="color:var(--err)">未配置完整</span>')) : "自动（字段特征库，默认）") + "</span></div>" +
+    '<div class="kv" style="grid-template-columns:130px 1fr;margin-bottom:6px"><span class="k">登录形态</span><span class="mini">' + esc(kind) + "</span></div>" +
+    '<div class="kv" style="grid-template-columns:130px 1fr;margin-bottom:6px"><span class="k">登录成功判据</span><span class="mini">' +
+      (d.verify && d.verify !== "—" ? esc(d.verify) : "未配置") + "</span></div>" +
+    '<div class="kv" style="grid-template-columns:130px 1fr"><span class="k">凭据托管</span><span class="mini">' +
+      esc(d.trustee || "用户自管（默认）") + "</span></div>";
+  return adaptSecHead("D · 账号密码代填 · 表单契约（按资产）", "托管凭据代填 · 四档中最弱环") +
+    '<div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:300px">' + rows + "</div>" +
+      '<div style="flex:none;padding-top:2px">' +
+        '<button class="btn primary" type="button" data-auth="adaptOpenContract">' +
+          (conf ? "修改表单契约" : "配置表单契约") + " →</button>" +
+      "</div>" +
+    "</div>" +
+    adaptNote(
+      "代填依赖本契约定位登录页字段。<b>选择器未命中</b>（应用改版）→ 本次代填失败并<b>提示手动登录</b>；" +
+      "须重配契约、测试通过后方可恢复。",
+      "契约失效即停止代填") +
+    "<div style=\"margin-top:2px\">" + authTag(conf ? "契约已配置" : "契约未配置 · 代填不可用", conf ? "t-ok" : "t-warn") + "</div>";
+}
+
+/* D 档「表单契约」弹窗：12 字段完整录入（页内只留摘要，避免 1.7 屏长表单）。
+   ⚠ adaptStashD() 按 id 取值 —— 弹窗内渲染同一组 id，故保存逻辑无需改动。
+   弹窗保存走独立入口（data-act），不回写页内表单，避免两处 id 冲突。 */
+/* 校验命中第①步字段（登录页地址 / 选择器）时：先收值 → 切回第①步 → 重绘，
+   否则 markBad 打在一个 display:none 的控件上，用户看不到任何反馈（两步化的必然配套）。 */
+function adjustContractBack(){ adaptStashD(true); window.__dlgStep = 1; adaptContractDlg(); }
+function adaptContractDlg(){
+  var d = adaptDRead();
+  var kind = adaptNormKind(d);
+  var multiStep = kind.indexOf("多步") === 0;
+  var g = function (k, dv) { var v = d[k]; return (v && v !== "—") ? v : dv; };
+  /* ★ 2026-09-30（第六轮 · 参数对齐权威源 §6.6）：
+     「表单识别规则」默认**自动（字段特征库）**、自定义选择器仅兜底（原文默认值＝自动，
+       此前强制手填选择器属口径反转）；「验证码策略」两选（人工输入（默认）/ 短信自动回填（可选定制））；
+     「凭据绑定范围」＝一对一（默认）/ 多对一；「代填失败动作」＝提示手动登录（默认）/ 阻断访问；
+     新增「凭据托管方式」（用户自管（默认）/ 管理员托管）与「启用范围」。
+     外层 .adapt-dlg 包装：弹窗内控件宽度统一（CSS scope，不影响其它弹窗）。 */
+  var rec0 = String(d.recogn || "").indexOf("自定义") === 0;
+  /* ★ 2026-09-30（第十四轮 · 用户裁定「弹窗太长」）：改为**两步**录入（原 12 字段平铺 → 785px / 可视 728px 必滚动）。
+     ① 登录页与识别 ② 提交与凭据 —— 每步 3 行，均不滚动。
+     ⚠ 非当前步仅 display:none，**字段仍全部在 DOM** —— adaptStashD() 按 id 取值不受影响；
+     步间切换前先 adaptStashD() 收值，保存校验命中第①步字段时自动跳回第①步。 */
+  var step = (window.__dlgStep === 2) ? 2 : 1;
+  var h =
+    '<div class="adapt-dlg">' +
+    '<div class="dlg-steps">' +
+      '<span class="st' + (step === 1 ? " on" : "") + '" data-dstep="1">① 登录页与识别</span>' +
+      '<span class="st' + (step === 2 ? " on" : "") + '" data-dstep="2">② 提交与凭据</span>' +
+      '<span class="lnk" data-dstep="' + (step === 1 ? 2 : 1) + '">' + (step === 1 ? "下一步 →" : "← 上一步") + "</span>" +
+    "</div>" +
+    /* —— 第 ① 步：登录页与识别 —— */
+    '<div class="fld-grid' + (step === 1 ? "" : " off") + '">' +
+      '<div class="dlg-sec">登录页</div>' +
+      adaptFld("资产登录页地址 <span class=\"req\">*</span>", adaptIn("ddUrl", d.url || "", "https://<资产>/login", 320), "须为 https://；存量 http 按例外登记。") +
+      adaptFld("备用 / 跳转地址", adaptIn("ddUrlAlt", d.urlAlt && d.urlAlt !== "—" ? d.urlAlt : "", "无则留空", 320)) +
+      adaptFld("登录形态", adaptSel("ddKind", ["单步（账号+密码同页）", "多步（两步及以上）"], kind, 240), "单步＝一次填完；多步＝首屏提交后按跳转后页面组继续填充。") +
+      '<div class="dlg-sec">识别与填充</div>' +
+      adaptFld("表单识别规则", adaptSel("ddRecogn", ["自动（字段特征库，默认）", "自定义选择器"], g("recogn","自动（字段特征库，默认）"), 240), "自动＝按字段特征库识别；自定义用于未覆盖的资产。") +
+      adaptFld("登录成功判据", adaptIn("ddVerify", d.verify && d.verify !== "—" ? d.verify : "", "如 URL 含 /portal/home", 320), "不满足即计一次失败。") +
+      /* 选择器组仅在「自定义选择器」时展开 —— 自动模式留空即可。 */
+      '<div id="ddSelWrap" class="fld wide" style="margin:0;min-height:0;display:' + (rec0 ? "block" : "none") + '">' +
+        '<div class="fld-grid">' +
+          adaptFld("账号字段选择器 <span class=\"req\">*</span>", adaptIn("ddUserSel", d.userSel && d.userSel !== "—" ? d.userSel : "", "如 #loginForm input[name=\"username\"]", 320)) +
+          adaptFld("密码字段选择器 <span class=\"req\">*</span>", adaptIn("ddPwdSel", d.pwdSel && d.pwdSel !== "—" ? d.pwdSel : "", "如 #loginForm input[name=\"password\"]", 320)) +
+          adaptFld("提交按钮选择器", adaptIn("ddSubmitSel", d.submitSel && d.submitSel !== "—" ? d.submitSel : "", "如 #loginForm button[type=\"submit\"]", 320)) +
+        "</div>" +
+      "</div>" +
+      (multiStep ? (function(){
+        var s2 = d.step2 || {};
+        return '<div class="fld wide" style="margin:0;min-height:0;border-left:2.5px solid var(--primary);padding-left:10px">' +
+          '<div class="mini" style="margin-bottom:6px"><b>跳转后页面</b> · 多步形态专用</div>' +
+          '<div class="fld-grid">' +
+            adaptFld("页面地址", adaptIn("ddS2Url", s2.url || "", "https://<资产>/step2", 320)) +
+            adaptFld("账号选择器", adaptIn("ddS2User", s2.userSel && s2.userSel !== "—" ? s2.userSel : "", "如无则留空", 320)) +
+            adaptFld("密码选择器", adaptIn("ddS2Pwd", s2.pwdSel && s2.pwdSel !== "—" ? s2.pwdSel : "", "", 320)) +
+            adaptFld("提交按钮", adaptIn("ddS2Submit", s2.submitSel && s2.submitSel !== "—" ? s2.submitSel : "", "", 320)) +
+          "</div>" +
+          '<div class="help">首屏提交后页面跳转，平台按本组选择器继续填充；<b>任一选择器缺失即整体失败</b>。</div>' +
+        "</div>";
+      })() : "") +
+    "</div>" +
+    /* —— 第 ② 步：提交与凭据 —— */
+    '<div class="fld-grid' + (step === 2 ? "" : " off") + '">' +
+      '<div class="dlg-sec">提交与降级</div>' +
+      adaptFld("提交方式", adaptSel("ddSubmit", ["自动提交", "等用户点击"], d.submit || "自动提交", 200), "「等用户点击」仅填充、不提交。") +
+      adaptFld("验证码策略", adaptSel("ddCaptcha", ["人工输入（默认）", "短信验证码自动回填（可选定制）"], g("captcha","人工输入（默认）"), 240), "人机校验，<b>不承诺全免密</b>。") +
+      adaptFld("代填失败动作", adaptSel("ddFail", ["提示手动登录（默认）", "阻断访问"], g("fail","提示手动登录（默认）"), 200), "默认友好降级；严格场景可阻断。") +
+      adaptFld("启用范围", adaptSel("ddScope", ["两者（默认）", "无端", "有端"], g("scope","两者（默认）"), 200), "按接入路径生效；有端由<b>端侧 SDK</b> 承载（§2.3）。") +
+      '<div class="dlg-sec">凭据</div>' +
+      adaptFld("凭据绑定范围", adaptSel("ddBind", ["一对一（默认）", "多对一（多人共用资产账号）"], g("bind","一对一（默认）"), 240), "多对一＝多人共用同一资产账号。") +
+      adaptFld("凭据托管方式", adaptSel("ddTrustee", ["用户自管（默认）", "管理员托管"], g("trustee","用户自管（默认）"), 200), "自管＝用户录入、可删除；托管＝管理员维护。") +
+    "</div>";
+  h += adaptNote("契约存服务端；<b>本处只配契约、不存凭据</b>。", "边界") +
+    "</div>";
+  openDlg("配置账号密码代填 · 表单契约", "<b>资产</b>：" + esc(adaptAssetName()) + "　·　契约按资产存，同资产下所有用户共用一份。", h, "lg");
+  var ok = document.getElementById("dlg1Ok");
+  if (ok) {
+    ok.textContent = "保存契约";
+    ok.onclick = function () {
+      /* ★ 2026-09-30（第十七轮）：校验**先于**提交 —— 原实现先 adaptStashD() 落资产再校验，
+         失败时半成品契约已进资产对象。现在改为：收进草稿 → 校验 → 通过才提交。 */
+      adaptStashD(true);
+      var d2 = adaptDRead();
+      if (!d2.url) { window.__dlgStep = 1; adjustContractBack(); toast("须先填写资产登录页地址"); markBad("ddUrl", true); return; }
+      if (!/^https?:\/\//i.test(String(d2.url).trim())) { window.__dlgStep = 1; adjustContractBack(); toast("「资产登录页地址」须为 https:// 开头（存量 http 按例外登记）"); markBad("ddUrl", true); return; }
+      var rec2 = String(d2.recogn || "").indexOf("自定义") === 0;
+      if (rec2 && (!d2.userSel || !d2.pwdSel)) { window.__dlgStep = 1; adjustContractBack(); toast("自定义识别模式须填写账号 / 密码字段选择器"); return; }
+      adaptStashD();                        /* 校验通过 → 草稿提交到资产 */
+      delete ADAPT_D_TMP[adaptKey()];
+      if (typeof adaptSyncAuContract === "function") adaptSyncAuContract();
+      if (typeof saveDemoState === "function") saveDemoState();
+      closeDlg();
+      renderAdaptPage();
+      toast("表单契约已保存（演示）");
+    };
+  }
+  /* ★ 登录形态切换须**直接绑定**：弹窗挂在 body 级（#dlg1），change 事件冒泡到不了
+     #pg-detail 的委托层 —— 此前切「两步」弹窗内纹丝不动的根因（委托层分支永远收不到）。
+     切换后先 adaptStashD() 收值，再重开弹窗以展开 / 收起第二步组。 */
+  var kd = document.getElementById("ddKind");
+  if (kd) kd.onchange = function () { adaptStashD(true); adaptContractDlg(); };
+  /* 表单识别规则切换同样重开弹窗 —— 决定选择器组展开 / 收起（自动模式可留空）。 */
+  var rd = document.getElementById("ddRecogn");
+  if (rd) rd.onchange = function () { adaptStashD(true); adaptContractDlg(); };
+  /* 步骤条 / 下一步·上一步：切换前先收值（非当前步字段虽在 DOM，但值以本次编辑为准）。 */
+  document.querySelectorAll("#dlg1Body .dlg-steps [data-dstep]").forEach(function (el) {
+    el.onclick = function () {
+      adaptStashD(true);
+      window.__dlgStep = parseInt(el.getAttribute("data-dstep"), 10);
+      adaptContractDlg();
+    };
+  });
+  return true;
+}
+
+/* N 档（不传导）**不出参数区** —— 2026-09-30 用户裁定：不传导时不该显示一张满是文字的卡片。
+   处置见 renderDetAdapt：m === "N" 时直接返回，只留「恢复默认 / 保存并下发」。
+   「不传导是什么」由分段控件下方的 help 承担（一句话），不在正文复述。 */
+function renderDetAdapt(){
+  /* ★ 2026-09-30（第五轮）：双宿主 —— #detAdaptForm（参数子节）与 #adaptBarHost（提交栏）
+     都住在「用户身份」卡内（adaptUserBlock 产出）。本函数只填内容、不建卡。
+     原版把参数与提交栏各拼一张独立 .card，顶层碎成「用户身份卡 / 参数卡 / 裸提交卡」三张平级卡。
+     N 档：参数区置空（卡与档位条仍在、可随时切档），提交栏保留。
+     ⚠ 不再回退 #detAdaptBody —— 该回退曾把整页覆盖成单卡（N 档踩过）；
+       宿主找不到说明页面骨架未建，直接 return 即可。 */
+  var host = document.getElementById("detAdaptForm");
+  var bar = document.getElementById("adaptBarHost");
+  if (!host || !bar) return;
+  var m = adaptMode();
+  var cbar = authCanEdit("det")
+    ? '<div class="card-b cbar">' +
+        '<button class="btn" type="button" data-auth="adaptReset">恢复默认</button>' +
+        '<button class="btn primary" type="button" data-auth="adaptSave">保存并下发</button></div>'
+    : '<div class="card-b"><div class="mini">🔒 当前角色 <b>' + esc(authRole()) +
+      "</b> 对「身份适配」无编辑权（编辑权＝系统管理员）—— 可查看、不可改。</div></div>";
+  if (m === "N") { host.innerHTML = ""; bar.innerHTML = cbar; authApplyRo(host, "det"); return; }
+  var form = (m === "A") ? adaptFormA() : (m === "B") ? adaptFormB() : (m === "C") ? adaptFormC() : adaptFormD();
+  host.innerHTML = '<div class="card-b">' + form + "</div>";
+  bar.innerHTML = cbar;
+  authApplyRo(host, "det");
+}
+
+/* —— 以下段落属「身份适配」，与上方切除段无依赖 —— */
+
+function adaptRefAssets(){ return (typeof ASSETS !== "undefined" && ASSETS) ? ASSETS : []; }
+function adaptCurAid(){
+  /* ★ 2026-09-30（第十六轮 · 全量评审修复）：**资产绑定** —— 原实现只认 window._adaptAid，
+     失效时回落到常量 CUR（"a1"），并把结果**写回** window._adaptAid；而 goPage 是
+     location.href 整页跳转（本文件 47–51），_adaptAid 不持久化、跨页必丢 —— 于是
+     renderAdaptPage 首行调用本函数就把 _adaptAid 钉成 "a1"，而 adaptAsset() 的
+     _adaptAid 优先级又高于 _detailAid，结果：从资产列表打开**任意**资产的 t6，
+     看到的与保存的都是 a1 的配置（该页签对非 a1 资产完全失效）。
+     修法：回落链补 _detailAid（唯一被持久化的「当前详情资产」，见 saveDemoState 的
+     detailAid 字段）；写回**保留**，但必须写回**解析后**的正确 id —— 原实现往高优先级
+     槽位写回常量 CUR，那才是污染源。
+     ⚠ _adaptAid 是既有契约：全仓 15 个门禁脚本用它定位「当前适配资产」，页面内多次
+       重渲染也靠它保持稳定 —— 修 bug 不等于砸掉契约。 */
+  var list = adaptRefAssets();
+  var has = function (x) { return !!x && list.some(function (a) { return a.id === x; }); };
+  var id = has(window._adaptAid) ? window._adaptAid
+    : has(window._detailAid) ? window._detailAid
+    : ((list[0] && list[0].id) || (typeof CUR !== "undefined" ? CUR : ""));
+  window._adaptAid = id;
+  return id;
+}
+function adaptAssetSel(){
+  var cur = adaptCurAid();
+  return '<select id="adaptAssetSel" data-adapt-asset="1" style="width:340px">' +
+    adaptRefAssets().map(function(a){
+      return '<option value="' + esc(a.id) + '"' + (a.id === cur ? " selected" : "") + ">" + esc(a.name) + "（" + esc(a.id) + "）</option>";
+    }).join("") + "</select>";
+}
+
+/* —— 以下段落属「身份适配」，与上方切除段无依赖 —— */
+/* 用户身份档位卡（A~D）：★ 不再显示任何全局统计 ——
+   单资产配置面上出现「启用资产 12 个」会被读成本资产数据（语义越权）。
+   改为呈现「适用条件 / 代价」，这才是选档时真正需要的信息。 */
+var USER_MODE_FACTS = {
+  /* ★ 2026-09-30（第十六轮 · 全量评审）：need 原写「须先作信任声明（前置）」，
+     而 adaptTierNote 渲染时已加「<b>前置</b>：」前缀 —— 页面实际呈现
+     「前置：须先作信任声明（前置）」，同词重复两次。去掉行内的「（前置）」。 */
+  A: { need: "须先作信任声明", cost: "业务侧不需改造，注入请求头 / 参数", tag: "推荐" },
+  B: { need: "业务侧须实现 userinfo 回调", cost: "身份由业务侧主动换取，时效可控", tag: "推荐" },
+  C: { need: "业务侧须支持 OIDC / SAML / CAS", cost: "标准协议联合身份，改造量最大", tag: "推荐" },
+  D: { need: "须先配本页签的表单契约", cost: "托管口令代填，受资产登录页实现约束", tag: "最弱环" }
+};
+function adaptModeCards(){
+  /* ★ 2026-09-30：四张 356px 大卡 → 一行紧凑档位条。
+     理由：四档卡底边实测 785px，**越过首屏 762px**，客户打开页签看不全主操作；
+     而卡片里「前置 / 形态」两行长文属解释性内容，按页面「能删就删」原则应退出首屏。
+     保留：档名 + 强弱标记（选档时唯一需当场比较的信息）。
+     让位：前置条件 / 形态代价 —— 改为选中档后在下方一行说明（adaptTierNote）。 */
+  var cur = adaptMode();
+  /* ★ 2026-09-30（用户裁定）：档位条**并入 N 档** —— 由「先问是否传导、再问哪档」的两级结构，
+     改为**一行五档平铺**（不传导 / A / B / C / D）。
+     理由：N（不传导）本就是「传导形态」的一个取值，把它单拎出来当上一级问题，
+     客户要走两步、且两级控件的选中态互相牵制（改上面一级会让下面一级的选中失效）。
+     档序沿用 SSO_MODE_DEF 自然序 N→A→B→C→D：N 在最左（出厂默认），编号档随后。
+     强度信息由每档自带徽标承担（N 中性灰、A/B/C 强、D 弱），不靠排序表达。 */
+  /* ⚠ 数据源必须是 ADAPT_MODES 而非 SSO_MODE_DEF —— 后者只有 A/B/C/D、**不含 N**
+     （N 是「身份适配」页签特有的档位，定义在 ADAPT_MODES 里）。
+     首版误用 SSO_MODE_DEF，filter 恒不命中 N，五档只剩四档（2026-09-30 实测踩到）。
+     ADAPT_MODES 的定义顺序本就是 N→A→B→C→D，故直接沿用其序、无需再排。 */
+  var order = ADAPT_MODES;
+  return order.map(function(m){
+    var on = cur === m.k;
+    var isN = (m.k === "N");
+    var strong = isN ? "默认" : (m.k === "D" ? "弱" : "强");
+    var scls = isN ? "t-gray" : (m.k === "D" ? "t-warn" : "t-ok");
+    /* N 档的档名较长（不注入（仅平台鉴权）），档位条里用短名「不传导」。 */
+    var nm = isN ? "不传导" : m.name;
+    return '<button type="button" class="' + (on ? "on" : "") + (isN ? " tb-n-default" : "") +
+        '" data-adapt-mode="' + esc(m.k) + '"' +
+        (on ? ' aria-pressed="true"' : ' aria-pressed="false"') +
+        ' title="' + esc(m.name) + '">' +
+      '<span class="tb-k">' + esc(isN ? "—" : m.k) + "</span>" +
+      '<span class="tb-n">' + esc(nm) + "</span>" +
+      '<span class="tag ' + scls + ' tb-s">' + strong + "</span>" +
+      "</button>";
+  }).join("");
+}
+/* 选中档的一行说明（原四档卡里的「前置 / 形态」两行，移到这里，只显示当前档）。
+   ★ 2026-09-30：N 档并入档位条后，其说明也走本函数（此前 N 不在 USER_MODE_FACTS 里、直接返回空）。 */
+function adaptTierNote(){
+  var m = adaptMode();
+  var draftN = ADAPT_MODE_TMP[adaptKey()] || null;
+  var savedN = (adaptSt() && adaptSt().mode) || null;
+  var dirtyN = draftN && draftN !== savedN;
+  if (m === "N") {
+    /* ★ N 档无参数子节头（chips 只挂 A~D 档），「未保存的切换」提示在本行补 ——
+       否则切到 N 后页面上没有任何「未保存」标记，档位高亮看着像已生效。 */
+    return '<div class="mini" style="margin-top:10px;padding:8px 10px;background:var(--bg2);border-radius:6px;line-height:1.7">' +
+      "<b>当前档位</b>　<b>不传导</b>：只做平台自身鉴权，<b>不改写上游请求、不附加身份字段</b>（出厂默认）。" +
+      (dirtyN ? '　<span style="color:var(--warn)">（未保存 —— 点「保存并下发」后生效）</span>' : "") +
+      "</div>";
+  }
+  var f = USER_MODE_FACTS[m] || null;
+  if (!f) return "";
+  return '<div class="mini" style="margin-top:10px;padding:8px 10px;background:var(--bg2);border-radius:6px;line-height:1.7">' +
+    "<b>当前档位</b>　" +
+    "<b>前置</b>：" + esc(f.need) + "　·　<b>形态</b>：" + esc(f.cost) +
+    "</div>";
+}
+/* 机器身份配置块（网关 → 上游 · 连接级机器凭据）。
+   ★ 2026-09-30 用户裁定：**由 t4 移入 t6**。理由：t6 页面标题是「平台向上游出示什么身份」，
+     机器身份与用户身份是同一问题的两面 —— 此前机器身份的**配置面**在 t4，t6 只留一行跳转指引，
+     同一件事被劈成两页；客户看 t6 时无法就地改机器身份。移入后 t6 为该问题的唯一配置面。
+   资产键沿用 a._inj / a._injCred —— 与 t4 / 编辑向导同源，故不存在两份状态。 */
+function upInjBlock(){
+  var a = adaptAsset(); if (!a) return "";
+  upCfgEnsure(a);
+  var s = upCfgDft(a);
+  /* ★ 2026-09-30（第七轮）：机器身份草稿化 —— 草稿（UP_INJ_DRAFT）优先于已存值，
+     整页重渲染（如信任声明勾选触发）后草稿选择不再丢失。 */
+  var dr = UP_INJ_DRAFT[adaptKey()] || {};
+  var inj = (dr.inj != null) ? dr.inj : s.inj;
+  var credSel = (dr.cred != null && dr.cred !== "") ? dr.cred : s.cred;
+  var injCred = (inj === "cred");
+  var non = upScopeInfo(a).non;
+  var radios = ["none", "cred"].map(function (v) {
+    var on = (inj === v);
+    return '<label class="' + (on ? "on" : "") + '">' +
+      '<input type="radio" name="adInj" value="' + v + '"' + (on ? " checked" : "") + ">" +
+      (v === "none" ? "不注入" : "注入网关托管凭据") + "</label>";
+  }).join("");
+  /* ★ 2026-09-30（第十六轮 · 全量评审修复）：凭据下拉**兜底** ——
+     a._injCred 指向已停用 / 已删除的凭据时（UP_CREDS 只列「启用」态），
+     原实现没有任何 option 命中 → 浏览器显示第一项，而「保存并下发」仍把旧 id 落库
+     —— 「看到的」与「保存的」不是一个凭据。 */
+  var credList = UP_CREDS();
+  if (credSel && !credList.some(function (c) { return c[0] === credSel; })) credSel = (credList[0] || [])[0] || "";
+  var credOpts = credList.map(function (c) {
+    return '<option value="' + esc(c[0]) + '"' + (credSel === c[0] ? " selected" : "") + ">" +
+      esc(c[1]) + "（" + esc(c[2]) + "）</option>";
+  }).join("");
+  /* ★ 2026-09-30（第五轮）：单卡化 + 与用户身份卡同构。
+     原结构「体卡 + 独立裸提交卡」两张平级卡；行结构原用 .kv（130px 标签列）。
+     现与用户身份卡对齐：rowlab 行标签 → .rmode 独占行 → .fldrow 凭据行 → 提交栏为卡内末行。
+     （.fldrow 原规则 scoped .up-cfg，本卡不在 .up-cfg 内而失配 → display:block，
+       proto.css 第 8 段已给出无 scope 版本。） */
+  return '<div class="card"><div class="card-h">' +
+      '<h3>机器身份<span class="sub">连接级 · 对所有访问者恒定</span></h3>' +
+      '<div class="toolbar"><button class="btn sm" type="button" data-auth="adaptGotoCredHost">凭据在「网关凭据托管」→</button></div>' +
+    "</div>" +
+    '<div class="card-b">' +
+      /* ★ 2026-09-30（用户裁定）：删行标签「上游认证注入」与「二选一 · 点击选用」——
+         前者与卡标题「机器身份 · 网关 → 上游」语义重复，后者对两枚胶囊单选是废话。 */
+      (non === 0 ? '<div style="margin-bottom:6px"><span class="tag t-warn" title="本资产全部在网路径均为 public —— 按「public 永不注入」硬规则，本区块当前不生效；若确需注入，请先在「资产细粒度访问策略」中取消 public。">当前不生效</span></div>' : "") +
+      '<span class="rmode" id="adInjMode">' + radios + "</span>" +
+      '<div id="adCredRow" class="fldrow" style="display:' + (injCred ? "" : "none") + ';margin-top:8px"><label>托管凭据</label><div>' +
+        '<select id="adCredSel">' + credOpts + "</select>" +
+        '<div class="help">网关到上游的<b>机器对接凭据</b>（Basic / API-Key / OAuth2 Client），由平台维护，见 <a href="#" class="hl" style="text-decoration:none" onclick="goCred(\'c1\');return false">网关凭据托管</a>。</div>' +
+        '<div id="adCredFlow" class="help" style="margin-top:6px"></div>' +
+      "</div></div>" +
+    "</div>" +
+    (authCanEdit("det")
+      ? '<div class="card-b cbar">' +
+          '<button class="btn" type="button" data-auth="adaptInjReset">恢复默认</button>' +
+          '<button class="btn primary" type="button" data-auth="adaptInjSave">保存并下发</button></div>'
+      : '<div class="card-b"><div class="mini">🔒 当前角色 <b>' + esc(authRole()) +
+        "</b> 对「身份适配」无编辑权 —— 可查看、不可改。</div></div>") +
+    "</div>";
+}
+
+/* 机器身份块的事件绑定（渲染后调用；不用委托，因本块由 t6 每次重绘重建）。 */
+function upInjBind(){
+  var a = adaptAsset(); if (!a) return;
+  /* ★ 2026-09-30：控件回退为 .rmode 单选后，事件绑定同步回退为 <label> 点击
+     （点 label 触发其内 radio 的隐式选中，故读 input.value 取档位）。 */
+  /* ★ 2026-09-30（第七轮）：点击 / 选择只写 UP_INJ_DRAFT，不写 a._inj、不 saveDemoState。
+     此前点单选即落盘但 toast 说「（未保存）」—— 文案与行为相反；
+     「保存并下发」读 upCfgDft（即已被点击污染的 a._inj），按钮形同虚设。 */
+  var k = adaptKey();
+  var im = document.getElementById("adInjMode");
+  if (im) im.querySelectorAll("label").forEach(function (l) {
+    l.addEventListener("click", function () {
+      var v = l.querySelector("input").value;
+      im.querySelectorAll("label").forEach(function (x) {
+        x.classList.remove("on"); var xi = x.querySelector("input"); if (xi) xi.checked = false;
+      });
+      l.classList.add("on"); l.querySelector("input").checked = true;
+      UP_INJ_DRAFT[k] = UP_INJ_DRAFT[k] || {};
+      UP_INJ_DRAFT[k].inj = v;
+      var cr = document.getElementById("adCredRow"); if (cr) cr.style.display = (v === "cred") ? "" : "none";
+      toast("机器身份已切换：" + (v === "none" ? "不注入" : "注入网关托管凭据") + "（未保存）");
+    });
+  });
+  var cred = document.getElementById("adCredSel");
+  if (cred) cred.onchange = function () {
+    UP_INJ_DRAFT[k] = UP_INJ_DRAFT[k] || {};
+    UP_INJ_DRAFT[k].cred = cred.value;
+    var f = document.getElementById("adCredFlow"); if (f) f.innerHTML = upCredFlow(cred.value);
+    toast("托管凭据已选择（未保存）");
+  };
+  var cf = document.getElementById("adCredFlow");
+  if (cf) {
+    var dr2 = UP_INJ_DRAFT[k] || {}, s0 = upCfgDft(a);
+    cf.innerHTML = upCredFlow((dr2.cred != null && dr2.cred !== "") ? dr2.cred : s0.cred);
+  }
+}
+/* 机器身份（网关 → 上游连接级机器凭据）· t6 页面入口。
+   ★ 2026-09-30 用户裁定：**由 t4 移入本页**。此前配置面在「上游透传与校验」（原「注入网关
+   托管凭据」），t6 只留一行跳转指引 —— 同一件事被劈成两页，客户在 t6 看不到、也改不了机器身份。
+   移入后配置面唯一：t6 的「机器身份」块（写 a._inj / a._injCred）。 */
+function adaptMachineHint(){
+  return upInjBlock();
+}
+
+/* —— 以下段落属「身份适配」，与上方切除段无依赖 —— */
+/* ★ 2026-09-30（用户裁定）：接入信息交付**按档位切换** ——
+   此前只交付 B 档（key ＋ userinfo）一组地址，A/C/D/N 档无内容可交；
+   而「给资产侧开发者什么」正是本页存在的理由，各档交付物完全不同，须逐档呈现。
+   · N 不注入 —— 无接口交付（不注入任何身份字段）；
+   · A token 注入 —— 注入位置/字段名 + JWT 内容形态 + OIDC 标准验签端点（发现文档 / jwks_uri）；
+   · B key ＋ userinfo —— userinfo 直连/网关代理地址 + key 字段 + 换取约定；
+   · C 协议级 SSO —— 协议 + 对外发布的元数据（IdP metadata / 发现文档）+ 唯一主标识映射；
+   · D 账号密码代填 —— 无接口交付（浏览器层代填）+ 需资产侧配合项。
+   ⚠ 端点一律按开放协议标准的固定发现约定给出（RFC 8615 well-known / SAML metadata），不写内部自定路径。
+   卡片与「复制 / 导出」共用本函数返回的数据，避免两处口径漂移。 */
+function adaptDeliverInfo(){
+  var m = adaptMode();
+  var NM = ((ADAPT_MODES.filter(function (x) { return x.k === m; })[0]) || {}).name || m;
+  var reach = "资产<b>服务端</b>能否直连平台取决于其网络位置与网络策略；资产的<b>网页前端只能访问网关</b>。";
+  var rows = [], text = "";
+  if (m === "A") {
+    var apos = adaptF("A", "pos", "请求头（默认）");
+    var afld = adaptF("A", "field", "Authorization");
+    rows = [
+      ["注入位置", esc(apos)],
+      ["令牌字段名", '<code class="kr">' + esc(afld) + "</code>"],
+      ["令牌形态", "平台<b>重签的短时 JWT</b> —— OIDC 标准 claim（sub / name / email…），audience 限定本资产、短时效、单向派生"],
+      ["内容解析", "payload 为 Base64URL <b>编码</b>（编码 ≠ 加密），标准 JWT 库直接读取，<b>无需解密端点</b>"],
+      ["验签公钥", '发现文档 <code class="kr">GET https://&lt;平台&gt;/.well-known/openid-configuration</code>；公钥集（jwks_uri）<code class="kr">GET https://&lt;平台&gt;/.well-known/jwks.json</code>'],
+      ["在线校验（可选）", "需即时感知登出 / 吊销时叠加 <b>RFC 7662 自省端点</b>（<code class=\"kr\">POST</code>，地址随发现文档的 <code class=\"kr\">introspection_endpoint</code> 暴露）；不透明 token 只能走此路"],
+      ["对接结论", reach]
+    ];
+    /* ★ 2026-09-30（第十七轮 · 全量评审）：未声明信任时交付卡**标失效** ——
+       信任声明是 A 档前置（未声明不可保存、参数控件禁用），而交付卡此前不读该状态，
+       照样把全部接入信息列给资产侧，配置与交付两边结论不一致。 */
+    if (!adaptTrust()) rows.unshift(["生效状态",
+      "<b>本档未声明信任</b> —— 参数不可保存，以下接入信息尚未生效（FR-1.4 前置）"]);
+    text = "档位 A（token 注入）：注入位置 " + apos + "，令牌字段名 " + afld + "；内容为平台重签的短时 JWT（OIDC 标准 claim：sub / name / email 等）；"
+      + "payload 为 Base64URL 编码（非加密），标准 JWT 库直接解析，无需解密端点；"
+      + "验签公钥：发现文档 https://<平台>/.well-known/openid-configuration、公钥集 https://<平台>/.well-known/jwks.json；"
+      + "如需即时感知登出 / 吊销，叠加 RFC 7662 自省端点（POST，地址随发现文档的 introspection_endpoint 暴露）。资产服务端能否直连平台取决于网络位置与网络策略；资产的网页前端只能访问网关。";
+  } else if (m === "B") {
+    rows = [
+      ["userinfo 直连地址", '<code class="kr">https://&lt;平台&gt;/api/v1/sso/userinfo</code>（GET · 资产服务端可访问平台服务时用，适配服务端发起的换取）'],
+      ["网关代理地址", '<code class="kr">https://{无端网关}/sso/userinfo</code>（GET · 资产无法访问平台时用；前端发起的换取走此地址）'],
+      ["key 字段", '<code class="kr">X-SSO-Key</code>（回调 userinfo 时经请求头传递，URL 与访问日志不含 key）'],
+      ["换取约定", "资产在换取入口拿 key → 调 userinfo 换用户信息 → 建自身会话 → 跳转首页；key 单次消费、短时有效"],
+      ["来源登记", "资产侧换取请求的来源 <b>IP / 域名须先向平台登记</b>（本页「来源限制」），白名单外一律拒绝并告警（FR-2.4）"],
+      ["对接结论", reach]
+    ];
+    text = "档位 B（key ＋ userinfo）：userinfo 地址 https://<平台>/api/v1/sso/userinfo（资产服务端可访问平台服务时用）；https://{无端网关}/sso/userinfo（资产无法访问平台时用）；资产的网页前端只能访问网关；key 字段 X-SSO-Key（经请求头传递）。";
+  } else if (m === "C") {
+    /* ★ 2026-09-30（第十五轮 · 用户裁定）：交付内容**按协议** ——
+       §5.2 表给出三协议各自的平台职责与资产侧要求；FR-3.1 直接点名交付物：
+       「CAS 服务地址、SAML 元数据、OIDC client 凭据」。
+       此前只按「SAML / 非 SAML」二分，选 CAS 会输出 OIDC 发现文档（协议与交付物不符）。 */
+    var proto2 = adaptProto();
+    var P2 = CD_PROTO_DEF[proto2] || CD_PROTO_DEF["OIDC"];
+    /* ★ 2026-09-30（用户裁定）：主标识由协议规范封装，交付卡直接陈述**协议标准标识**。 */
+    var idRow = "<b>" + esc(P2.idName) + "</b>（" + esc(P2.idField) + "）";
+    var cReach = "协议握手在<b>浏览器层</b>完成（无端＝用户浏览器、有端＝SDK 内置浏览器），不依赖端侧 SDK 注入能力。" + reach;
+    /* ★ 2026-09-30（第十六轮 · 全量评审）：交付内容随「元数据发布」开关**联动** ——
+       此前 cdMeta 可设为「否」，交付卡却**无条件**写「对外发布发现文档 / IdP metadata」，
+       同一页两处结论相反；管理员按交付卡给资产方，资产方却拿不到那个文档。 */
+    var metaOn = String(adaptF("C", "meta", "是")).indexOf("是") === 0;
+    if (proto2.indexOf("SAML") === 0) {
+      rows = [
+        ["对接协议", "SAML 2.0（平台作 <b>IdP</b>）"],
+        ["元数据交付", metaOn
+          ? "对外发布 <b>IdP metadata</b>：EntityID / SSO 端点（HTTP-Redirect 与 HTTP-POST 两种 binding）/ 签名证书"
+          : "<b>已关闭元数据发布</b> —— 资产 SP 无法自动导入，须离线交换 EntityID / SSO 端点 / 签名证书"],
+        ["对外主标识", idRow],
+        ["NameID 格式", esc(adaptF("C", "nameFmt", "未指定 unspecified（默认）")) + "　—— 须与资产 SP 的 <b>NameIDPolicy</b> 一致，不一致资产侧会拒绝登录"],
+        ["资产侧动作", "导入 IdP metadata；与平台交换双方 <b>EntityID</b> 与 ACS 地址，完成断言握手联调"],
+        ["对接结论", cReach]
+      ];
+      text = "档位 C（协议级 SSO）：协议 SAML 2.0，平台作 IdP；交付 IdP metadata（EntityID / SSO 端点 / 签名证书）；"
+        + "对外主标识：" + P2.idName + "（" + P2.idField + "）；"
+        + "资产侧导入 metadata 并交换双方 EntityID 与 ACS 地址；协议握手在浏览器层完成。";
+    } else if (proto2.indexOf("CAS") === 0) {
+      /* ★ 2026-09-30（调研订正 · CAS Protocol 2.0 §2.5 / 3.0）：票据校验端点随协议版本 ——
+         2.0 的 /serviceValidate 只回用户名（cas:user），3.0 的 /p3/serviceValidate 才回属性。 */
+      var casVer = adaptF("C", "casVer", "CAS 3.0（默认）");
+      var casV3 = casVer.indexOf("3.0") > 0;
+      var casEP = casV3 ? "/p3/serviceValidate" : "/serviceValidate";
+      rows = [
+        ["对接协议", "CAS（平台作 <b>IdP</b>）· " + esc(casVer)],
+        ["服务地址", '资产 CAS 客户端指向 <code class="kr">https://&lt;平台&gt;/cas</code>：<code class="kr">/login</code>（登录）· <code class="kr">/logout</code>（登出）· <code class="kr">' + casEP + '</code>（票据校验）—— 按 CAS 协议约定的服务路径'],
+        ["属性返回", casV3
+          ? "票据校验<b>返回用户属性</b>（工号 / 邮箱等可用于身份映射）"
+          : "<b>仅返回用户名</b>（cas:user），不含属性 —— 需向资产传递工号 / 邮箱时须改用 <b>CAS 3.0</b>"],
+        ["对外主标识", idRow],
+        ["资产侧动作", "资产侧 CAS 客户端指向平台服务地址、向平台<b>登记 service 回调地址</b>，完成票据回校验联调（政企存量系统常见）"],
+        ["票据与安全", "票据为随机会话标识、<b>不做签名</b>；真实性由 <b>HTTPS 通道 + 资产侧回平台校验</b>保证；本协议无标准元数据文档"],
+        ["对接结论", cReach]
+      ];
+      text = "档位 C（协议级 SSO）：协议 CAS（" + casVer + "），平台作 IdP；交付 CAS 服务地址 https://<平台>/cas（含 /login、/logout、" + casEP + "）；"
+        + (casV3 ? "票据校验返回用户属性；" : "票据校验仅返回用户名，需属性时须用 CAS 3.0；")
+        + "对外主标识：" + P2.idName + "（" + P2.idField + "）；"
+        + "资产侧 CAS 客户端指向平台服务地址并完成票据回校验；票据不做签名，靠 HTTPS 与回校验保证真实性；协议握手在浏览器层完成。";
+    } else {
+      rows = [
+        ["对接协议", "OIDC（平台作 <b>IdP</b>）"],
+        ["发现文档", metaOn
+          ? '对外发布 <code class="kr">https://&lt;平台&gt;/.well-known/openid-configuration</code>（含授权 / 令牌 / 用户信息端点，公钥集 <code class="kr">jwks_uri</code>）'
+          : '<b>已关闭元数据发布</b> —— RP 无法自动发现端点，须离线提供授权 / 令牌 / 用户信息端点与 <code class="kr">jwks_uri</code>'],
+        ["client 凭据", "<b>client_id / client_secret</b> —— 平台自动生成，随接入配置一并交付"],
+        ["对外主标识", idRow],
+        ["资产侧动作", "按发现文档配置 RP（client_id / client_secret / redirect_uri <b>须报平台登记</b>），完成授权码握手联调"],
+        ["对接结论", cReach]
+      ];
+      text = "档位 C（协议级 SSO）：协议 OIDC，平台作 IdP；交付 client 凭据（client_id / client_secret）与发现文档 https://<平台>/.well-known/openid-configuration（含 jwks_uri）；"
+        + "对外主标识：" + P2.idName + "（" + P2.idField + "）；"
+        + "资产侧按发现文档配置 RP（client_id / client_secret / redirect_uri）；协议握手在浏览器层完成。";
+    }
+    /* ★ 2026-09-30（第十七轮 · 全量评审）：交付卡补 **SLO 行** ——
+       配置区有「单点登出 启用 / 关闭」（cdSlo），而交付卡此前不含任何 SLO 信息，
+       配置与交付脱节；资产侧可能按交付卡断言「无单点登出」。 */
+    var sloOn = String(adaptF("C", "slo", "启用")).indexOf("启用") === 0;
+    rows.splice(Math.max(rows.length - 1, 0), 0, ["单点登出（SLO）", sloOn
+      ? "启用 —— 登出白泽时按协议向资产发起单点登出；依赖资产侧实现完整度，<b>尽力而为并记录</b>（FR-3.5）"
+      : "<b>关闭</b> —— 不做单点登出，资产侧会话保留至其自身超时"]);
+  } else if (m === "D") {
+    rows = [
+      ["交付对象", "<b>无接口交付</b> —— 代填在浏览器层完成，资产侧不接收身份字段、无需开发对接"],
+      ["需资产侧配合", "登记时声明信任平台凭据；提供登录页地址与表单契约（选择器未命中即停止代填）"],
+      ["凭据保管", "本页只配<b>表单契约</b>、不落任何凭据；凭据托管策略见下方「代填凭据」卡"],
+      ["对接结论", "代填受资产登录页结构约束，页面改版会导致失效，须重新配置契约并测试"]
+    ];
+    text = "档位 D（账号密码代填）：无接口交付——代填在浏览器层完成，资产侧无需开发对接；需资产侧配合（声明信任平台凭据、提供登录页地址与表单契约）；登录凭据由平台凭据托管加密保管（SM4）、入审计、可独立吊销；页面改版会导致代填失效，须重新配置契约并测试。";
+  } else {
+    rows = [
+      ["交付对象", "<b>无接口交付</b> —— 本档不向资产注入任何身份字段，仅由平台完成访问鉴权"],
+      ["需资产侧配合", "接受平台网络侧鉴权；资产自身可无认证体系"],
+      ["后续如需识别用户", "切换 A（token 注入）／B（key ＋ userinfo）／C（协议级 SSO）档"]
+    ];
+    text = "档位 N（不注入 · 仅平台鉴权）：无接口交付——不向资产注入任何身份字段，仅由平台完成访问鉴权；资产自身可无认证体系；后续如需识别用户，切换 A / B / C 档。";
+  }
+  return { mode: m, name: NM, rows: rows, text: text };
+}
+function adaptDeliverCard(){
+  var info = adaptDeliverInfo();
+  return '<div class="card"><div class="card-h"><h3>接入信息交付<span class="sub">交付给资产侧开发者</span></h3>' +
+    '<div class="toolbar"><button class="btn" type="button" data-auth="authCopy2">复制接入信息</button>' +
+    '<button class="btn" type="button" data-auth="authExportInfo">导出接入信息</button></div></div>' +
+    '<div class="card-b">' +
+    '<div class="note" style="margin:0 0 10px">本资产当前档位 <b>' + esc(info.mode) + " · " + esc(info.name) +
+      "</b>；下列信息随<b>档位切换</b>变化。地址中的 <code class=\"kr\">&lt;平台&gt;</code> 与 "
+      + '<code class="kr">{无端网关}</code> 为占位符，按实际部署域名替换。</div>' +
+    info.rows.map(function (r) {
+      return '<div class="kv" style="grid-template-columns:150px 1fr;margin-bottom:6px"><span class="k">' + r[0] + '</span><span class="mini">' + r[1] + "</span></div>";
+    }).join("") +
+    "</div></div>";
+}
+
+function adaptVaultCard(){
+  /* ★ 2026-09-30（第十六轮 · 全量评审）：**删三条全局统计** ——
+     「代填凭据 N 条 / 高危资产代填 / 90 天必要性复核」取自全局 SS.vault，
+     摆在**单个资产**的配置面上会被读成本资产数据（语义越权）——
+     与本页 11728 已确立的口径同源：「单资产配置面不出现全局统计」。
+     本卡退回其唯一职责：把 D 档代填与凭据托管接起来。 */
+  /* ★ 2026-09-30（第十七轮 · 全量评审修复）：副题原写「由『网关凭据托管』统一承载」，
+     而本卡按钮（authGotoCred）实际跳转 **pg-auusercred（用户代填账号托管）** ——
+     副题与跳转目标指向两个不同页面（「网关凭据托管」是机器身份卡的 pg-cred）。
+     本卡讲的是**代填凭据**（谁在哪个资产用什么账号），归属用户代填账号托管。 */
+  return '<div class="card"><div class="card-h"><h3>代填凭据<span class="sub">由「用户代填账号托管」统一承载</span></h3>' +
+    '<div class="toolbar"><button class="btn" type="button" data-auth="authGotoCred">前往凭据托管 →</button></div></div>' +
+    '<div class="card-b">' +
+    '<div class="mini">本页只配<b>表单契约</b>；代填所用的账号口令由凭据托管加密保管、入审计、可独立吊销，此处不落任何凭据。</div>' +
+    "</div></div>";
+}
+/* 次要信息折叠区：把「接入信息交付 / 凭据托管联动」两张只读卡收进 <details>。
+   理由：这两块对本资产「配什么」无直接帮助，恒常展开会**把主配置区挤到屏外**；
+   客户演示时打开必看，但不应抢占首屏。 */
+function adaptMoreInfo(){
+  return '<details class="card" style="overflow:hidden">' +
+    '<summary style="cursor:pointer;list-style:none;padding:14px 18px;display:flex;align-items:center;gap:8px">' +
+      '<span style="font-size:15px;font-weight:500">配套信息</span>' +
+      '<span class="sub" style="font-size:12.5px;color:var(--txt3)">接入信息交付 · 凭据托管联动</span>' +
+      '<span style="margin-left:auto;font-size:12.5px;color:var(--txt3)">点击展开</span>' +
+    "</summary>" +
+    '<div id="adaptInfoBody" style="padding:0 0 2px">' + adaptDeliverCard() + adaptVaultCard() + "</div>" +
+    "</details>";
+}
+/* ★ 2026-09-30（用户裁定）：原「生命周期与缺口」卡**删除** ——
+   其内容是**账号供给**（认证源 → 同步与供给）的开通状态，不是本资产「身份适配」的可配置项，
+   对管理员在本页的决策无帮助（「边界」一栏属平台自身能力声明，更不属本页口径）。 */
+
+/* —— 以下段落属「身份适配」，与上方切除段无依赖 —— */
+/* 身份适配页签（资产详情 t6）· 页级渲染
+   ★ 2026-09-30：由「独立页」改为「资产详情页签」。
+     · 资产已由所在详情页确定（window._detailAid），故**不再需要资产引用选择器**；
+     · 代填契约（D 档）随资产走 —— 这正是本页签存在的关键理由。 */
+function renderAdaptPage(){
+  var el = document.getElementById("detAdaptBody"); if (!el) return;
+  adaptCurAid();
+  var a = (typeof adaptAsset === "function") ? adaptAsset() : null;
+  var nm = a ? a.name : "（未选择资产）";
+  /* ★ 2026-09-30（第五轮）：顶层 = 导语 + 用户身份卡 + 机器身份卡 + 折叠配套。
+     一张卡 = 一个业务块 = 一次提交；参数区与提交栏都是卡内子区（不再各成一张卡）。
+     导语两要点的顺序改为与正文一致（用户身份在前 —— 它是主操作）。
+     删 MARK_USER_HOST 占位 + outerHTML 替换机制：adaptUserBlock 直接拼进 innerHTML。 */
+  el.innerHTML =
+    /* ★ 2026-09-30（第十六轮 · 全量评审）：导语收成一句 ——
+       两条 lead-pt 与下方两张卡的卡头（用户身份 / 机器身份）逐字重复，
+       「方向不同、互不影响」属解释性修辞（机制说明，非可感知结果），一并去。 */
+    '<div class="lead-bar">' +
+      '<p class="lead-line">本页签配置 <b>平台向「' + esc(nm) + '」发出的请求里带什么身份</b>：用户身份（用户 → 资产）与机器身份（平台 → 上游）两块。</p>' +
+      '<p class="lead-note">连接安全（TLS / 信任锚 / mTLS）与请求头治理在「<b>代理与上游</b>」页签。</p>' +
+    "</div>" +
+    /* ① 用户身份卡：档位条 + 参数子区 + 提交栏同卡（宿主由 adaptUserBlock 产出） */
+    adaptUserBlock() +
+    /* ② 机器身份卡：行选择 + 凭据 + 提交栏同卡（与用户身份卡同构） */
+    adaptMachineHint() +
+    /* ③ 次要信息：接入信息交付 / 凭据托管联动（默认收起，避免占屏挤压主配置区） */
+    adaptMoreInfo();
+  renderDetAdapt();
+  /* 机器身份块的事件绑定（本块每次重绘重建，故用直接绑定而非委托） */
+  if (typeof upInjBind === "function") upInjBind();
+}
+
+function adaptUserBlock(){
+  /* 用户身份卡：档位选择 + 参数子区 + 提交栏**同卡**（第五轮合并）。
+     #detAdaptForm / #adaptBarHost 由 renderDetAdapt() 填充。
+     ⚠ 两个宿主必须**无条件产出**：renderDetAdapt 找不到会直接 return，
+       参数区将永远空白（旧版回退 #detAdaptBody 会覆盖整页，该回退已删）。 */
+  return '<div class="card"><div class="card-h">' +
+      '<h3>用户身份<span class="sub">代用户访问时带什么身份</span></h3>' +
+      '<div class="toolbar"><button class="btn sm" type="button" data-auth="adaptGotoCred">凭据在「用户代填账号托管」→</button></div></div>' +
+    '<div class="card-b">' +
+      '<div class="rowlab"><span class="t">传导形态</span></div>' +
+      '<div class="tier-bar" role="group" aria-label="传导形态档位">' + adaptModeCards() + "</div>" +
+      adaptTierNote() +
+    "</div>" +
+    '<div id="detAdaptForm"></div>' +
+    '<div id="adaptBarHost"></div>' +
+    "</div>";
+}
+
+/* 兼容旧调用名 */
+function renderAdapt(){ renderAdaptPage(); }
+
+/* ==========================================================================
    多页化 bootstrap：恢复持久化数据 → 按当前页渲染
    （替代原单文件的末尾初始化；深链 ?pg=... / #cred 也在此统一处理）
    ========================================================================== */
+/* ==========================================================================
+   白泽零信任 · 动态防护模块（2026-09-30 · 二期口径 · 演示强化版 v6）
+   防护总览（pg-dpov）/ 防护策略（pg-dppol）/ 行为基线（pg-dpbase）/ 对抗能力（pg-dparms）
+   + 公共页：风险事件告警（pg-alert，不属动态防护，覆盖各防护域）
+   --------------------------------------------------------------------------
+   口径锚点：二期 PRD F1.4~F1.7（02-需求与PRD/需求文档-0902）；
+   页面规划：03-设计与原型/动态防护控制台-页面规划方案-20260930.md。
+   硬约束（来自规划断言清单）：
+   ① 处置档位 = 观察记录 / 动态挑战 / 拒绝访问 / 限流熔断（联动全局限流）（键值 OBSERVE / CHALLENGE / REJECT / LIMIT）；
+     评分区间连续不重叠、闭合 0~100，默认「观察记录」起步；
+     ★ 追加认证（ADD_AUTH）不在处置档位取值域内，而是**动态挑战的最高模式** —— 由动态防护在
+       P4 档**主动发起**：直接请求认证服务按目标级别（**= 被访问目标资产的安全等级**）再认证；
+       P4 档（80~100 分）的处置为**两段式**：先请求追加认证，失败或认证通过后仍异常才转拒绝 / 切断；
+       动态挑战的最高模式即此档 —— 不注入客户端挑战，改要求以合适方式重新认证，不通过不得继续执行。
+       （权威源：动态防护与上下文风险旁路裁决-整合设计-20260930 §1.2 / §三 边界一）
+   ② 优先级矩阵：准入拒绝 > 动态防护处置 > 准入放行；准入侧被拒绝的对象配置置灰（请求不达动态防护），
+     且该对象流量不进入动态防护评分（事件流不出现该对象）。切断（CUT）不是准入策略动作，
+     而是会话失效与安全收紧事件的会话处置结果（F6.2 规则 12），不参与本矩阵；
+   ③ 豁免 = 按资产豁免某类风险源处置；必填结束时间与原因、二次确认（ask2FA）；无永久豁免；
+     审批人 ≠ 创建人（三权互斥演示）；
+   ④ 语义检测（F1.4）属本域检测项：本页提供启用开关与命中呈现；规则内容编辑跳规则库（pg-rulelib），
+     本模块不含规则编辑控件；
+   ⑤ 第四期内容（主动对抗五手段 / AI 智能对抗闭环 / 大模型决策引擎）不渲染、不出现占位说明；
+      「对抗能力」页承载的是**二期 F1.1 / F1.2 的配置面与效果面**（令牌与防重放 / JS 注入与动态封装 /
+      真实浏览器验证 / 动态挑战 / 人机验证），与第四期的「对抗策略 / 对抗成效 / 载荷库 / 复盘 /
+      威胁画像」不是同一批能力，勿混读；
+   ⑥ 脱敏纪律：不使用「平台级/租户级/资产级」作用域语汇，写「按资产 / 逐资产 / 按组织」。
+   演示数据落 localStorage（DP_KEY，版本号见 DP_VER），「重置演示数据」统一清除。
+
+   v5 结构定型（2026-09-30 晚）：
+   · 策略页对齐「资产访问控制策略」设计语言：对象列表（pgmk 分页 + 筛选）→ 点「配置」下钻
+     对象视图（基础信息 ／ 检测项与参数 + 场景化防护模板 ／ 评分与处置档位 + 豁免 分卡）；
+     ② 的检测项参数逐资产可覆盖，全局默认**同源于「对抗能力」页与「行为基线」页**，本页不另立一份口径。
+   · 基线与告警拆页：行为基线留动态防护组（主体基线 / 客体基线 / 学习与判定 / 白名单 四页签）；
+     告警独立为公共页「风险事件告警」（带防护域来源列，预置模板覆盖动态防护与一期防护域）；
+   · 事件流 pgmk 分页（与准入页同一分页组件）；弹窗补全（事件类型 / 命中项逐条 / 关联主体）。
+
+   v6 口径修正（2026-09-30 晚 · 用户裁定「防护对象直接引用资产，不从组织出发」）：
+   · 防护对象 = 资产本身：对象清单直接读「资产列表」(ASSETS)，本模块只保存
+     「是否纳入 + 该资产的动态防护配置」一层（DP.objs[资产 id]）；资产分组仅作筛选维度；
+   · 已废止「组织 → 资产」两级继承建模（组织级配置 / 继承 / 覆盖 / 挂接组织 / 恢复继承）
+     及其在总览生效数、冷启动推导、基线承载资产上的全部派生写法；
+   · 非 HTTP 资产（数据库 / 远程主机 / 文件服务 / 其他 TCP）不适用动态防护（7 层解析），
+     在「＋ 新增防护对象」中显式标注不适用，不出现在候选内。
+   ========================================================================== */
+
+const DP_KEY = "baize.assetmgmt.dp.v1";
+/* v31：interact 触发档位固定为 P3（口径固定值）—— 取消档位切换下拉，启停改由模式表「启用」开关承载。
+   **数据形状变更：cha.interact 由字符串 "p3" / "off" → 布尔**，老缓存不匹配即整建（铁律 ⑧）。 */
+const DP_VER = 37;  /* v37：行为基线**控制台承载**补齐（2026-10-10 · 对齐技术指南第八轮）——
+                       G1 §8.1 数据用途边界声明（仅用于安全防护与威胁处置）；
+                       G2 §8.2 判定列**第 7 种「前置未满足 · 待补」**（路径序列熵 / 资源覆盖度共 3 项，前置 = 路径归一化）；
+                       G3 §8.4 观察期白名单补「审批人 / 到期时间」两列；
+                       G4 §10.4 「学习与判定」新增第 4 个二级页签「运维闭环」（健康度视图 + 处置入口）；
+                       G5 头注释「三页签」订正为「四页签」（v20 改版后未同步）。
+                       **演示数据形状变更 ⇒ 必须升版**（dpLoad 判据 s.ver === DP_VER）。
+                       v36：行为基线指标**第二轮评审**落地（见《动态防护-行为基线指标优化-第二轮评审-20261010》）——
+                       · 设备主指标「并发会话数」→「访问发起速率」（次/分）—— 并发度类受实现方式支配，同应用侧「并发连接数」一并撤除；
+                       · 撤「派生」型（derv）：「同行组偏离」改判分布型（私有化下恒走回退，回退后即全局分位比对）；
+                       · `dist` 拆为**集合型（set）**与**分布型（dist）**两型（Jaccard / 覆盖率 vs JS 散度 / 时段命中）；
+                       · 账号表删「访问防护对象分布」（10 → 9）——「主体 × 客体」联合键按口径 §5.2「两者择一」只留客体侧；
+                       · 四主体「出向传输体量」补「出入比」（E8：比率比绝对值鲁棒）。
+                       **演示数据形状变更 ⇒ 必须升版**（dpLoad 判据 s.ver === DP_VER）。
+                       v35：新增**动态防护模块总开关** DP.dpOn（可拔插模块的总闸；停用时网关第八步整步短路），演示数据形状变更 ⇒ 必须升版；
+                       v34：行为基线指标**按判据效力重评**（见《动态防护-行为基线指标评估与优化-20261010》）——
+                       应用表 4 → 7 项（补 资源覆盖度 / 同资源重复拉取率 / 调用间隔规律性）；
+                       账号表 8 → 10 项（补 人机交互节律 / 同行组偏离）；新增「派生」型（derv · 同组分位比对）。
+                       **演示数据形状变更 ⇒ 必须升版**（dpLoad 判据 s.ver === DP_VER）。
+                       v33：客体基线**回归权威源 §9.3**（执行裁决台账 R1）—— 主指标由「新增来源占比」
+                       （形状族 · 10-08 改）回退为「访问速率」（规模族 · 连续右偏）；来源构成类降为**条件族**；
+                       补齐 §9.3 的形状族（资源覆盖度 / 同资源重复拉取率 / 参数熵）与规模族（单会话资源数）；
+                       四类主体状态词统一「偏离中」（原客体专用「来源位移」并入归因）。
+                       **演示数据形状变更 ⇒ 必须升版**（dpLoad 判据 s.ver === DP_VER）。
+                       v32：基线「重建记录」主体数改由身份台账实算（dpRebuildLine）——
+                       写死会随身份侧终端 / 实例增删漂移（A10 专守）；内容变更须整建方生效，故升版。
+                       v30：场景化模板增第 4 类「爬取」（判据 = 内容页高频遍历）—— 权威源 F1.2 规则 9 同轮回写为四类
+                       v29：告警规则增「告警级别」（提示 / 一般 / 严重 / 紧急，复用网关运维侧既有口径）
+                       与触发条件格式校验（事件类型 + 频率窗口 / 事件型表述）—— 字段形状变更，
+                       老缓存缺 lv 会读成 undefined，必须整体重建；
+                       v28：对抗能力页「放弃改动」需「最近一次已下发值」基准（DP.arms.applied 快照）；
+                       v27：风险事件告警补第三页签「告警记录」—— 逐条触发明细（触发时间 / 规则 / 命中对象 /
+                       窗口内命中次数 / 通知渠道与送达结果）、处理状态（未处理 / 已确认 / 已忽略）与
+                       确认 · 忽略 · 转未处理 · 批量确认的状态流转、时间窗与状态与防护域三层筛选、分页；
+                       规则的「最近触发」改由记录派生（dpAlertLast），不再另存 last 字段 ——
+                       同一事实单一出口，客户可相加核对；「告警触发明细在审计 Dashboard」的悬空引用解除。
+                       v26：配置下发状态由对象级布尔改为**按模块路径映射**（det / grade / ex / main）
+                       —— 原共用一位导致跨模块串味（豁免改动点亮检测项徽标、豁免无下发入口徽标永不消解）；
+                       v25：防护对象清单留 1 个适用资产（运维堡垒机 Web 控制台）未纳入 ——
+                       使「＋ 新增防护对象」候选池非空、纳入流程可演（种子数据变更 ⇒ 升版本号，
+                       否则旧缓存仍带 11 个已纳入对象、候选池恒空）；v24：基线主体清单重播种改为「回灌用户态覆盖」（本主体阈值 / 手动重置基线）；
+                       稳健尺度 σ 取正下界 DP_SD_EPS 防除零；v23：长页签引入二级页签（内容板块细分 · 对抗能力四页签 + 基线两页签）；v22：总览/告警拆页签、对抗能力五页签各自独立下发状态；v21：客体基线改判「来源构成位移 + 归因」—— 主指标由「访问来源数」（规模量，
+                       会被 DDoS / CC 直接放大）换为「新增来源占比」（形状族），请求速率 / 出向体量
+                       降为条件角色；客体主体带 hist 与归因（原硬编码空 ⇒ 客体永不偏离、最大偏离恒「—」）
+                       ⇒ 演示数据形状变更，必须升版本号，否则旧缓存原样复用。
+                       ⚠ v21 的**主指标改动已被 v33 回退**（「新增来源占比」引入爬取 / 拖库漏判）；
+                       「客体主体带 hist 与归因」这部分**保留**。
+                       v20：行为基线拆四页签 —— 主体基线 / 客体基线 / 学习与判定 / 白名单。
+                       客体（防护对象）从主体清单中拆出独立成页：主体页只列应用 / 账号 / 设备，
+                       客体页只列客体；下钻归属由所选对象的维度决定（不再混排）。
+                       ★ 页面状态新增合法页签名 dpBaseO（旧缓存 tab=dpBaseB 仍有效，但体量变更同轮升版本号）。
+                       v19：防护策略 · 对象配置视图拆三页签（基础信息 / 检测策略 / 评分处置与豁免）——
+                       条件渲染（非当前页签卡片不进 DOM），首屏由单页 3120px 降至约 1100px。
+                       v18：防护对象清单分页可演 —— DP.objs 由 6 扩到 11（纳入全部适用网页应用资产，
+                       新增项默认关闭 ⇒ 已启用集合不变），列表每页 `DP_POL_PG = 6`、分页器常显。
+                       ★ 演示数据规模变更必须升版本号，否则老缓存仍为 6 个对象、分页仍不可演。
+                       v17：人机验证页与产品级风险分级并口径 —— ① 页签⑤ 不再自立 P1~P4 分档，改按三期
+                       PRD §0.3 处置基准陈述（人机验证只是 P3 挑战档的承载方式），「验证方式」卡并入
+                       分档表；② interact 触发范围删「P4 起」（P4 档不注入客户端挑战，改由追加认证
+                       承接）⇒ DP.arms.cha.interact 取值域变更，同轮升版本号。
+                       v16：场景化模板从「对抗能力 · ④⑤ 人机验证」移出、独立成页（后经 v19 页签合并，现为页签⑤）—— DP.arms.hum 的
+                       tplCrack / tplScan / tplWool 三个开关收敛为 DP.arms.tpl{Crack,Scan,Wool}。
+                       归属依据：三条模板的动作全部落在**动态挑战**的参数面上（轻量档 fp+exec /
+                       指纹一致性 fp / 交互证明 interact），与人机验证页签「不产出决策动作」的
+                       边界相悖；字段形状变更，同轮升版本号。
+                       v15：行为基线新增第 4 类学习对象「客体 = 防护对象（资产）」—— 主体基线刻画「谁在访问」，
+                       客体基线刻画「被谁访问」；客体主体带 sources（来源分布，来源账号为主子键），
+                       偏离记录 / 事件回溯以「主体 × 客体」联合聚合键为单位。字段形状变更，同轮升版本号。
+                       v14：对象配置增 dpar（检测项参数逐资产覆盖，只存差异）与 tpl（场景化模板显式覆盖）
+                       —— 字段形状变更，同轮升版本号。
+                       v13：新增「对抗能力」页（pg-dparms · 五页签）—— DP.arms 纳入状态（全局默认参数，
+                       与「防护策略 · 检测项与参数」同源）。
+                       ★ 演示数据字段形状变更必须同轮升版本号 —— dpLoad 判据是 s.ver === DP_VER。
+                       v12：优先级矩阵口径订正 —— 左侧对象由「行为管控策略（allow / cut）」改为「准入侧状态
+                       （allow / deny）」：准入拒绝 > 动态防护处置 > 准入放行。切断（CUT）不作为准入策略动作，
+                       而是会话失效与安全收紧事件的会话处置结果（F6.2 规则 12），退出本矩阵。
+                       v11：按外部产品口径复核后修订 —— 三主体各增「出向传输体量」维度（规模族 · 连续有界，
+                       直接度量数据外带，补齐拖库判据）；设备姿态清单 10 → 12 项（补主机防火墙 / 企业受管与域加入）；
+                       连续型判定式改**稳健标准分**（中位数 + MAD×1.4826），抑制右偏长尾下的掩蔽效应。
+                       v10：基线指标改**分型声明**（fam 维度族 / kind 型 / role 角色，五型：连续右偏 cont ·
+                       连续有界 bnd · 集合分布 dist · 稀疏计数 sparse · 事件状态 state；派生型经 v20 删除），
+                       三主体按全维表（规模 / 节律 / 形状 / 上下文）铺开，判定式随型而定；设备主体（dev）
+                       新增 posture（环境姿态面：二值状态 + 姿态迁移事件，**不进 σ 偏离记录**）。
+                       v9：基线主体改由**身份管理台账**派生（应用 = 客户端实例（不含已卸载）/ 账号 = 用户 /
+                       设备 = 终端，**计数一律实算、不写死**）—— 不另造主体，与身份管理页的清单 / 检索 / 下钻一致；
+                       主体字段 asset（单一承载资产）→ assets（访问防护对象分布：跨资产，含次数与最近访问）；
+                       增 key（主体标识）/ name（实体名）/ meta（归属信息）三个字段供跨模块对齐。
+                       ★ 演示数据字段形状变更必须同轮升版本号 —— dpLoad 判据是 s.ver === DP_VER，
+                         不升则老缓存被原样复用，新字段全空（2026-10-08 实测：主体列全渲染「—」）。 */
+
+/* ---- 档位与分级（§二横切口径：P1~P4 为 riskScore 0~100 的分段标签） ---- */
+const DP_ACTS = [
+  { k: "OBSERVE",   t: "观察记录", s: "观察记录" },
+  { k: "CHALLENGE", t: "动态挑战", s: "动态挑战" },
+  { k: "REJECT",    t: "拒绝访问", s: "拒绝访问" },
+  /* s = 短名：只用于「过滤条 / 标签」等窄容器；括注承载「不是独立模块」的架构事实，
+     窄容器放不下时用短名，避免撑破。 */
+  { k: "LIMIT",     t: "限流熔断（联动全局限流）", s: "限流熔断" },
+];
+/* 「评分与处置档位」的处置**可选集**：限流熔断不在其中 —— 它由「同一源 5 分钟内连续挑战失败」
+   联动触发，与评分段非一一对应（本卡副标题与页内图例均已如此标注）。把它放进评分档位下拉，
+   等于一边声明「不是评分档位」、一边允许按评分段直接选它。 */
+const DP_BAND_ACTS = DP_ACTS.filter(a => a.k !== "LIMIT");
+function dpBandActName(k) { const a = DP_BAND_ACTS.filter(x => x.k === k)[0]; return a ? a.t : dpActName(k); }
+/* 档位中文名：界面文案统一用中文；k 为审计域契约键值，只出现在数据、过滤参数与跳转条件里 */
+function dpActName(k, short) {
+  const a = DP_ACTS.filter(x => x.k === k)[0];
+  if (!a) return k;
+  return a.s ? (short ? a.s : a.t) : a.t;
+}
+function dpActTag(k) {
+  if (k === "LIMIT") return '<span class="tag" style="background:#f3e8ff;color:#7e22ce;border:1px solid #e9d5ff">' + dpActName(k, true) + '</span>';
+  const m = { OBSERVE: "t-info", CHALLENGE: "t-warn", REJECT: "t-err" };
+  return '<span class="tag ' + (m[k] || "t-gray") + '">' + dpActName(k, true) + '</span>';
+}
+function dpActColor(k) {
+  return { OBSERVE: "#3b82f6", CHALLENGE: "#f59e0b", REJECT: "#ef4444", LIMIT: "#7e22ce" }[k] || "#94a3b8";
+}
+/* P1~P4 分段边界**单源**：判定、档位卡副标题、直方图图例三处共用本表 ——
+   原先三处各写一份区间文案（80/50/20 与「20~49」等），改一处必漏另两处。 */
+const DP_LEVELS = [
+  { k: "P1", lo: 0,  hi: 19,  cls: "t-ok" },
+  { k: "P2", lo: 20, hi: 49,  cls: "t-info" },
+  { k: "P3", lo: 50, hi: 79,  cls: "t-warn" },
+  { k: "P4", lo: 80, hi: 100, cls: "t-err" },
+];
+function dpLevelOf(score) {
+  for (let i = DP_LEVELS.length - 1; i >= 0; i--) if (score >= DP_LEVELS[i].lo) return DP_LEVELS[i].k;
+  return "P1";
+}
+function dpLevelRange(k) { const l = DP_LEVELS.filter(x => x.k === k)[0]; return l ? l.lo + "~" + l.hi : "—"; }
+function dpLevelTag(lv) {
+  const l = DP_LEVELS.filter(x => x.k === lv)[0];
+  return '<span class="tag ' + (l ? l.cls : "t-gray") + '">' + lv + '</span>';
+}
+
+/* ---- 检测项（二期 F1.1/F1.2/F1.4/F1.5 四类，**均为本域能力**）----
+   一期 WAF/限流命中是外域汇入的评分输入，只在「评分信号构成」里单列，**不混入本表**——
+   五路评分信号互斥、不重复计分：语义检测只经 F1.4 一路计分。
+   srcPg / srcT = 该检测项**参数的权威出处**（本页只做逐资产覆盖，不另立一份口径）。 */
+const DP_DETS = [
+  { k: "replay",    n: "重放防护", src: "F1.1", d: "由网关执行点实施", srcPg: "pg-dparms", srcT: "对抗能力 · 动态令牌与防重放", st: "dpA1" },
+  { k: "challenge", n: "动态挑战", src: "F1.2", d: "由网关执行点实施", srcPg: "pg-dparms", srcT: "对抗能力 · 动态挑战与人机验证", st: "dpA4" },
+  { k: "semantic",  n: "语义检测", src: "F1.4", d: "网关内原生规则库执行；规则内容在规则库维护", srcPg: "pg-rulelib", srcT: "WAF 规则库管理" },
+  { k: "baseline",  n: "行为基线", src: "F1.5", d: "由网关执行点实施", srcPg: "pg-dpbase", srcT: "行为基线 · 学习与判定", st: "dpBaseP" },
+];
+
+/* ---- 检测项参数（逐资产可覆盖）· 字段定义单源 ----------------------------
+   g = 全局默认取值的来源：arms.tok / arms.cha →「对抗能力」页的全局参数；base →「行为基线」页。
+   覆盖值只存**差异**（cfg.dpar[检测项][参数]）——与全局同值即不落覆盖，杜绝「看起来覆盖了其实一样」。 */
+/* 触发评分档位取值域**单源**：「防护策略 · 检测项与参数」的逐资产覆盖与「对抗能力 · 页签④」
+   的全局默认共用本表。原先两处各写一份文案（一处「动态挑战档 / 拒绝访问档」、一处「P3 起 /
+   P4 起」），同一事实两个出口，改一处必漏一处。*/
+const DP_TRIGSCORE_OPTS = [[50, "≥ 50 分（P3 起）"], [80, "≥ 80 分（P4 起 · 转追加认证）"]];
+/* 交互证明触发范围取值域**单源**：「防护策略 · 检测项与参数」的逐资产覆盖与「对抗能力 · 页签④」的
+   全局默认共用本表（原先两处各硬编码一份三选项文案 —— 同一事实两个出口，改一处必漏一处）。
+   ★ 为什么没有「P4 起」：P4 档**不注入客户端挑战**（三期 PRD §0.3 联动规则 3 —— P4 处置不越过追加
+     认证：先追加认证，失败或仍异常才切断 / 拒绝）⇒ 「P4 起」会让 interact 永不可达，是**死选项**；
+     按档一刀切：**interact 归 P3、追加认证归 P4**，两者不重叠。 */
+/* interact 触发档位 = **口径固定值 P3**（不落 P2 / P4），**不提供档位切换配置** ——
+   2026-10-09 用户裁定：P3 是定值，不需要切换控件；启停由模式表「启用」开关承载（与 fp / exec 同型）。
+   原「交互证明触发范围」下拉（P3 起 / 关闭）随之下线：启停不再借档位取值表达。 */
+/* 连续失败升级阈值：**多键并行计数**（2026-10-09 订正）——
+   权威源为**同一会话**（二期 PRD F1.2「挑战连续失败」附例 + AC-F1.2-7），本处按基线走；
+   原「同一源 IP + 5 分钟」属**派生件反转基线**（且与本文件「对抗能力页」注「同一会话」互斥），已废止。
+   单键均可被对应形态规避（会话键：清 cookie / 每请求新会话；来源键：分布式换 IP），
+   故**三键并行、任一键超限即升级**：会话键与账号键按可配阈值（3 / 5 次）计数、5 分钟窗口；
+   来源键沿用一期来源维度限流的量级（高于前两键），避免企业出口 / NAT 下连带正常用户。
+   取材：一期 PRD「按来源 IP 和账号**分别计数，任一键超限返回 429」+ AC-F1.1-4 两键量级差。 */
+const DP_FAILLIMIT_OPTS = [[3, "3 次 / 同会话"], [5, "5 次 / 同会话"]];
+/* GET 校验范围 / 故障策略 / 签发限流 的取值域**单源**：「防护策略 · 检测项与参数」的逐资产覆盖
+   与「对抗能力 · ①」的全局默认共用本表。原先两处各写一份、文案已经不一致（一处「关键资产默认开启」、
+   一处「关键资产默认开启 · 低风险按资产豁免」）—— 同一事实两个出口，改一处必漏一处。 */
+const DP_GETCHECK_OPTS = [
+  ["key", "关键资产默认开启 · 低风险按资产豁免"],
+  ["all", "全部资产开启"],
+  ["off", "全部豁免"],
+];
+const DP_FAILMODE_OPTS = [
+  ["open", "放行 + 告警（默认）"],
+  ["close", "拒绝 + 高优告警"],
+];
+/* 签发限流（次 / 分钟 / 会话）：与 GET 校验范围**相乘**决定令牌额度 ——
+   校验范围越宽，单页首屏需要的令牌越多；额度不足会把正常用户打成 429。 */
+const DP_ISSUE_OPTS = [
+  [5, "5 次 / 分钟"],
+  [20, "20 次 / 分钟"],
+  [60, "60 次 / 分钟"],
+  [0, "不限额度"],
+];
+/* nonce TTL（浏览器通道）候选取值域 —— **单一出口**：检测项参数表 / 对抗能力页取值控件 /
+   表内提示文案三处共用，消除「同一取值域三份硬编码」（B6-04）。 */
+const DP_TTL_OPTS = [[60, "60 秒"], [120, "120 秒"], [180, "180 秒"], [300, "300 秒"]];
+/* 签发限流标签文案 —— **单一出口**：「防护策略 · 检测项与参数」的参数名与「对抗能力 · ①」的
+   标签两处共用，消除「同一标签两份硬编码」（b6-09 实测：两处曾分别写「次 / 分钟 / 会话」与
+   「次 / 分钟，按会话计」，两轮评审各报一次）。字面取权威源（规划方案 §4.2② / §4.3①）。 */
+const DP_ISSUE_LABEL = "签发限流（次 / 分钟 / 会话）";
+/* ⚠ 本表文案只写档位本身：<option> 的宽度 = 最长选项宽度，写建议语会直接挤压同行 .v
+   ⇒ 出现「5 次 / 分钟（默认 ·」这类裁切（2026-10-08 门禁 L1c 实测）。建议值一律放提示行。 */
+const DP_DET_PARAMS = [
+  { d: "replay", ks: [
+    { k: "ttl",       n: "nonce TTL（浏览器通道）", t: "sel", xs: DP_TTL_OPTS, g: "arms.tok" },
+    { k: "ttlProof",  n: "X-Baize-Proof 通道 TTL", t: "sel", xs: [[60, "60 秒（独立取值）"]], g: "arms.tok" },
+    { k: "issueRate", n: DP_ISSUE_LABEL, t: "sel", xs: DP_ISSUE_OPTS, g: "arms.tok" },
+    { k: "getCheck",  n: "GET 校验范围", t: "sel", xs: DP_GETCHECK_OPTS, g: "arms.tok" },
+    { k: "spaMerge",  n: "SPA 首屏并发", t: "sw", g: "arms.tok" },
+    { k: "failMode",  n: "故障策略（存储不可用）", t: "sel", xs: DP_FAILMODE_OPTS, g: "arms.tok" },
+    { k: "failClose", n: "关键资产 fail-close", t: "sw", g: "arms.tok" },
+  ] },
+  { d: "challenge", ks: [
+    { k: "fp",        n: "指纹一致性（会话绑定）", t: "sw", g: "arms.cha" },
+    { k: "exec",      n: "随机脚本执行（自动化识别）", t: "sw", g: "arms.cha" },
+    { k: "interact",  n: "交互证明", t: "sw", g: "arms.cha" },
+    { k: "failLimit", n: "连续失败升级阈值", t: "sel", xs: DP_FAILLIMIT_OPTS, g: "arms.cha" },
+    { k: "trigScore", n: "动态挑战启动门槛", t: "sel", xs: DP_TRIGSCORE_OPTS, g: "arms.cha" },
+  ] },
+  { d: "baseline", ks: [
+    /* 学习窗口：仅提供「24h 滑动」（7d/30d/180d 分层不在当前取值域内），
+       故单一取值 ⇒ 按「口径固定值」只读承载，不提供逐资产覆盖 —— 不声明本期不具备的能力。 */
+    { k: "win",  n: "学习窗口", t: "sel", xs: [["24h 滑动", "24h 滑动（当前仅提供 24h 窗口）"]], g: "base" },
+    { k: "cold", n: "冷启动观察期", t: "sel", xs: [[7, "7 天"], [14, "14 天"], [30, "30 天"]], g: "base" },
+  ] },
+];
+function dpDetParamDef(d) { return DP_DET_PARAMS.find(x => x.d === d); }
+/* 全局默认值：读时求值，不在配置里另存副本 —— 两处出口永远同源 */
+function dpDetGlobal(p) {
+  const seg = String(p.g).split(".");
+  if (seg[0] === "arms") { const box = DP.arms[seg[1]]; return box ? box[p.k] : undefined; }
+  if (seg[0] === "base") return DP.base[p.k];
+  return undefined;
+}
+/* 该资产的生效值：本资产覆盖 > 全局默认 */
+function dpDetEff(cfg, d, p) {
+  const ov = cfg && cfg.dpar && cfg.dpar[d];
+  if (ov && Object.prototype.hasOwnProperty.call(ov, p.k)) return ov[p.k];
+  return dpDetGlobal(p);
+}
+function dpDetOverridden(cfg, d, p) {
+  const ov = cfg && cfg.dpar && cfg.dpar[d];
+  return !!(ov && Object.prototype.hasOwnProperty.call(ov, p.k));
+}
+function dpDetCovCount(cfg, d) {
+  const def = dpDetParamDef(d);
+  return def ? def.ks.filter(p => dpDetOverridden(cfg, d, p)).length : 0;
+}
+/* 口径固定值参数：唯一取值 ⇒ 不提供控件、不参与逐资产覆盖。
+   （单选项下拉是「假控件」——看起来能改，其实只有一条路可走；改为只读承载后，
+     读者不必再试探。据此「控件数 = 可编辑参数数」，与参数定义总数**刻意不等**。） */
+function dpDetFixed(p) { return p.t !== "sw" && !!(p.xs && p.xs.length === 1); }
+/* ★ A2-02：全局默认值的**可读文案**（与下拉选项文案同源，不另造一套） */
+function dpDetGlobalLabel(p) {
+  const g = dpDetGlobal(p);
+  if (p.t === "sw") return g ? "开" : "关";
+  const o = (p.xs || []).filter(x => String(x[0]) === String(g))[0];
+  return o ? String(o[1]) : (g == null ? "—" : String(g));
+}
+function dpDetFixedLabel(p) { return (p.xs && p.xs[0]) ? String(p.xs[0][1]) : "—"; }
+
+/* ---- 场景化防护模板（F1.2 规则 9）：独立页签「对抗能力 · 场景化模板」---------
+   与「防护策略 · 场景化防护模板」同源：本处是**判据 / 动作口径**的单一定义；模板侧做逐资产开关与
+   **判据范围**配置（只存差异，缺省 = 继承本处规则）。
+   ★ 归属（2026-10-08 裁定）：模板**不是**「人机验证」的子集 —— 动作落在**动态挑战**与
+     **一期限流**的参数面上，而人机验证页签的权威边界是「判定是不是人 · 不占档位 ·
+     **不产出决策动作**」；把开关放在该页签会让同一能力的参数分居两个页签（改一处必漏
+     一处），故独立成页，页签④ 不再承载模板。
+   ★ 动作修正（2026-10-08 裁定）：
+     · 扫号原动作「指纹一致性（fp 会话绑定）」与攻击形态不符 —— 扫号典型形态是**分布式
+       试探**（每请求都是新会话），会话绑定拦不住；改「账号枚举频率约束」—— 与撞库同属**接口级
+       直发**形态，该形态下客户端证据不存在、挑战无法施加 ⇒ 扫号不声明挑战类固有约束（2026-10-09 定案）。
+     · 薅羊毛原动作「交互证明（interact）」会**误伤正常用户**（薅羊毛用真实注册账号跑
+       自动化，让真人做「证明你是人」拦不住攻击者、却挡了真人）；改「自动化特征判定 +
+       业务写操作频次约束」。
+   ★ 判据阈值**不在页面配置**：规则 9 只给定性判据（高频失败 / 接口枚举 / 关键业务写接口 / 内容型路径的遍历、覆盖与隐藏链接命中），
+     未给阈值 —— 页面不得自造；但判据的**范围**（关键业务写接口 / 内容型路径究竟是哪些）是条目级
+     事实，须逐资产配置，见 cfg.tplRange 与「防护策略 · 场景化防护模板」。
+   ★ 第 4 类「爬取」模板（2026-10-09 补入 · 同日技术评审**订正理由**）：用户确认需要反爬虫能力、
+     原落位待定。判据取「位置 · 内容型路径 + 频次 · 遍历 + 行为节律 · 路径覆盖 + 诱饵 · 隐藏链接」四项
+     （2026-10-09 技术评审追平：原注释只写「内容页高频遍历」，未反映已实现的后两项判据），
+     动作取「频率约束 + 已登记搜索引擎放行（rDNS 正向确认）」。
+     ★ **本模板不声明「客户端证据」类判据 —— 该维在此场景不具区分力**。原表述「爬虫不执行脚本 ⇒
+       人机验证对其无效」有两处不准确：① 现代主力采集为 headless / stealth 浏览器，**执行** JS
+       （与本页签③「stealth 级不承诺识别」口径互斥 —— 同一文档不能既承认存在执行脚本的爬虫、
+       又称"爬虫不执行脚本"）；② 即便"不执行脚本"成立，结果也应是 fp / exec **可识别**该类客户端
+       而非「人机验证无效」—— 推论方向相反。准确口径：**不执行 JS 的客户端采不到客户端证据**
+       （接口直发 / 已授权索引 / RSS 与离线阅读工具 —— 正是爬取的主要形态 ⇒ 判据落空）；
+       **执行 JS 的自动化能通过校验**（⇒ 采到也分不出）；且该维会**误伤**脚本被禁用的正常浏览器
+       ⇒ 既不命中主要攻击面、又添误伤面。故本模板判据全取**不依赖客户端能力、纯服务端可观测**的
+       维度。同轮已回写权威源 PRD-二期 F1.2 规则 9（四类场景）与
+       「动态防护控制台 · 页面规划方案」页签⑤。
+   ★ 撞库判据的主语是**登录请求**、不是承载它的页面（2026-10-09 订正）：登录可发生在
+     「HTML 表单 POST」「H5 / SPA 的 XHR」「App / 客户端隧道的 API 调用」三种形态上，
+     后两种不经过页面。动作随之按**请求的接入形态**分路，分路发生在**请求级** —— 同一资产
+     可同时被浏览器与 API 访问：可注入形态（HTML 响应）⇒ 轻量挑战 fp + exec；
+     被跳过注入的形态（API 路径 / 非 HTML，见 F1.2 规则 1）⇒ 服务端侧失败聚集约束
+     （该形态下客户端证据不存在，挑战无法施加）。扫号判据同属接口级、动作侧同样不声明挑战类
+     固有约束，与撞库自洽 —— 其固有约束只有「账号枚举频率约束」。 */
+/* ---- 判据维度引擎（2026-10-09 重构 · 用户裁定「一套判据维度引擎 + 四个预设」）----------------
+   重构要点：把「判据」从模板里的**自由文案**改为对**共享维度**的引用。
+     · 引擎（DP_DIMS）= 维度的**唯一登记处**：观测层 / 承载能力 / 可自证性 / 维度内子项。
+       承载能力两分：`src` = 追溯号（含期次与功能项，**仅供内审与注释，不进 UI**）；
+                     `srcUi` = 面板呈现名（去需求编号与模块归属语）⇒ 渲染出口一律读 srcUi。
+     · 预设（DP_TPLS）= 只声明「引用哪些维度 + 判据范围 + 场景固有约束」，不另写判据文案。
+     · 动作剥离：**档位驱动的处置**不再由预设自带，统一由处置档位体系按评分裁定（见 DP_ACTS / DP_BAND_ACTS）；
+       预设只保留**与档位无关的场景固有约束**（频率约束、白名单等，见 DP_TPLS 的 fix 字段）。
+   收益：补任一维度 ⇒ 四个预设同时受益；新增场景只需加一行 dims；
+        「范围被写进判据位」这类语义错位从结构上不再可能。
+   sc（可自证性）：1 = 仅凭网关自身观测即可判定（执行结果 / 自身计数 / 自身特征）⇒ 允许驱动处置；
+                  0 = 须外部回流才成立 ⇒ 只能驱动告警与建议，不得驱动处置。
+   src（追溯号）是**跨期事实**；★ 2026-10-09 用户裁定「**未在本期 / 本方案实现的维度不进产品**」——
+     诱捕（独立诱捕项目）/ 情报（无归属待立项）两者已从本表撤除，原型与移动端一律不登记、不呈现。
+     ★ 同日后补用户裁定「**JA4 单点提回本期**」：连接层维**重新登记**，但只承载 JA4 ——
+       划界为「采集 + 交叉输入」归本期、F2.6 其余指纹与时空一致性判定仍归第四期（见下表 `conn` 条）。
+     留痕纪律不变：未登记的能力只在权威源（PRD-二期 §1.2 规则 9 维度归属段）与评审过程档出现，
+     待实现时再登记入表。改期次必须本表与所有引用处同轮改。 */
+const DP_DIMS = [
+  /* ★ 2026-10-09 用户裁定「**JA4 单点提回本期**」（原「连接层一起撤」同日改判）：
+     划界 = 「**采集 + 交叉输入**」归本期，「**F2.6 其余指纹 + 时空一致性判定引擎**」仍归第四期。
+       理由 ①（可行性）：TLS ClientHello 在网关终结侧**必被观测**、JA4 为**公开算法**（FoxIO JA4 spec）
+         ⇒ 本期即可实现，不需要 F2.6 的交叉识别引擎 —— 归期差异在**判定引擎**、不在采集。
+       理由 ②（有效性）：它是**不依赖脚本执行**的连接层信号 —— 恰在「不执行 JS 的客户端采不到客户端证据」
+         这一形态下仍然有效（接口直发 / 脚本采集器也要完成 TLS 握手 ⇒ 其 JA4 即所用栈的 JA4），
+         与爬取判据「全取服务端可观测维度」同一口径。
+       理由 ③（业界）：JA4 已是业界现行标准 —— JA3 因浏览器 TLS 扩展随机化已不可靠，**JA4 正为此设计**。
+     ★ 定位（与 F2.6 原文逐字一致）：**仅作交叉输入、不单独作否决信号** ——
+       JA4 标识的是 **TLS 栈**、不是攻击者：headless / stealth 浏览器其 JA4 即该内核的 JA4，
+       与真实浏览器**同值** ⇒ **单键无区分力**；价值在**交叉**（会话自报内核与 JA4 不符即信号）。
+       该边界写在 `note`（单一出口），场景表标签 title 与清单卡本行两处取用。
+     ⚠ 承载能力如实标「**（待补）**」—— 本维尚无独立配置入口 / 呈现控件（与「诱饵账号」同一处理），
+       不得把「没有配置入口的能力」呈现为可用能力。子项**只有 JA4**（若扩成 JA4 + HTTP/2 + TCP/IP 栈
+       即越界，等于把未实现的第四期能力提前呈现）—— 门禁 A89 守。 */
+  { k: "conn",  n: "连接层指纹",   s: "连接",   layer: "TLS 握手",   src: "二期 F1.2 规则 9（JA4 单点提回）· 四期 F2.6 其余", srcUi: "连接指纹采集（待补）", sc: 1, sub: ["JA4 指纹"],
+    note: "仅作交叉输入、不单独作否决：JA4 标识 TLS 栈而非攻击者，headless / stealth 浏览器其 JA4 与真实浏览器同值 ⇒ 单键无区分力。" },
+  { k: "pos",   n: "位置",         s: "位置",   layer: "请求行",     src: "二期 F1.2", srcUi: "检测项参数",            sc: 1, sub: ["登录接口", "关键业务写接口", "内容型路径"] },
+  { k: "freq",  n: "频次",         s: "频次",   layer: "网关计数",   src: "二期 F1.2", srcUi: "检测项参数",            sc: 1, sub: ["失败", "枚举", "业务写", "遍历"] },
+  { k: "agg",   n: "聚集",         s: "聚集",   layer: "网关计数",   src: "二期 F1.2 规则 9（维度归属段）", srcUi: "检测项参数（待补）",  sc: 1, sub: ["账号 × 来源", "来源 × 多账号"] },
+  { k: "cli",   n: "客户端证据",   s: "证据",   layer: "JS 注入",    src: "二期 F1.2 规则 2 / 3", srcUi: "检测项参数", sc: 1, sub: ["指纹一致性", "随机脚本执行", "自动化特征"] },
+  { k: "srv",   n: "服务端不变量", s: "不变量", layer: "网关",       src: "二期 F1.1 / F1.3", srcUi: "会话级请求签名",     sc: 1, sub: ["nonce 一次性", "请求要素绑定"] },
+  { k: "beh",   n: "行为节律",     s: "节律",   layer: "行为基线",   src: "二期 F1.5 规则 12", srcUi: "行为基线",    sc: 1, sub: ["间隔规律", "路径覆盖", "序列模板"] },
+  /* ★ 2026-10-09 诱饵维**拆两形态**（用户裁定）—— 权威源此前已为该形态留位：
+     ① 三期 PRD：「蜜罐 / 钓鱼诱捕设施属独立项目，不在本文件范围；F1.2 / F1.5 页内蜜标字段与
+        陷阱链蜜标为**对抗手段内部的检测标识**（非独立诱捕系统），不受本条限制」；
+     ② 评审决策：「蜜罐 / 钓鱼诱捕属独立项目，不在本方案启用」。
+     ⇒ 页内蜜标形态（隐藏链接 / 隐藏凭据字段）= 网关在 HTML 响应体内注入 + 命中由网关自产计数
+        ⇒ 观测量来自网关自身 ⇒ **可自证、可驱动处置**，归本期对抗手段内部；
+     ★ 真实可登录诱饵账号 + 诱捕网络 = 观测量不来自网关 ⇒ 属独立诱捕项目、不在本方案 ——
+        按 2026-10-09 用户裁定「未在本期 / 本方案实现的维度不进产品」，该形态**不登记、不呈现**。
+     页内蜜标形态**单独成维**，不与独立诱捕项目合成（合成后「可自证性」列会自相矛盾）。 */
+  { k: "decoy", n: "诱饵",         s: "诱饵",   layer: "网关注入",   src: "二期 F1.2 / F1.5 页内蜜标", srcUi: "页内蜜标",        sc: 1, sub: ["隐藏链接", "隐藏凭据字段"],
+    /* ★ 2026-10-09：子项名去「（陷阱链）」—— 「陷阱链」在权威源里指**第四期「无限深度陷阱」**
+       （哈希链式多层假链接、trap_depth / max_follow、资源消耗），本期页内蜜标只是「单层隐藏链接 +
+       命中计数」；旧名易被读成已实现 F1.5。追溯关系保留在 `src`（二期 F1.2 / F1.5 页内蜜标）里。
+       ★ 有效性边界（`note`）—— 本维是**确认型**判据、不是发现型：命中即高置信，但覆盖窄，不能单独定案。
+       两形态的适用面互不重叠：
+         · 隐藏链接 → 只有「枚举并跟随链接」的客户端会访问（真人看不见、不会点）⇒ 归**爬取**，作正式判据；
+           且它是响应体内注入、**不依赖客户端能力** ⇒ 在「不执行 JS 的客户端采不到客户端证据」
+           这一形态下仍然有效，是爬取面上唯一可自证的主动判据。
+         · 隐藏凭据字段 → 只有「解析登录页并整体提交表单（含隐蔽字段）」的自动化会提交 ⇒ 归**撞库 / 扫号**；
+           而这两类的主流形态是**接口级直发**（不渲染登录页、不解析表单）⇒ 无命中、覆盖率低；且登录页是
+           真人高频提交表单处，自动填充型客户端可能连隐蔽字段一起填 ⇒ 存在误报面，须叠加其它维度。
+       `note` 是**同一事实的单一出口**：场景表标签的 title（dpTplQTags）与判据维度清单卡的本行
+       （dpDimListHtml）均从此读 —— 门禁 A77 守。薅羊毛不消费本维（攻击者持真实账号跑自动化）。 */
+    note: "隐藏链接：仅枚举并跟随链接的客户端命中 ⇒ 爬取命中即确证。隐藏凭据字段：仅整体提交登录表单的自动化命中，接口级直发无命中、覆盖率低，自动填充可能误触 ⇒ 不能单独定案。" },
+  /* ★ 2026-10-09 新增「诱饵账号」（用户裁定：归**本期 · 可自证**；承载能力标「（待补）」、配置入口另批）。
+     机制：网关持一份**诱饵账号名单**，任何以名单内账号名发起的登录 / 枚举请求 ⇒ 命中 ⇒ 判为攻击
+     （真人永不使用该账号名 ⇒ 命中即攻击）。与其严格区分的是**「页内蜜标」**（`decoy`）：
+     后者向 HTML 响应体内注入判别标识，本条**不注入任何内容**，只在网关本就解析的登录请求上做名单比对。
+     ① 可自证 —— 名单是网关配置、账号字段是网关本就解析的字段（与「位置 / 频次 / 聚集」同一观测面），
+        命中完全由网关本地产出 ⇒ 允许驱动处置；
+     ② 零误伤 —— 与「隐藏凭据字段」不同，它**没有自动填充误触面**（真人的凭据管理器不会填出诱饵账号名），
+        ⇒ **不需要叠加其它维度即可定案**；据此它比页内蜜标强一档；
+     ③ 仍是**确认型**（不是发现型）—— 只在攻击者的账号名单包含诱饵名时才命中；提高命中的办法是把诱饵名
+        取成「泄漏库 / 字典里会出现的名字」（与「凭据泄漏库比对」同族，但那份情报维当期无归属、未登记）；
+     ④ 启用前提（见 `note`）：诱饵名须在业务侧**保留、不可被真人注册**，也不落入自助注册 / 找回密码流程。
+     ⑤ 与权威源的划界：它**不是「页内蜜标」** ⇒ 不受「F1.2 / F1.5 页内蜜标字段与陷阱链蜜标」那条排除条款保护；
+        归属本期的理由是它**不新增任何设施** —— 只是登录请求上的一条名单比对，故不落入「蜜罐设施 ⇒ 独立项目」。
+        权威源**无既有条款** ⇒ §1.2 规则 9 同批增补（`src` 如实标注「无既有条款」）。
+     ⚠ 承载能力标 `（待补）`：本维尚无配置入口（名单维护另批做）—— 不得把「没有配置入口的能力」呈现为可用能力。 */
+  { k: "dacct", n: "诱饵账号",     s: "诱饵账号", layer: "请求体 · 账号", src: "2026-10-09 本期增补（无既有条款）", srcUi: "诱饵账号名单（待补）", sc: 1, sub: ["名单账号登录", "名单账号枚举"],
+    note: "真人永不使用诱饵账号名 ⇒ 命中即攻击、零误伤，无需叠加其它维度。仍是确认型判据：仅攻击者名单含诱饵名时命中。前提：诱饵名须在业务侧保留、不可被真人注册，且注册 / 找回流程不得表现为「不存在」（外部依赖，网关侧不可自证）。" },
+  { k: "ext",   n: "外部标注",     s: "标注",   layer: "外部回流",   src: "平台 · 外部标签", srcUi: "外部标签",      sc: 0, sub: ["确认误报", "申诉工单"] },
+];
+/* 维度**归属分组**（`DP_DIM_GRP`）已于 2026-10-09 连同「归属分组」列一并撤除（用户裁定
+   「未在本期 / 本方案实现的维度不进产品」+「归属分组列整列去掉」）：撤除三个未实现维度后，
+   清单卡只剩「本期交付」与「平台现有」两档，归属分组列区分度不足；列既删，分组登记即无消费方。
+   归属信息现由「承载能力」列（逐维具体功能项）与权威源的维度归属段承载。 */
+function dpCDim(k) { return DP_DIMS.filter(d => d.k === k)[0] || null; }
+function dpCDimName(k) { const d = dpCDim(k); return d ? d.n : k; }
+function dpCDimShort(k) { const d = dpCDim(k); return d ? d.s : k; }
+/* 维度的可自证性（**未登记维度按不可自证处理** —— 宁保守不放松） */
+function dpCDimSC(k) { const d = dpCDim(k); return d ? d.sc : 0; }
+/* 维度**有效性边界**的统一文案出口（`DP_DIMS[].note` · 单一出口）：
+   场景表判据标签的 title 与判据维度清单卡的本行说明**两处取用同一个串** —— 措辞不各写一份。
+   「有效性边界：」前缀在此统一加：清单卡本行原先是「子项 + 紧跟一段说明」，读起来像子项的续写
+   （2026-10-09 实跑截图复核发现）⇒ 加标签使其自解释。门禁 A77 守前缀、两个取用处与边界事实。 */
+function dpDimNoteText(d) { return d && d.note ? "有效性边界：" + d.note : ""; }
+
+/* ---- 场景化防护模板（F1.2 规则 9）· 四预设 = 维度引用的组合 --------------------------------
+   dims = 判据维度引用（键必须在 DP_DIMS 登记；页面与门禁均查表，不写自由文案）；
+      ★ 2026-10-09 子项名**唯一登记处 = DP_DIMS[].sub**：条目第二个元素必须逐字取自该维度的 sub
+        （同一模板在一维上消费多个子项时以「 + 」连接）；门禁 A82 守。此前两处各写一份名字、
+        漂移 9 处而无人发现 —— 读者无法把场景表的「指纹 / 脚本」映射到清单卡的任一子项。
+   fix  = 场景固有约束与固有动作（**不含档位驱动的处置** —— 处置强度统一由处置档位体系按评分裁定）；
+   needRange = 该模板的判据**范围**须逐资产配置（判据是接口级、模板是逐资产开关）；
+     范围为空 ⇒ 判据无识别对象 ⇒ 模板对该资产不生效。 */
+const DP_TPLS = [
+  { k: "Crack", n: "撞库",   dims: [["pos", "登录接口"], ["freq", "失败"], ["agg", "账号 × 来源"], ["cli", "指纹一致性 + 随机脚本执行"], ["srv", "nonce 一次性 + 请求要素绑定"], ["decoy", "隐藏凭据字段"], ["dacct", "名单账号登录"]],
+    fix: "登录接口失败聚集 · 可注入形态施加轻量挑战（fp + exec，不施加 interact）· 被跳过注入的 API 形态转服务端侧失败聚集", inh: "L4~L5 资产默认启用" },
+  { k: "Scan",  n: "扫号",   dims: [["pos", "登录接口"], ["freq", "枚举"], ["agg", "来源 × 多账号"], ["cli", "指纹一致性 + 随机脚本执行"], ["decoy", "隐藏凭据字段"], ["dacct", "名单账号枚举"]],
+    fix: "账号枚举频率约束", inh: "L4~L5 资产默认启用" },
+  { k: "Wool",  n: "薅羊毛", dims: [["pos", "关键业务写接口"], ["freq", "业务写"], ["cli", "自动化特征"], ["beh", "间隔规律"]],
+    fix: "业务写操作频次约束", inh: "按资产手动启用", manual: true, needRange: true, cand: "iface" },
+  /* 第 4 类（2026-10-09 · 理由同日订正）：动作取「频率约束 + 已登记搜索引擎放行」，**不声明客户端
+     证据类判据** —— 理由见模板表上方注释（该维在爬取面上不具区分力：一端采不到、一端分不出）；
+     已登记索引的放行**须经反向 DNS 反查 + 正向确认**，不得只认 UA（UA 可伪造 ⇒ 只认 UA 等于放行
+     任意自称者 —— 原设计的真实绕过面）。
+     cand = 该模板的**判据范围候选规格**（写接口 / 内容型路径），供 dpTplRangePool() 单源取候选；
+     ★ 2026-10-09 用户裁定「**JA4 单点提回本期**」：本模板补「连接层指纹 · JA4 指纹」——
+       它是本场景除诱饵外**唯一不依赖脚本执行的服务端可观测**信号（TLS 握手在网关终结侧必被观测），
+       恰在「不执行 JS 的采集器采不到客户端证据」这一形态下仍然有效（接口直发 / 脚本采集器也要
+       完成 TLS 握手 ⇒ 其 JA4 即所用栈的 JA4，与会话自报内核不符即为交叉信号）。
+       定位同 F2.6 原文：**仅作交叉输入、不单独作否决**（JA4 标识 TLS 栈而非攻击者，
+       headless / stealth 浏览器其 JA4 与真实浏览器同值 ⇒ 单键无区分力）。
+       F2.6 其余连接层指纹（HTTP/2 指纹、TCP/IP 栈指纹）与时空一致性判定仍归第四期，不在本维。
+     ★ 2026-10-09 用户裁定「诱饵三个场景都挂」：本模板补「诱饵 · 隐藏链接」—— 这是本场景唯一
+       **不依赖客户端能力**的主动判据（响应体内注入、命中由网关自产），且「枚举并跟随链接」正是
+       爬虫的核心行为（真人不会点击隐藏链接）⇒ 命中即确证，
+       可与频率 / 节律类推断判据互证。权威源同向：F1.5 陷阱链的设计目标即「向遍历型 bot 生成假链接」。 */
+  { k: "Crawl", n: "爬取",   dims: [["pos", "内容型路径"], ["freq", "遍历"], ["beh", "路径覆盖"], ["decoy", "隐藏链接"], ["conn", "JA4 指纹"]],
+    fix: "频率约束 + 已登记搜索引擎放行（rDNS 正向确认）", inh: "按资产手动启用", manual: true, needRange: true, cand: "crawl" },
+];
+/* 判据维度 / 场景固有约束的**派生出口** —— 同一事实单一出口，页面与门禁断言均从此取，不另抄文案 */
+function dpTplQText(t) { return (t.dims || []).map(d => dpCDimName(d[0]) + "·" + d[1]).join(" + "); }
+function dpTplAText(t) { return t.fix || ""; }
+/* 「组合」列 = 判据维度 + 固有约束（派生，不另写一份文案） */
+function dpTplCombo(t) { return dpTplQText(t) + " + " + dpTplAText(t); }
+/* 页签⑤「判据维度」列：逐维渲染为小标签（同一份 dims；title 带来源与自证性） */
+function dpTplQTags(t) {
+  return (t.dims || []).map(d => {
+    const _d = dpCDim(d[0]);
+    /* ★ 有效性边界（`note`）随 title 一并呈现 —— 诱饵这类「确认型、覆盖窄」的维度必须在**取用处**
+       就能读到边界，否则场景表里它看起来与「位置 / 频次」同强度（2026-10-09 用户裁定「三个场景都挂」后必附）。 */
+    const _ti = "维度：" + dpCDimName(d[0]) + " · 承载能力：" + (_d ? (_d.srcUi || _d.src) : "未登记") + (dpCDimSC(d[0]) ? "" : " · 不可自证（只能驱动告警）") + (dpDimNoteText(_d) ? " · " + dpDimNoteText(_d) : "");
+    /* ★「（待补）」维度的**正文可见**标识（2026-10-09 评审整改）：承载能力尚未交付的维度（聚集 / 诱饵账号）
+       原先只在 title 里露「（待补）」，场景表正文看不出 ⇒ 读者会把模板的现成能力读高一档。
+       判据取「承载能力呈现名（`srcUi`）含（待补）」—— 单一出口，不另立台账。 */
+    const _td = (_d && _d.srcUi && _d.srcUi.indexOf("（待补）") >= 0)
+      ? '<i data-dpend="1" style="font-style:normal;font-size:9px;line-height:1;margin-left:3px;padding:1px 3px;border:1px solid #e8b339;border-radius:3px;color:#a06800;vertical-align:1px">待补</i>' : "";
+    return '<span class="tag t-gray" title="' + esc(_ti) + '">' + esc(dpCDimShort(d[0]) + "·" + d[1]) + _td + "</span>";
+  }).join(" ");
+}
+/* 维度反查：引用本维度的预设（为空 = 该维度无任何场景消费，属能力空白） */
+function dpCDimUsers(k) {
+  return DP_TPLS.filter(t => (t.dims || []).map(d => d[0]).indexOf(k) >= 0).map(t => t.n);
+}
+/* 模板启用后写入该资产的参数覆盖 —— 只写「与全局默认**不同**、且能落到逐资产参数上的」项：
+     ① 与全局同值不落覆盖（与检测项参数控件同一去重纪律，杜绝「看起来覆盖了其实一样」）；
+     ② 页面级 / 接口级的动作（登录页降级、关键写接口）由权威规则承载，不在资产参数上兜一圈。
+   两处订正（2026-10-08）：
+     · 扫号原写 {fp, exec, failLimit} 三项**全部等于全局默认** ⇒ 启用后不改变任何参数（空开关），
+       且绕过去重落下假覆盖、虚增「参数覆盖」计数 ⇒ 清空，页面如实标注「动作沿用全局默认」。
+     · 薅羊毛原写 trigScore: 80 —— 该档位落在 P4，按现行「P4 两段式」口径行动作是**追加认证**，
+       interact 根本不会执行，与「施加 interact 挑战」的意图相反 ⇒ 删除该档位覆盖。 */
+/* 启用某模板后写入该资产的**参数覆盖**（只落与全局默认不同的项，不写假覆盖）。
+   ★ 2026-10-09 动作剥离：本表只落**参数面覆盖**，不承载处置动作 —— 处置强度统一由处置档位体系
+     按评分裁定；与档位无关的场景固有约束见 DP_TPLS 的 fix 字段。 */
+const DP_TPL_PRESET = {
+  /* 撞库 = 登录页轻量挑战：该资产显式取轻量档（与规则 2 的登录页默认降级同向的显式化） */
+  Crack: { challenge: { interact: false } },
+  Scan:  {},
+  Wool:  {},
+  Crawl: {},
+};
+function dpTplInherit(lv, k) {
+  if (!(DP.arms.tpl && DP.arms.tpl[k])) return false;   /* 全局未启用 → 一律不生效 */
+  const t = DP_TPLS.find(x => x.k === k);
+  if (t && t.manual) return false;             /* manual: true 的模板须按资产手动启用（该属性与判据范围无关） */
+  return (lv | 0) >= 4;                        /* 撞库 / 扫号：L4~L5 默认启用 */
+}
+function dpTplOn(cfg, lv, k) {
+  const v = cfg && cfg.tpl ? cfg.tpl[k] : undefined;
+  /* ★ 全局开关是**能力总闸**：全局未启用 ⇒ 一律不生效，**显式覆盖亦不例外**。
+     原实现先判显式值，于是「全局关 + 本资产显式开」会把开关渲染成**开**，
+     与其下方「全局未启用」提示自相矛盾（开关显示值 ≠ 实际生效值）。 */
+  if (!(DP.arms.tpl && DP.arms.tpl[k])) return false;
+  return v == null ? dpTplInherit(lv, k) : !!v;
+}
+/* ★ 2026-10-09 评审整改（🟠「范围空 ⇒ 不生效」只有文案、没有实现）：**「生效」是独立于「开关」的判定**。
+   原先该语义只出现在三处文案（源码注释 / 判据范围弹窗 / 保存 toast），而 `dpTplOn` **根本不读 `tplRange`**
+   ⇒ 逐资产行会呈现「开关为开 · 已启用」而模板实际没有判据对象（可达：启用薅羊毛 / 爬取但不配范围）。
+   现拆成两层语义 —— **开关是用户的意愿，生效是系统的判定**：
+     · `dpTplOn`     = 开关状态（用户意愿）—— 决定 checkbox；全局总闸仍穿透（全局关 ⇒ 一律为否）；
+     · `dpTplActive` = **实际生效**（系统判定）—— 在 `dpTplOn` 之上再要求「须配范围的模板其范围非空」。
+   凡叙述「该模板对此资产是否起作用」一律取 `dpTplActive`；开关显示值取 `dpTplOn`。
+   两者在「已开启但未配范围」时**故意不同**，由状态文字显式标注「不生效」说明 —— 这是有意的两层语义，
+   不是同框矛盾（旧实现的矛盾在于：两者恒等、而文案却单方面宣告不生效）。门禁 A84 守。 */
+function dpTplActive(cfg, lv, k) {
+  if (!dpTplOn(cfg, lv, k)) return false;
+  const t = DP_TPLS.find(x => x.k === k);
+  if (t && t.needRange && !dpTplRange(cfg, k).length) return false;   /* 范围空 ⇒ 判据无识别对象 ⇒ 不生效 */
+  return true;
+}
+/* ---- 关键业务写接口（薅羊毛模板的**判据范围**）--------------------------------
+   写操作接口取自该资产的**细粒度资源清单**（一期 F3.4：方法 × 规范化路径的登记条目；
+   写方法条目），本模块只引用，不另立一份接口台账。
+   演示环境按资产标识确定性派生一组候选 —— 不同资产候选不同，避免「每个资产都一样」的假演示。 */
+const DP_WOOL_IFACES = [
+  ["POST /api/transfer",       "转账提交"],
+  ["POST /api/payment",        "支付下单"],
+  ["POST /api/loan/apply",     "贷款申请"],
+  ["POST /api/account/open",   "开户申请"],
+  ["POST /api/bill/pay",       "缴费提交"],
+  ["POST /api/profile/update", "资料变更"],
+];
+function dpWoolIfaces(a) {
+  if (!a) return DP_WOOL_IFACES.slice();
+  const n = 3 + dpRnd(a.id + "|wi", 0, 3);
+  return dpPickIdx(DP_WOOL_IFACES.length, n, a.id + "|wip").map(i => DP_WOOL_IFACES[i]);
+}
+/* ---- 内容型路径（爬取模板的**判据范围**）--------------------------------------
+   爬取模板的动作是「频率约束 + 已登记搜索引擎放行」（放行须经 rDNS 反查 + 正向确认），
+   判据是**位置 · 内容型路径 + 频次 · 遍历 + 行为节律 · 路径覆盖 + 诱饵 · 隐藏链接**四项（页面级事实）；
+   **不声明客户端证据类判据**（该维在爬取面上不具区分力：
+   不执行 JS 的客户端采不到、执行 JS 的自动化分不出，见模板表上方注释）。
+   内容型路径取自该资产的**细粒度资源清单**（一期 F3.4：方法 × 规范化路径的登记条目；
+   内容型路径条目），本模块只引用、不另立路径台账。
+   演示环境按资产标识确定性派生候选 —— 与写接口候选同一纪律（不同资产候选不同，避免「每个资产一样」）。 */
+const DP_CRAWL_PATHS = [
+  ["/product/list",     "产品列表页"],
+  ["/product/detail/*", "产品详情页"],
+  ["/rate/list",        "费率查询页"],
+  ["/branch/list",      "网点查询页"],
+  ["/notice/*",         "公告资讯页"],
+  ["/download/*",       "资料下载页"],
+];
+function dpCrawlPaths(a) {
+  if (!a) return DP_CRAWL_PATHS.slice();
+  const n = 3 + dpRnd(a.id + "|ci", 0, 3);
+  return dpPickIdx(DP_CRAWL_PATHS.length, n, a.id + "|cip").map(i => DP_CRAWL_PATHS[i]);
+}
+/* 判据范围候选**规格表**（id → 候选集 + 文案）：候选集与文案同源一处，不各写一份。
+   ★ 2026-10-09 用户裁定：候选规格**不得写成二分支**。原实现
+     `t.cand === "crawl" ? dpCrawlPaths(a) : dpWoolIfaces(a)` 把薅羊毛当成了默认分支 ——
+     两个模板业务上并无关联，却被绑成「非爬取即薅羊毛」；新增第三个带判据范围的模板会被
+     静默塞进写接口候选。现改为按模板自述的 `t.cand` 查表：**未声明即无候选**，不回落。 */
+const DP_TPL_CAND = {
+  iface: { items: dpWoolIfaces, kind: "写接口",     hint: "勾选本资产的关键业务写接口（写操作，可多选）", unit: "个关键业务写接口", short: "个写接口" },
+  crawl: { items: dpCrawlPaths, kind: "内容型路径", hint: "勾选本资产的内容型路径（页面遍历，可多选）",   unit: "条内容型路径",     short: "条内容路径" },
+};
+function dpTplCand(k) {
+  const t = DP_TPLS.find(x => x.k === k);
+  return (t && t.cand && DP_TPL_CAND[t.cand]) || null;
+}
+/* ②b 渲染用的短单位（与长单位取自同一份规格表，不另写三元分叉） */
+function dpTplCandShort(k) {
+  const c = dpTplCand(k);
+  return c ? " " + c.short : "";
+}
+/* 判据范围候选集的**单一出口**（渲染候选与写回过滤同一处，不各判一次模板） */
+function dpTplRangePool(a, k) {
+  const c = dpTplCand(k);
+  return c ? c.items(a) : [];
+}
+/* 该资产在某模板上的判据范围（[] = 未配置） */
+function dpTplRange(cfg, k) { return ((cfg && cfg.tplRange) || {})[k] || []; }
+/* 判据范围配置弹窗（入口在「防护策略 · 场景化防护模板」，用户指定入口归属防护策略域） */
+function dpTplRangeDlg(a, t) {
+  const cur = dpCurObj();
+  if (!cur || cur.deny) return;
+  const cfg = DP.objs[cur.id];
+  const cand = dpTplCand(t.k);   /* 候选规格单源：未声明即无候选，不回落其它模板 */
+  const picked = dpTplRange(cfg, t.k).map(x => x[0]);
+  const rows = dpTplRangePool(a, t.k).map(it => `<label class="fld" style="display:flex;align-items:center;gap:8px;margin:0 0 8px">
+      <input type="checkbox" data-rng="${esc(it[0])}" ${picked.indexOf(it[0]) >= 0 ? "checked" : ""}>
+      <span><b>${esc(it[0])}</b><span style="color:var(--txt3)"> · ${esc(it[1])}</span></span></label>`).join("");
+  openDlg("配置判据范围 · " + t.n + " · " + esc(a.name),
+    "判据维度「" + esc(dpTplQText(t)) + "」是<b>条目级</b>事实（" + (cand ? cand.kind : "条目") + "）、模板是<b>逐资产</b>开关，这份范围清单是两者之间的桥。" +
+    "范围为空 ⇒ 判据无识别对象、该模板对本资产<b>不生效</b>。该清单取自该资产的细粒度资源清单，本页只引用。",
+    `<div style="font-size:12.5px;color:var(--txt3);margin-bottom:8px">${cand ? cand.hint : "该模板无须配置判据范围"}</div>${rows}`, "lg");
+  document.getElementById("dlg1Ok").textContent = "保存范围";
+  document.getElementById("dlg1Ok").onclick = () => {
+    const sel = Array.from(document.querySelectorAll("#dlg1Body [data-rng]"))
+      .filter(x => x.checked).map(x => x.dataset.rng);
+    closeDlg();
+    /* ★ 判据范围空即该模板对本资产不生效 —— 改变**生效面** ⇒ 与启停 / 移除同档，提为二次认证。
+       原实现直接 dpShip 下发，与同页 dpPolDetSave 的普通确认形成分档倒挂。 */
+    ask2FA("配置场景化模板判据范围「" + t.n + "」", () => {
+      dpMutateCurCfg(c => {
+        if (!c.tplRange) c.tplRange = {};
+        c.tplRange[t.k] = dpTplRangePool(a, t.k).filter(it => sel.indexOf(it[0]) >= 0).map(it => it.slice());
+      }, "配置场景化模板判据范围「" + t.n + "」（" + sel.length + (cand ? " " + cand.unit : "") + "）", { ship: true, path: "det" });
+      renderDpPolicy();
+      dpShip();
+      toast(sel.length ? "判据范围已配置：" + sel.length + (cand ? " " + cand.unit : "")
+                       : "判据范围已清空（该模板对本资产不生效）");
+    }, null, "判据范围为空 ⇒ 该模板对「" + esc(a.name) + "」不生效；保存后即时下发至该资产所在网关。");
+  };
+}
+/* 评分信号构成（只读展示：权重随模型版本治理，不在本页编辑） */
+const DP_SIGNALS = [
+  { n: "重放防护", w: 25 }, { n: "动态挑战", w: 20 }, { n: "语义检测", w: 20 },
+  { n: "行为基线", w: 25 }, { n: "WAF/限流命中", w: 10 },
+];
+/* 豁免的风险源类型（豁免内容 = 某类风险源处置） */
+const DP_EXSRC = ["重放防护", "动态挑战", "语义检测", "行为基线"];
+/* ★ A2-05（2026-10-09 深度评审 · 演示简化改为真实规则）：豁免「审批人 ≠ 创建人」三权互斥。
+   演示环境只有一个登录账号 ⇒ 提供**操作身份**切换（只决定本模块记录的操作人与审批权限），
+   使「自己提、自己批」在界面上不可达，同时保留可演示的完整「申请 → 他人审批」链路。 */
+const DP_ACTORS = ["张伟", "李莉"];
+/* ★ A2-11：演示时钟 —— 页面其余时间轴（豁免窗口 / 冷启动推导 / 事件流 / 告警记录）一律锚定
+   DP_TODAY，而 nowTs() 取真实系统日 ⇒ 新增记录会比基准日晚数天，同表并列出现断层。
+   统一取「基准日 + 当前时刻」，与演示时间轴自洽。 */
+function dpNowTs() {
+  const hm = String(nowTs()).slice(11);
+  return DP_TODAY + " " + (hm || "10:00");
+}
+/* 观察期白名单默认到期日 = 演示基准日 + 30 天（指南 §8.4 白名单须有到期时间） */
+function dpWlDefaultExpire() {
+  const d = new Date(DP_TODAY + "T00:00:00");
+  d.setDate(d.getDate() + 30);
+  return d.toISOString().slice(0, 10);
+}
+/* 告警规则的防护域来源（告警页为公共页，跨防护域） */
+const DP_ALERT_SRCS = ["动态防护", "限流与熔断", "Web 安全防护", "其他"];
+/* 告警级别（★ 复用网关运维侧既有「告警级别」口径：提示 / 一般 / 严重 / 紧急；
+   见《网关运维配置页面-配置项梳理清单》§4.5）—— 级别随规则携带，规则表列呈现、表单可改。
+   不另立一套等级词表：同一概念两个出口即口径漂移。 */
+const DP_ALERT_LVS = ["提示", "一般", "严重", "紧急"];
+const DP_ALERT_LV_TAG = { "紧急": "t-err", "严重": "t-warn", "一般": "t-info", "提示": "t-gray" };
+/* 触发条件的事件字典（引擎侧事件类型）—— 表单候选提示与前端格式校验共用一张表 */
+const DP_ALERT_EVTS = [
+  ["risk_action_taken", "风险处置已执行"],
+  ["replay_blocked", "重放阻断"],
+  ["challenge_failed", "动态挑战失败"],
+  ["baseline_deviation", "行为基线偏离"],
+  ["semantic_hit", "语义检测命中"],
+  ["rate_limited", "触发限流"],
+  ["circuit_open", "触发熔断"],
+  ["waf_hit", "Web 防护命中"],
+];
+/* 触发条件格式校验（A5-A2）：频率型 = 事件类型 + 窗口/次数；事件型 = 「…发生时触发」。
+   返回空串 = 通过，否则返回拦截原因。此前为纯自由文本，任意字符串都能入库。 */
+function dpAlertCondCheck(cond) {
+  const c = String(cond || "").trim();
+  if (!c) return "触发条件必填";
+  if (/时触发|发生时触发/.test(c)) return "";
+  const hit = DP_ALERT_EVTS.filter(e => c.indexOf(e[0]) >= 0).length;
+  if (hit > 0 && /分钟内|小时内|次/.test(c)) return "";
+  if (hit > 0) return "触发条件须带频率窗口（例：5 分钟内 > 50 次）";
+  return "触发条件须含引擎事件类型（如 replay_blocked / waf_hit），或改用事件型表述（…发生时触发）";
+}
+
+/* ---- 基线维度（二期 F1.5 规则 4 · 2026-09-30 口径修正；2026-10-08 补第 4 类）----
+   学习对象 = 访问主体 + 客体：
+     · 主体（谁在访问）—— 应用（客户端实例）/ 账号 / 设备，主体取自身份管理台账；
+     · 客体（被谁访问）—— 防护对象（已启用动态防护的资产）本身就是一类学习对象：
+       撞库 / 扫号 / 爬取在主体侧表现为众多小偏离（每个来源只偏一点），在客体侧表现为单点大偏离
+       （该端点的访问速率 / 资源图案整体异常）—— 两侧互为佐证，缺一侧就看不出「集中式攻击」。
+   会话生命周期短，不产生稳定画像 —— 会话只作观测样本与偏离证据，不作学习对象。
+   维度只提供「主指标 + 默认偏离阈值（初始值）」，生效阈值统一读 DP.base.dims（页面可改）。 */
+const DP_BASEDIMS = [
+  { k: "app",   n: "应用基线", w: "应用", d: "调用速率 / 节律 / 覆盖度 / 重复拉取", metric: "调用速率", unit: "次/分" },
+  { k: "acct",  n: "账号基线", w: "账号", d: "登录频次 / 交互节律 / 同行组", metric: "登录频次", unit: "次/时" },
+  { k: "dev",   n: "设备基线", w: "设备", d: "访问速率 / 指纹 / 在线时长 / 环境姿态", metric: "访问发起速率", unit: "次/分" },
+  { k: "asset", n: "客体基线", w: "客体", d: "访问速率 / 资源覆盖 / 重复拉取", metric: "访问速率", unit: "次/分" },
+];
+function dpDim(k) { return DP_BASEDIMS.find(d => d.k === k) || DP_BASEDIMS[0]; }
+/* 跨主体事实级合并计分（R38-6 · 评估 §一 总闸 / 口径 §11）：一次会话同时绑定应用 / 账号 / 设备三主体
+   （客体另以资产为键），「出向传输体量」等**同一物理事实**会在多份画像上同时越阈。处理：四份**画像保留**
+   （聚合键不同、各有诊断价值），但**告警侧同一事实合并为一条**，只在**最可信主体**计分 ——
+   信任序：**账号 → 设备 → 应用 → 客体**（凭据主体最确定、物理终端次之、实例再次、客体是聚合视图故最弱）。 */
+/* 基线指标分型（六型）：判定式随型而定 —— 连续型走**稳健标准分**（中位数 + MAD×1.4826），
+   集合 / 分布 / 稀疏计数走各自判定法，事件状态型**不做统计基线**（状态判定 + 变更检测）。
+   fam  = 维度族（规模 / 节律 / 形状 / 上下文）；
+   role = 主（定主体状态）/ 佐（画像佐证）/ 条件（策略条件与评分聚合输入）。 */
+const DP_KINDS = {
+  cont:    { n: "连续 · 右偏", j: "稳健标准分（中位数 + MAD）" },
+  bnd:     { n: "连续 · 有界", j: "稳健标准分 + 量程裁剪" },
+  set:     { n: "集合",        j: "集合重叠判定（Jaccard / 覆盖率）" },
+  dist:    { n: "分布",        j: "分布形状判定（JS 散度 / 时段命中）" },
+  sparse:  { n: "稀疏计数",    j: "窗口计数" },
+  state:   { n: "事件 · 状态", j: "状态判定 · 变更检测" },
+};
+const DP_ROLES = { main: "主", aux: "佐", cond: "条件" };
+function dpKindTag(k) { return (DP_KINDS[k] || {}).n || k; }
+function dpKindJudge(k) { return (DP_KINDS[k] || {}).j || "—"; }
+/* 走 σ 标准分的型（连续右偏 / 连续有界）；其余型各自判定，**不共用 σ 公式** */
+function dpKindIsSigma(k) { return k === "cont" || k === "bnd"; }
+/* 主体生效阈值：本主体单独覆盖 > 维度默认（DP.base.dims，页面「学习与判定参数」可改） */
+function dpEffTh(s) { return (s.th != null) ? s.th : DP.base.dims[s.dim]; }
+/* 演示基准日（与事件流、日志同一天；演示当前时刻锚定约 10:42） */
+const DP_TODAY = "2026-09-30";
+function dpDaysSince(d) {
+  const a = new Date(DP_TODAY + "T00:00:00"), b = new Date(d + "T00:00:00");
+  return Math.max(0, Math.round((a - b) / 86400000));
+}
+/* 24h 统计底数：风险请求 = P2+P3+P4；四档处置计数与之严格闭合（客户可相加核对） */
+const DP_STAT24 = { req: 1284306, p2: 31200, p3: 2160, p4: 1080, limit: 96 };
+
+/* 主体主指标 24 点序列（确定性）：围绕基线均值波动，在指定索引处置入偏离值 */
+function dpSubSeries(mu, sd, spikeIdx, spikeVal, amp) {
+  const a = [];
+  /* 自然波动幅度（σ 倍数，默认 0.42）：生成主体按自身判定阈值收窄，
+     否则阈值较低的主体，其"正常"主体也会出现带外红点（状态与曲线自相矛盾） */
+  const K = (amp == null) ? 0.42 : amp;
+  for (let i = 0; i < 24; i++) {
+    let v = mu + (((i * 37 + 11) % 13) - 6) * sd * K;
+    if (spikeIdx.indexOf(i) >= 0) v = spikeVal;
+    a.push(Math.max(0, Math.round(v * 100) / 100));
+  }
+  return a;
+}
+/* 主体种子：与总览事件流、审计事件逐条对齐（reqId 可回溯；偏离时刻不晚于演示当前时刻） */
+/* ---- 主体目录（演示口径 · 权威源 = 身份管理模块的演示台账）------------------------
+   三类访问主体与身份管理的实体**一一对应**，本模块不另造主体：
+     应用 = 客户端实例（ID.cin：客户端软件装在具体终端上的实例）
+     账号 = 用户（ID.users）
+     设备 = 终端（ID.terms）
+   同一份台账 ⇒ 与身份管理页的清单 / 检索 / 下钻天然一致（台账增删主体，基线清单自动跟随）；
+   基线指标与 24 点序列由主体标识确定性派生（FNV-1a），刷新与跨会话保持稳定。
+   ★ 「承载资产」已废止：主体的访问行为**跨资产**（同一账号在不同资产上都有访问），
+     静态归属语义错误 —— 改由「访问防护对象分布」（assets：资产名 / 访问次数 / 最近访问）表达。 */
+const DP_MINSAMP = 200;   /* 24h 滑动窗样本充足线：样本不足 = 学习训练中，只观察、不参与偏离判定 */
+const DP_DIM_TH = { app: 3.0, acct: 3.0, dev: 3.0, asset: 3.0 };   /* 四类维度默认判定阈值（稳健尺度倍数）唯一来源 —— 与维度口径 §一 同源（四主体 ±3.0） */
+/* 稳健尺度下界（判定用）：σ = MAD×1.4826，窗口内样本完全一致时 MAD = 0 ⇒ σ = 0。
+   σ 作除数会得 Infinity / NaN（偏离量失真、判定带塌缩成一条线、页面渲染 "NaN"）。
+   故对**除数**取下界 ε，对外呈现的 σ 仍如实保留 0（用于标注「窗口平稳 · 以最小尺度判定」）。 */
+const DP_SD_EPS = 0.01;
+/* 参与基线统计的资产 = 已启用动态防护的防护对象（与 dpDefaultState().objs 中 on 项同源；
+   门禁断言核对两者一致，防止两处漂移） */
+const DP_LIVE_ASSETS = ["a1", "a9", "a4", "a19"];
+/* ★ 2026-10-10（R27 · C-3）：**运行期**的「已启用防护对象」集合 —— DP 已就绪即从 `DP.objs`
+   派生，未就绪（种子构造阶段，`dpDefaultState()` 内 `dpSeedSubs()` 先于 DP 赋值）回落
+   上面的种子常量。原实现各处直读常量 ⇒ 运行期开关对象后「客体 N / 客体基线 / 访问分布池」
+   停在种子集合、与「已启用对象」实算的冷启动卡漂移（判据 ④）。
+   判据复用 `dpAdmDeny` —— 与门禁 B6-03「DP_LIVE_ASSETS 与 objs 中已纳入且已启用同源」同口径。 */
+function dpLiveAssetIds() {
+  try {
+    if (typeof DP !== "undefined" && DP && DP.objs) {
+      return Object.keys(DP.objs).filter(function (id) { return !dpAdmDeny(id) && !!DP.objs[id].on; });
+    }
+  } catch (e) { /* DP 未就绪 / TDZ：回落种子常量 */ }
+  return DP_LIVE_ASSETS;
+}
+
+function dpHash(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h;
+}
+function dpRnd(seed, lo, hi, dec) {
+  const v = lo + (dpHash(String(seed)) % 100000) / 100000 * (hi - lo);
+  return dec ? parseFloat(v.toFixed(dec)) : Math.round(v);
+}
+/* 从 n 个下标里确定性挑 k 个（按哈希序取最小的 k 个 → 位置分散、不连号） */
+function dpPickIdx(n, k, salt, exclude) {
+  const arr = [];
+  for (let i = 0; i < n; i++) arr.push({ i: i, h: dpHash(salt + "#" + i) });
+  arr.sort((a, b) => a.h - b.h);
+  const out = [];
+  for (let j = 0; j < arr.length && out.length < k; j++) {
+    if (exclude && exclude.indexOf(arr[j].i) >= 0) continue;
+    out.push(arr[j].i);
+  }
+  return out;
+}
+/* ---------------- 主体目录：权威源 = 身份管理模块的演示台账 ----------------
+   三类访问主体与身份管理的实体一一对应，本模块不另造主体：
+     应用 = 客户端实例（ID.cin） / 账号 = 用户（ID.users） / 设备 = 终端（ID.terms）
+   同一份台账 ⇒ 与身份管理页的清单 / 检索 / 下钻天然一致；台账增删主体则基线清单自动跟随。
+   ★ 「承载资产」已废止 —— 主体的访问行为跨资产，静态归属语义错误，改由「访问防护对象分布」表达。 */
+
+/* 身份管理台账（未装载时按需装载；只读，不回写） */
+function dpIdLedger() {
+  if (typeof ID === "undefined" || !ID) { try { if (typeof idLoad === "function") idLoad(); } catch (e) { /* 忽略 */ } }
+  return (typeof ID !== "undefined" && ID) ? ID : null;
+}
+/* 主体的访问防护对象分布：从「已启用动态防护的防护对象」里确定性挑 2~3 个（含访问次数与最近访问时刻）。
+   evAsset = 该主体在事件流中出现时所处的防护对象，强制纳入 —— 保证「事件的防护对象 ∈ 该主体的访问防护对象」。
+   ★ 一个主体可跨多个资产，故不存在单一「承载资产」。 */
+function dpSubAssets(key, evAsset) {
+  const pool = dpLiveAssetIds().map(id => dpAsset(id)).filter(Boolean).map(a => a.name);
+  if (!pool.length) return [];
+  const forced = (evAsset && pool.indexOf(evAsset) >= 0) ? [evAsset] : [];
+  const rest = pool.filter(nm => forced.indexOf(nm) < 0);
+  /* 每主体的访问防护对象数：有事件锚定的取「锚定资产 + 2 个」，无锚定的取 2~3 个。
+     ★ 不宜更多 —— 在网防护对象只有 4 个，若每主体覆盖 3~4 个，
+       会退化成「每个主体都访问全部资产」，「按访问防护对象检索」随之全命中、失去区分度（实测 15/15）。 */
+  const want = Math.min(pool.length, Math.max(2, forced.length + 1 + dpHash(key + "|asn") % 2));
+  const idx = dpPickIdx(rest.length, Math.max(0, want - forced.length), key + "|as");
+  return forced.concat(idx.map(i => rest[i])).map(nm => ({
+    name: nm,
+    n: dpRnd(key + "|asc" + nm, 12, 480),
+    last: String(dpRnd(key + "|ash" + nm, 6, 10)).padStart(2, "0") + ":" + String(dpRnd(key + "|asm" + nm, 10, 59)).padStart(2, "0"),
+  })).sort((a, b) => b.n - a.n);
+}
+/* 客体的「来源分布」：以**来源账号为主子键**挂在客体主体之下。
+   同一账号在 A 资产上正常、在 B 资产上异常 —— 混合成一份画像就看不出来；
+   同一资产被不同来源访问也要分开看（撞库 = 单客体 × 海量来源账号）。
+   ⇒ 偏离记录 / 事件回溯 / 基线学习一律以「主体 × 客体」联合聚合键为单位（见 dpJointKey）。 */
+function dpSubSources(assetId, assetName) {
+  const L = dpIdLedger();
+  const users = (L && L.users) || [];
+  if (!users.length) return [];
+  const n = Math.min(users.length, 3 + dpRnd(assetId + "|sn", 0, 2));
+  return dpPickIdx(users.length, n, assetId + "|src").map(i => {
+    const u = users[i];
+    return {
+      acct: u.acct, name: u.name, org: u.org, role: u.role,
+      n: dpRnd(assetId + "|sc" + u.acct, 24, 960),
+      last: String(dpRnd(assetId + "|sh" + u.acct, 6, 10)).padStart(2, "0") + ":" + String(dpRnd(assetId + "|sm" + u.acct, 10, 59)).padStart(2, "0"),
+      ipN: dpRnd(assetId + "|si" + u.acct, 1, 6),
+      cli: dpRnd(assetId + "|sk" + u.acct, 1, 3),
+      joint: dpJointKey("acct", u.acct, assetName),
+    };
+  }).sort((a, b) => b.n - a.n);
+}
+/* 偏离中的主体及其**声明偏离量（σ）** —— 演示口径的单一来源。
+   总览实时事件流的命中文案、基线主体清单的偏离记录、主体下钻的 24 点序列三处一律由本表推导。
+   ★ 不改本表就改其中任一处 ⇒ 三处立刻对不上（此前实测：基线清单写 3.1σ、总览事件流写 3.4σ）。 */
+const DP_SUB_DEV = {
+  "app-BZPC-0007-3A2C": 3.4,
+  "app-BZPC-0012-1D8E": 3.8,
+  "acct-zhangwei": 3.4,
+  /* 客体（防护对象）：偏离量同样在此声明 —— 主体清单与客体清单共用同一套推导 */
+  "asset-a1": 4.6,
+  "asset-a9": 3.2,
+};
+/* 偏离记录的**时刻**：与总览实时事件流里同一条 reqId 的事件时间**逐字一致**。
+   不能取 dpSubBaseline 的「最近活跃」（随机 HH:MM）—— 同一 reqId 两个时间，交叉核对即对不上。
+   ★ 客体不在事件流里（其偏离是聚合信号），故不列本表，沿用自身案例时间。 */
+const DP_SUB_AT = {
+  "app-BZPC-0007-3A2C": "10:41:55",
+  "app-BZPC-0012-1D8E": "10:42:18",
+  "acct-zhangwei": "10:37:40",
+};
+/* 事件流「行为基线」命中文案：σ 与指标名一律取自基线派生（与基线下钻页同源，不手打） */
+function dpBaseHitText(dim, key, label) {
+  const b = dpSubBaseline(dim, key, true, false);
+  return "行为基线：" + label + " " + b.main + "偏离 " + b.dev.toFixed(1) + "σ";
+}
+/* 一个主体的基线：指标（中位数 / 稳健尺度 / 当前值）、24 点逐时序列、偏离量 —— 一律由主体标识确定性派生
+   （FNV-1a），刷新与跨会话稳定。isDev = 偏离中；isLearn = 样本不足（学习训练中，只观察不处置）。 */
+/* dpSubBaseline 的记忆化：同一 (dim, key, isDev, isLearn) 的派生结果在一次会话内**确定且不变**
+   （只读 DP_DIM_TH 与 DP_SD_EPS，不读 DP），却被主体清单、客体清单与事件流命中文案反复求值 ——
+   实测一次装载重复 40+ 次，每次重建 24 点序列并做多次 FNV 哈希。返回对象在调用侧只读，可安全共享。 */
+const DP_SUBBASE_CACHE = {};
+function dpSubBaseline(dim, key, isDev, isLearn) {
+  const _ck = dim + "|" + key + "|" + (isDev ? 1 : 0) + "|" + (isLearn ? 1 : 0);
+  if (Object.prototype.hasOwnProperty.call(DP_SUBBASE_CACHE, _ck)) return DP_SUBBASE_CACHE[_ck];
+  const th = DP_DIM_TH[dim];
+  const samples = isLearn ? dpRnd(key + "|s", 26, 188) : dpRnd(key + "|s", 214, 880);
+  const last = String(dpRnd(key + "|h", 6, 10)).padStart(2, "0") + ":" + String(dpRnd(key + "|m", 10, 59)).padStart(2, "0");
+  /* 非连续型指标的演示值（集合 / 分布 / 稀疏 / 状态型）：无 μ / σ，用 txt（基线）与 curTxt（当前值）
+     表达；hit = 1 表示当前值落在基线内（判定式的「命中 / 未命中」由型决定，见 dpKindJudge） */
+  const NV = (o) => Object.assign({ mu: 0, sd: 0, cur: 0, st: 0, hit: 1, u: "" }, o);
+  let main, unit, mm;
+  if (dim === "app") {
+    /* 应用（客户端实例）：规模 / 节律 / 形状 三族（**无上下文族** —— 评估 §五 D2~D4：源 IP / 地域漂移
+       在有端形态下与设备侧同事实（去重）；协议与端口一致性 · TLS 指纹（JA4）一致性是单会话连接属性、
+       非主体统计行为，归判据维度引擎 `conn` 维；并发连接数受实现方式支配 ⇒ 高噪声低效力，亦删）。
+       本轮另按评估补入「同资源重复拉取率」「调用间隔规律性」—— 后者是抗爬取中**最难规避**的行为层判据。
+       详见《动态防护-行为基线指标评估与优化-20261010》。 */
+    main = "调用速率"; unit = "次/分";
+    mm = [
+      { fam: "规模", kind: "cont", role: "main", n: "调用速率", u: "次/分", mu: dpRnd(key + "|a", 2.4, 9.6, 1), sd: dpRnd(key + "|a2", 0.5, 1.6, 1), cur: 0, st: 0 },
+      /* 传输体量（维度口径 §5.2）：连续有界 · 右偏，直接度量数据外带 —— 拖库的终点，过程判据（覆盖度 / 重复拉取率）之外的直接判据 */
+      { fam: "规模", kind: "bnd", role: "aux", n: "出向传输体量", u: "MB/时", mu: dpRnd(key + "|eg", 60, 180), sd: dpRnd(key + "|eg2", 4, 16, 1), rt: dpRnd(key + "|rt", 1.2, 6.9, 1) + " : 1", cur: 0, st: 0 },
+      /* 调用间隔规律性（本评估新增 · 维度口径文档未列）：业界公认**行为层最难规避** —— 爬取者能降频 /
+         轮换 IP / 随机路径，却难伪装人类式的不规则间隔；「节拍器式等间隔」是脚本的典型指纹（见评估 §4.1）。 */
+      NV({ fam: "节律", kind: "dist", role: "aux", n: "调用间隔规律性", txt: "请求间隔 0.8 ~ 6s（变异系数 0.42）", curTxt: "命中基线分布" }),
+      NV({ fam: "节律", kind: "dist", role: "aux", n: "调用时段分布", txt: "08:30 ~ 19:30（占 93%）", curTxt: "命中基线时段" }),
+      { fam: "形状", kind: "bnd", role: "aux", n: "路径序列熵", u: "", mu: dpRnd(key + "|b", 2.4, 4.2, 1), sd: dpRnd(key + "|b2", 0.4, 0.9, 1), cur: 0, st: 0, pre: "路径归一化" },
+      /* 资源覆盖度（§5.2 · 实现缺失，本轮补齐）：实例访问资源数扩张 = 越权探测；与路径序列熵互补（广度 vs 顺序）。 */
+      { fam: "形状", kind: "cont", role: "aux", n: "资源覆盖度", u: "个", mu: dpRnd(key + "|arc", 6, 48), sd: dpRnd(key + "|arc2", 1.4, 9, 1), cur: 0, st: 0, pre: "路径归一化" },
+      /* 同资源重复拉取率（本评估新增 · 维度口径文档未列）：与覆盖度互补 —— 覆盖度抓「广撒网」，本项抓「死盯一个资源反复拉」。 */
+      { fam: "形状", kind: "bnd", role: "aux", n: "同资源重复拉取率", u: "%", mu: dpRnd(key + "|arp", 3, 18, 1), sd: dpRnd(key + "|arp2", 1, 4, 1), cur: 0, st: 0 },
+    ];
+  } else if (dim === "acct") {
+    /* 账号（用户 / 服务账号） */
+    main = "登录频次"; unit = "次/时";
+    mm = [
+      { fam: "规模", kind: "cont", role: "main", n: "登录频次", u: "次/时", mu: dpRnd(key + "|a", 1.1, 4.4, 1), sd: dpRnd(key + "|a2", 0.4, 1.1, 1), cur: 0, st: 0 },
+      { fam: "规模", kind: "bnd", role: "aux", n: "出向传输体量", u: "MB/时", mu: dpRnd(key + "|eg", 60, 180), sd: dpRnd(key + "|eg2", 4, 16, 1), rt: dpRnd(key + "|rt", 1.2, 6.9, 1) + " : 1", cur: 0, st: 0 },
+      { fam: "规模", kind: "bnd", role: "aux", n: "会话时长", u: "分", mu: dpRnd(key + "|d", 8, 46), sd: dpRnd(key + "|d2", 2.4, 7.2, 1), cur: 0, st: 0 },
+      NV({ fam: "节律", kind: "dist", role: "aux", n: "活跃时段", txt: "09:00 ~ 18:00（占 96%）", curTxt: "命中基线时段" }),
+      /* 人机交互节律（§5.2 · 实现缺失，本轮补齐）：会话维度观测，按三主体投影落到账号与设备画像；
+         数据源为 F1.2 已采集的交互特征（不新增埋点）；无端 / 不执行 JS 的客户端采不到 ⇒ 该形态改走机器节律基线（§10.6）。 */
+      NV({ fam: "节律", kind: "dist", role: "aux", n: "人机交互节律（交互间隔分布形状）", txt: "交互间隔 4 ~ 15s（分布形状稳定）", curTxt: "命中基线分布" }),
+      { fam: "形状", kind: "bnd", role: "aux", n: "失败登录比", u: "%", mu: dpRnd(key + "|e", 1.2, 6.8, 1), sd: dpRnd(key + "|e2", 0.3, 1.2, 1), cur: 0, st: 0 },
+      NV({ fam: "上下文", kind: "set", role: "cond", n: "认证方式漂移", txt: "账号密码 + 动态口令", curTxt: "无漂移" }),
+      NV({ fam: "上下文", kind: "set", role: "cond", n: "IP · 地理位置漂移", txt: "已登记 2 个归属地", curTxt: "无漂移" }),
+      /* 同行组偏离：与「同部门 / 同角色」主体比对 —— 识破「整体带内、相对同组异常」。
+         （R38-2）私有化部署下同角色主体常不足 30（§10.4）⇒ 实际恒走**回退路径**（全局基线 + 角色分位）；
+         回退后判据即**分布形状比对**，故本项型 = 分布型（dist），**不另立「派生」型**（该型在演示与私有化环境永不启用）。 */
+      NV({ fam: "上下文", kind: "dist", role: "aux", n: "同行组偏离（同部门 / 同角色）", txt: "同组基准不足，回退全局基线 + 角色分位", curTxt: "相对同组带内" }),
+    ];
+  } else if (dim === "dev") {
+    /* 设备（终端）：行为面（本表）+ 姿态面（dpSubPosture，**不进 σ 判定**） */
+    main = "访问发起速率"; unit = "次/分";
+    /* 指纹一致率：百分比指标，μ 与 σ 一起夹住，保证「判定带上沿 μ+阈值σ」不越过 100（否则曲线纵轴越界） */
+    const mu0 = dpRnd(key + "|f", 95.0, 99.0, 1);
+    const sd0 = Math.min(dpRnd(key + "|f2", 0.3, 1.4, 1), (100 - mu0) / th * 0.9);
+    mm = [
+      /* 访问发起速率（R38-1 · 设备主指标）：**设备向外的请求发起速率**（次/分）—— 取代「并发会话数」。
+         原「并发会话数」与应用表已删的「并发连接数」同族（并发度），受实现方式支配（多标签 / HTTP2 多路复用），
+         且 E1 实体维度族不含并发数；速率是纯行为量，与其余三主体主指标（调用速率 / 登录频次 / 访问速率）同构
+         （皆「单位时间行为量」）。同一会话内与账号 / 应用侧主指标部分共线 ⇒ 按事实级合并计分（见 DP_BASEDIMS 后注释）。 */
+      { fam: "规模", kind: "cont", role: "main", n: "访问发起速率", u: "次/分", mu: dpRnd(key + "|a", 2.2, 9.4, 1), sd: dpRnd(key + "|a2", 0.5, 1.6, 1), cur: 0, st: 0 },
+      { fam: "规模", kind: "bnd", role: "aux", n: "出向传输体量", u: "MB/时", mu: dpRnd(key + "|eg", 60, 180), sd: dpRnd(key + "|eg2", 4, 16, 1), rt: dpRnd(key + "|rt", 1.2, 6.9, 1) + " : 1", cur: 0, st: 0 },
+      NV({ fam: "节律", kind: "dist", role: "aux", n: "在线时长分布", txt: "08:00 ~ 20:00（占 91%）", curTxt: "命中基线时段" }),
+      NV({ fam: "节律", kind: "dist", role: "aux", n: "人机交互节律（交互间隔分布形状）", txt: "交互间隔 3 ~ 12s（分布形状稳定）", curTxt: "命中基线分布" }),
+      { fam: "形状", kind: "bnd", role: "aux", n: "指纹一致率", u: "%", mu: mu0, sd: parseFloat(sd0.toFixed(2)), cur: 0, st: 0 },
+      /* sparse 型（零膨胀 · 窗口计数）在本表的**权威源落点**（§5.2 设备（终端）行为面表明列此项）——
+         原型此前缺席，各型中的「稀疏计数」一度由客体自造项「新增来源首次出现」冒充；
+         2026-10-10（R35）随客体回归权威源一并归位。 */
+      NV({ fam: "形状", kind: "sparse", role: "aux", n: "UA / Client Hints 变更次数", txt: "基线 ≤ 2 次/日（窗口计数）", curTxt: dpRnd(key + "|ua", 0, 2) + " 次/日，未越窗口阈值" }),
+      NV({ fam: "上下文", kind: "set", role: "cond", n: "IP · 地理位置漂移", txt: "已登记 2 个归属地", curTxt: "无漂移" }),
+      NV({ fam: "上下文", kind: "state", role: "cond", n: "网络接入方式漂移", txt: "有线办公网", curTxt: "一致" }),
+    ];
+  } else {
+    /* 客体（防护对象 / 资产）：主指标 =「访问速率」（规模族 · 连续右偏）——
+       ⚠ 2026-10-10（R35）本表**回归权威源 §9.3 无端资产主体维度表**（执行裁决台账 R1）。10-08 曾把
+       主指标换成「新增来源占比」（形状族），意图避开 DDoS / CC 对规模量的放大；该改法**仍在来源轴上**，
+       且引入**爬取 / 拖库漏判**（爬取用已登记来源 + 固定路径 + 大面积拉取，「新增来源占比」不升反降）
+       ⇒ 按 R1 回退：主指标回「访问速率」，「来源构成」类降为**条件族**（限流输入与归因佐证，不参与
+       偏离判定）。DDoS / CC 造成的访问量突增属**外部注入**，由「实名 / 匿名分层」隔离（§4.3 规则 4 /
+       §9.7），不靠「换指标」回避。
+       拖库 / 接口滥用由**形状族**（资源覆盖度 / 同资源重复拉取率 / 参数熵）直接覆盖 —— 这是以资产为
+       聚合键才成立的维度，也是客体主体不可被账号主体替代的原因（§9.2）。
+       客体（被访问方）偏离时的处置落在**来源侧**与「该资产防护档位」，不在客体本身（见 dpObjAttr）。 */
+    main = "访问速率"; unit = "次/分";
+    mm = [
+      { fam: "规模", kind: "cont", role: "main", n: "访问速率", u: "次/分", mu: dpRnd(key + "|q", 24, 180), sd: dpRnd(key + "|q2", 5, 22, 1), cur: 0, st: 0 },
+      { fam: "规模", kind: "cont", role: "aux", n: "单会话资源数", u: "个", mu: dpRnd(key + "|sr", 3, 26), sd: dpRnd(key + "|sr2", 1, 6, 1), cur: 0, st: 0 },
+      { fam: "规模", kind: "bnd", role: "aux", n: "出向传输体量", u: "MB/时", mu: dpRnd(key + "|eg", 60, 180), sd: dpRnd(key + "|eg2", 4, 16, 1), rt: dpRnd(key + "|rt", 1.2, 6.9, 1) + " : 1", cur: 0, st: 0 },
+      /* 形状族是「拖库 / 接口滥用」的直接判据（§9.3）：以资产为聚合键才成立的维度 */
+      { fam: "形状", kind: "cont", role: "aux", n: "资源覆盖度", u: "个", mu: dpRnd(key + "|rc", 12, 96), sd: dpRnd(key + "|rc2", 2, 14, 1), cur: 0, st: 0, pre: "路径归一化" },
+      { fam: "形状", kind: "bnd", role: "aux", n: "同资源重复拉取率", u: "%", mu: dpRnd(key + "|rp", 4, 22, 1), sd: dpRnd(key + "|rp2", 1, 4, 1), cur: 0, st: 0 },
+      { fam: "形状", kind: "bnd", role: "aux", n: "参数熵 / 请求形态一致性", u: "", mu: dpRnd(key + "|pe", 2.4, 6.8, 2), sd: dpRnd(key + "|pe2", 0.4, 1.4, 2), cur: 0, st: 0 },
+      NV({ fam: "节律", kind: "dist", role: "aux", n: "访问时段分布", txt: "08:00 ~ 20:00（占 92%）", curTxt: "命中基线时段" }),
+      /* 来源构成类 = 条件族（限流输入与归因佐证，不参与偏离判定） */
+      NV({ fam: "上下文", kind: "set", role: "cond", n: "来源 IP · 地域分布", txt: "已登记办公网 + 互联网出口", curTxt: "无漂移" }),
+      NV({ fam: "上下文", kind: "set", role: "cond", n: "来源账号分布", txt: "见下方「来源观测」卡（以来源账号为子键）", curTxt: "来源账号构成未漂移" }),
+    ];
+  }
+  const m0 = mm[0];
+  /* 判定用稳健尺度：σ = 0（窗口完全平稳）时取下界，杜绝 Infinity / NaN（见 DP_SD_EPS 注释） */
+  const sdEff = (m0.sd > 0) ? m0.sd : DP_SD_EPS;
+  let dev = 0, spike = null, spikeIdx = [];
+  if (isDev) {
+    const declared = DP_SUB_DEV[dim + "-" + key];   /* 声明偏离量（σ）· 与事件流 / 偏离记录同源 */
+    const need = (declared != null ? declared : dpRnd(key + "|t", th + 0.2, th + 1.3, 2)) * sdEff;   /* 目标偏离量（绝对） */
+    const cap = (unit === "%") ? 100 : Infinity;
+    let dir = (dpHash(key + "|sign") % 2) ? 1 : -1;
+    if (dir > 0 && m0.mu + need > cap) dir = -1;
+    if (dir < 0 && m0.mu - need < 0) dir = 1;
+    spike = Math.max(0, Math.min(cap, Math.round((m0.mu + dir * need) * 100) / 100));
+    dev = Math.abs(spike - m0.mu) / sdEff;
+    if (dev <= th) {                                   /* 兜底：确保越过阈值（否则状态与状态标签自相矛盾） */
+      spike = Math.max(0, Math.min(cap, Math.round((m0.mu + dir * (th + 0.25) * sdEff) * 100) / 100));
+      dev = Math.abs(spike - m0.mu) / sdEff;
+      if (declared != null) dev = declared;
+    }
+    /* 有声明值时以声明值为准：点位按 2 位取整产生的残差（≤0.01σ）不参与对外呈现 */
+    if (declared != null) dev = declared;
+    /* 曲线偏离点的横坐标 = 偏离记录的时刻（同源）：dpBaseChart 会按 hist 时间放大主点，
+       横坐标若仍随机取 3~22，放大点有时不落在偏离点上（自相矛盾）。 */
+    {
+      const _hh = parseInt(String(DP_SUB_AT[dim + "-" + key] || "").split(":")[0], 10);
+      spikeIdx = [Number.isFinite(_hh) ? Math.max(0, Math.min(23, _hh)) : dpRnd(key + "|idx", 3, 22)];
+    }
+    m0.cur = spike; m0.st = 1;
+  }
+  /* 当前值必须逐指标给出：偏离主体的主指标取上方按目标偏离量算出的 spike；其余主体
+     （正常 / 白名单命中 / 学习训练中）同样要给**带内**当前值 —— 缺了它，指标表会拿 0 去算偏离，
+     出现「状态写正常、指标写偏离 4.4σ」的自相矛盾（2026-10-08 截图验收实测）。 */
+  mm.forEach((m, j) => {
+    if (j === 0 && isDev) return;                 /* 主指标偏离值已由上方算出 */
+    /* 逐项**必有**当前值：σ = 0 的持续平稳窗口，当前值即基线值 —— 不能因 sd 未通过而整项不赋值
+       （默认 0 会参与后续偏离计算，展示出与状态矛盾的数字）。 */
+    m.cur = (m.sd > 0)
+      ? Math.round((m.mu + dpRnd(key + "|o" + j, -11, 11) / 10 * m.sd) * 100) / 100
+      : m.mu;
+  });
+  const _res = {
+    samples: samples, last: last, main: main, mu: m0.mu, sd: m0.sd, unit: unit, metrics: mm, dev: dev,
+    /* 自然波动幅度（amp）取三条约束最小值：① 判定带内（≤0.85×阈值σ，避免「正常 / 训练中」出现带外红点）；
+       ② 不下穿量程下限 0（低均值频次类指标 σ 可能大于 μ）；③ 不越过 100（百分比指标）。 */
+    series: dpSubSeries(m0.mu, sdEff, spikeIdx, spike == null ? 0 : spike,
+      Math.min(0.42, th * 0.85 / 6, m0.mu > 0 ? m0.mu * 0.9 / (6 * sdEff) : 0.42)),
+  };
+  DP_SUBBASE_CACHE[_ck] = _res;
+  return _res;
+}
+/* ---- 设备环境姿态面（维度口径文档 §六）----------------------------------------
+   姿态是**二值状态与状态迁移**，没有均值方差可言（§5.1 事件 / 状态型）：
+   判定式不是 d ≥ 阈值，而是「与登记基态不符」或「基态发生迁移」。
+   ⇒ 姿态项不进 μ / σ 体系、不进偏离记录（hist），页面落独立「环境姿态」卡。
+   采集边界（§6.2）：有端（装有安全接入客户端）端侧全量；无端只有网络与浏览器侧。 */
+const DP_POSTURE_ITEMS = [
+  { fam: "系统完整性", n: "越狱 / ROOT",           okv: "未检出",     badv: "已检出" },
+  { fam: "系统完整性", n: "系统版本与补丁",         okv: "已最新",     badv: "落后 3 个版本" },
+  { fam: "防护软件",   n: "杀毒 / EDR 在线",        okv: "在线",       badv: "已卸载" },
+  { fam: "防护软件",   n: "病毒库新鲜度",           okv: "当日更新",   badv: "12 天未更新" },
+  { fam: "运行时风险", n: "调试器 / 抓包",          okv: "未检出",     badv: "检出调试器附加" },
+  { fam: "运行时风险", n: "可疑进程 / 自动化框架",   okv: "无",         badv: "检出自动化框架" },
+  { fam: "漏洞",       n: "高危 CVE 命中",          okv: "0 项",       badv: "2 项未修复" },
+  { fam: "设备可信",   n: "设备证书 / TPM",         okv: "已绑定",     badv: "证书已失效" },
+  { fam: "设备可信",   n: "磁盘加密 / 屏幕锁",       okv: "已启用",     badv: "未启用" },
+  { fam: "设备可信",   n: "主机防火墙",             okv: "已启用",     badv: "已关闭" },
+  { fam: "设备可信",   n: "企业受管 / 域加入",       okv: "已注册",     badv: "未注册（个人设备）" },
+  { fam: "网络环境",   n: "代理 / Tor 出口",        okv: "未检出",     badv: "检出代理出口" },
+];
+/* 演示：仅「科技管理部-张伟-PC」出现姿态迁移 —— 该机行为面偏离中、姿态面同时跌落，
+   两面判定独立（姿态不合规更适合做准入 / 追加认证的策略条件，不直接进 P 级对抗）。 */
+const DP_POSTURE_CASE = {
+  t_pc_0007: {
+    bad: ["杀毒 / EDR 在线", "病毒库新鲜度"],
+    hist: [{ at: "10:38", item: "杀毒 / EDR 在线", from: "在线", to: "已卸载", act: "追加认证 + 降权" }],
+  },
+};
+function dpSubPosture(key, online) {
+  const c = DP_POSTURE_CASE[key] || { bad: [], hist: [] };
+  const off = (online === "离线");
+  const items = DP_POSTURE_ITEMS.map(it => {
+    if (off) return { fam: it.fam, n: it.n, v: "未采集（设备离线）", ok: -1 };
+    const good = c.bad.indexOf(it.n) < 0;
+    return { fam: it.fam, n: it.n, v: good ? it.okv : it.badv, ok: good ? 1 : 0 };
+  });
+  const nBad = items.filter(i => i.ok === 0).length;
+  const nOff = items.filter(i => i.ok === -1).length;
+  return {
+    base: "合规", cur: nBad ? "不合规" : (nOff ? "待确认" : "合规"),
+    bad: nBad, off: nOff, total: items.length,
+    src: off ? "端侧采集不可达（设备离线）" : "端侧客户端采集（有端全量面）",
+    items: items, hist: c.hist || [],
+  };
+}
+/* 主体清单：应用 = 客户端实例（已卸载实例不产生访问行为，不纳入建模）/ 账号 = 用户 / 设备 = 终端。
+   evAsset = 该主体在事件流中出现时所处的防护对象（无事件则为空）；hist 的 requestId 与事件流条目
+   一一对应，跨页（事件流 ↔ 主体偏离记录）可回溯。
+   ★ 不另造主体、不硬编码统计数字：总况计数一律由本清单实算（dpPopStat）。 */
+/* 重播种时的**用户态回灌**：主体清单是派生态（每次装载由身份管理台账重建，台账增删自动跟随），
+   但其中两项是用户态 —— ① 本主体判定阈值覆盖 th；② 手动重置后的基线 series / hist / samples / last。
+   整表替换会把它们静默丢掉（改了阈值、重置过基线，刷新即失效；现场像「配置不保存」的故障）。
+   ⇒ 按 id 回灌**带 touched 标记**的条目；未动过的条目一律以重播种结果为准（不携带陈旧派生值）。 */
+function dpSubsCarry(oldSubs, freshSubs) {
+  const keep = {};
+  (oldSubs || []).forEach(o => { if (o && o.touched) keep[o.id] = o; });
+  (freshSubs || []).forEach(n => {
+    const o = keep[n.id];
+    if (!o) return;
+    n.touched = true;
+    if (o.th != null) n.th = o.th;
+    if (o.rs) { n.rs = o.rs; n.series = o.series; n.hist = o.hist; n.samples = o.samples; n.last = o.last; }
+  });
+  return freshSubs;
+}
+/* 基线「重建记录」的主体数表述 —— **由身份台账实算**，不写死。
+   写死的后果（实测）：身份侧加一台终端 / 一个客户端实例后，总况计数自动跟随，
+   而本行仍停在旧数 ⇒ 客户在两个页面相加即对不上（`_dp_logic_check.py` A10 专守此漂移）。 */
+function dpRebuildLine() {
+  var L = dpIdLedger();
+  if (!L) return "完成 · 样本充足";
+  var app = (L.cin || []).filter(function (c) { return c.st !== "已卸载"; }).length;
+  var acct = (L.users || []).length;
+  var dev = (L.terms || []).length;
+  return "完成 · 应用 " + app + " · 账号 " + acct + " · 设备 " + dev + " · 客体 " + dpLiveAssetIds().length + " · 样本充足";
+}
+function dpSeedSubs() {
+  const L = dpIdLedger();
+  if (!L) return [];
+  const out = [];
+  const mk = (dim, key, label, name, meta, isDev, isLearn, evAsset, hist) => {
+    const b = dpSubBaseline(dim, key, isDev, isLearn);
+    return {
+      id: dim + "-" + key, dim: dim, key: key, label: label, name: name, meta: meta,
+      assets: dpSubAssets(key, evAsset), samples: b.samples, th: null, last: b.last,
+      main: b.main, mu: b.mu, sd: b.sd, unit: b.unit, metrics: b.metrics, series: b.series,
+      posture: null,   /* 仅设备主体有：环境姿态面（不进 σ 偏离记录），见 dpSubPosture */
+      /* ★ 偏离记录的**指标名与偏离量**由单一来源决定，不被事件条目覆盖：
+         m = 该主体的主指标（与 24 点序列、指标表当前值同一项 —— A23/A26 的口径）；
+         dev = DP_SUB_DEV 声明值（与总览实时事件流文案同源）。
+         此前用 Object.assign(target, hist) 让事件条目的 m / dev 覆盖基线值 ——
+         于是「偏离记录写路径序列熵、曲线与指标表却算调用速率」「清单 3.1σ、事件流 3.4σ」。 */
+      hist: (isDev && !isLearn && hist)
+        /* at 取**与事件流同一条 reqId 的时间**（见 DP_SUB_AT）：同一 reqId 两个时间，客户一核对就露。
+           无声明时退回基线「最近活跃」时刻（仍为单源派生）。 */
+        ? [Object.assign({}, hist, { at: DP_SUB_AT[dim + "-" + key] || b.last, m: b.main, dev: Math.round(b.dev * 100) / 100 })] : [],
+    };
+  };
+  /* 应用主体 = 客户端实例 */
+  (L.cin || []).filter(c => c.st !== "已卸载").forEach(c => {
+    const sw = (L.csw || []).filter(s => s.id === c.sw)[0] || {};
+    const tm = (L.terms || []).filter(t => t.id === c.term)[0] || {};
+    const EV = {
+      /* ⚠ 本表只留 act / rid / note（事件条目属性）；偏离的**指标名与 σ** 不在本表另写一份 ——
+         由 dpSubBaseline 按 DP_SUB_DEV 派生（见 mk 内 hist 构造），避免同一事实两个出口。 */
+      "BZPC-0007-3A2C": ["手机银行后台", { act: "CHALLENGE", rid: "req-90247", note: "调用速率偏离基线，按档位动态挑战" }],
+      "BZPC-0012-1D8E": ["核心网银门户", { act: "REJECT", rid: "req-90210", note: "调用速率偏离叠加重放防护命中，按档位拒绝访问" }],
+      "BZPC-0031-9A2C": ["核心网银门户", null],
+    }[c.cidseq] || ["", null];
+    out.push(mk("app", c.cidseq, "客户端实例 " + c.cidseq, sw.name || "—",
+      (tm.name || "—") + " · " + (sw.kind || "—") + " · " + c.st, !!EV[1], false, EV[0], EV[1]));
+  });
+  /* 账号主体 = 用户 */
+  (L.users || []).forEach(u => {
+    const EV = {
+      "wangfang": ["手机银行后台", null],
+      "lijun": ["核心网银门户", null],
+      "zhangwei": ["手机银行后台", { act: "CHALLENGE", rid: "req-90395", note: "登录频次偏离基线，按档位动态挑战" }],
+      "chenli": ["报表中心", null],
+    }[u.acct] || ["", null];
+    /* 已锁定 / 已禁用的账号近 24h 无足够访问样本 → 学习训练中（只观察不处置） */
+    out.push(mk("acct", u.acct, "账号 " + u.acct, u.name, u.org + " · " + u.role + " · " + u.st,
+      !!EV[1], (u.st === "已锁定" || u.st === "已禁用"), EV[0], EV[1]));
+  });
+  /* 设备主体 = 终端 */
+  (L.terms || []).forEach(t => {
+    const EV = {
+      "t_pc_0007": ["核心网银门户", null],
+      "t_nb_0031": ["对外行情资讯门户", null],
+    }[t.id] || ["", null];
+    const s = mk("dev", t.id, "终端 " + t.id, t.name,
+      t.os + " · " + (t.type || "—") + " · " + t.online, false,
+      (t.st === "已禁用" || t.online === "离线"), EV[0], EV[1]);
+    /* 姿态面与行为面**并列**：姿态走状态判定与变更检测，独立于 σ 偏离记录 */
+    s.posture = dpSubPosture(t.id, t.online);
+    out.push(s);
+  });
+  /* 客体主体 = 防护对象（已启用动态防护的资产）：基线刻画「被谁访问」。
+     assets 置空（客体是被访问方，不存在「客体访问的对象」）；来源分布落在 sources（来源账号为主子键）。
+     ★ 与 DP_LIVE_ASSETS 同源（不另列一份防护对象清单），且不依赖 DP（本函数在 DP 赋值前即被调用）。
+       DP_LIVE_ASSETS 与「种子 objs 中 on 且非 deny 的 id 集合」**必须一致** —— 该一致性由门禁断言
+       守（B6-03），两处若漂移即 FAIL，不靠人工比对。 */
+  dpLiveAssetIds().map(id => dpAsset(id)).filter(Boolean).forEach(a => {
+    const sh = DP_OBJ_SHIFT[a.id] || null;
+    const b = dpSubBaseline("asset", a.id, !!sh, false);
+    out.push({
+      id: "asset-" + a.id, dim: "asset", key: a.id, label: "客体 " + a.name, name: a.name,
+      meta: a.grp + " · " + a.type + " · L" + a.lv + " · " + a.owner,
+      assets: [], sources: dpSubSources(a.id, a.name),
+      samples: b.samples, th: null, last: b.last,
+      main: b.main, mu: b.mu, sd: b.sd, unit: b.unit, metrics: b.metrics, series: b.series,
+      posture: null,
+      /* 主体侧 hist =「该主体行为漂移」；客体侧 hist =「该客体访问偏离」+ 归因（见 dpObjAttr） */
+      hist: sh ? [{ at: sh.at, m: b.main, dev: Math.round(b.dev * 100) / 100, attr: sh.attr, note: sh.note }] : [],
+    });
+  });
+  return out;
+}
+/* ★ 2026-10-10（R27 · C-3）：运行期启用 / 关闭防护对象后同步**客体主体集合**。
+   只增删该对象的客体主体，不重建其余（重建会丢弃既有学习进度）。关闭的对象连带其
+   客体主体一并移除 —— 否则「已启用对象」与客体基线两处漂移（判据 ④）。 */
+function dpSyncAssetSubs() {
+  try {
+    const ids = dpLiveAssetIds();
+    const has = {};
+    ids.forEach(id => { has[id] = 1; });
+    DP.base.subs = (DP.base.subs || []).filter(s => !(s.dim === "asset" && !has[s.key]));
+    ids.forEach(id => {
+      if ((DP.base.subs || []).some(s => s.dim === "asset" && s.key === id)) return;
+      const a = dpAsset(id); if (!a) return;
+      const sh = DP_OBJ_SHIFT[a.id] || null;
+      const b = dpSubBaseline("asset", a.id, !!sh, false);
+      DP.base.subs.push({
+        id: "asset-" + a.id, dim: "asset", key: a.id, label: "客体 " + a.name, name: a.name,
+        meta: a.grp + " · " + a.type + " · L" + a.lv + " · " + a.owner,
+        assets: [], sources: dpSubSources(a.id, a.name),
+        samples: b.samples, th: null, last: b.last,
+        posture: null,
+        hist: sh ? [{ at: sh.at, m: b.main, dev: Math.round(b.dev * 100) / 100, attr: sh.attr, note: sh.note }] : [],
+      });
+    });
+  } catch (e) { /* 忽略：DP 未就绪时不阻断开关流程 */ }
+}
+/* ---- 客体偏离归因（演示案例）------------------------------------------------
+   客体偏离是**风险信号**而非「客体自身漂移」：处置不落在客体（对被动方降权无意义），
+   而落在 ① 来源侧（挑战 / 限流该来源）② 该资产的防护档位。
+   攻击期数据不并入基线学习（避免基线被抬高 —— 抬高后攻击结束的正常量反而「偏低」）。 */
+const DP_OBJ_SHIFT = {
+  /* ⚠ 本表不再写 dev —— 偏离量已归 DP_SUB_DEV（asset-a1 / asset-a9），同一事实只留一个出口 */
+  a1: {
+    at: "10:22",
+    attr: { k: "new", n: "新增来源主导", cls: "t-err", act: "来源侧轻量挑战 + 提升该资产防护档位" },
+    note: "该客体访问速率升至基线 4.6σ；新增 18 个未知来源账号集中访问登录页，归因疑似撞库 —— 对新增来源施加挑战，不改写本客体基线",
+  },
+  a9: {
+    at: "10:41",
+    attr: { k: "burst", n: "已知来源齐涨", cls: "t-warn", act: "来源 IP 频次约束 + 人工验证（须业务确认是否营销放量）" },
+    note: "该客体访问速率升至基线 3.2σ；3 个已登记来源账号请求量同时放大 6 倍，归因疑似 CC 或业务放量 —— 限流在分母侧、验证在来源侧，客体基线不动",
+  },
+};
+/* 客体偏离归因（无偏离返回「访问图案稳定」）；非客体返回 null */
+function dpObjAttr(s) {
+  if (!s || s.dim !== "asset") return null;
+  const d = (s.hist || [])[0];
+  if (!d) return { k: "none", n: "访问图案稳定", cls: "t-ok", act: "无需处置" };
+  return d.attr || { k: "unknown", n: "访问异常", cls: "t-warn", act: "人工复核" };
+}
+
+/* 主体白名单命中（数据驱动：维度 + 主体标识双匹配） */
+function dpSubWl(s) {
+  /* 白名单作用域 = 「该主体该指标」（指南 §8.4）：条目 metric 须与主体**主指标**一致，
+     不能按主体整体命中（否则该主体任一指标偏离都被豁免）。无 metric 的历史条目视为全指标（兼容）。 */
+  return DP.base.wl.find(w => w.dim === s.dim && w.sub === dpSubKey(s) && (!w.metric || w.metric === s.main)) || null;
+}
+/* 主体基线状态：偏离中（超阈值）/ 正常 / 白名单命中 */
+function dpSubState(s) {
+  const th = dpEffTh(s);
+  const d = s.hist.length ? s.hist[0].dev : 0;
+  /* 状态优先级（指南 §5.5）：冷启动 / 学习训练中 > … > 白名单命中（白名单命中**最低**）——
+     原实现把「白名单命中」置于「学习训练中」之前，与指南相反。 */
+  /* 样本不足 24h 判定窗要求 → 学习训练中：该主体不参与偏离判定，只观察不处置 */
+  if (s.samples < DP_MINSAMP) return { k: "learn", t: "学习训练中", cls: "t-gray", d: d, th: th };
+  if (dpSubWl(s)) return { k: "wl", t: "白名单命中", cls: "t-info", d: d, th: th };
+  /* 四类主体超阈值状态词**统一为「偏离中」**（权威源 §二「偏离」是通用词）；
+     客体的处置导向（落在来源侧）由**归因**承载（见 dpObjAttr / dpObjAttrCard），不占用状态词 ——
+     状态词回答「是否偏了」，归因回答「为何偏、该往哪处置」，两者不混。 */
+  if (d >= th) return { k: "dev", t: "偏离中", cls: "t-err", d: d, th: th };
+  return { k: "ok", t: "正常", cls: "t-ok", d: d, th: th };
+}
+/* 冷启动中的防护对象 = 已纳入、已启用动态防护、且启用天数不足观察期的资产
+   （PRD F1.5 边界：新资产无历史基线）—— 对象属性取自资产目录，启用日期取自本模块配置 */
+function dpColdAssets() {
+  dpLoad();
+  const out = [];
+  dpIncluded().forEach(a => {
+    const c = DP.objs[a.id];
+    if (dpAdmDeny(a.id) || !c.on || !c.onAt) return;
+    if (DP.base.coldEnd.indexOf(a.id) >= 0) return;
+    const d0 = dpDaysSince(c.onAt);
+    if (d0 < DP.base.cold) out.push({ id: a.id, name: a.name, day: Math.max(1, d0), total: DP.base.cold });
+  });
+  return out;
+}
+
+/* 已启用资产的配置骨架（种子用）：启用日期写入 onAt，供冷启动判定 */
+function dpCfgOn(onAt, exempts) {
+  return {
+    on: true, onAt: onAt || "", behav: "allow",
+    det: { replay: true, challenge: true, semantic: true, baseline: true },
+    /* 检测项参数的逐资产覆盖（只存差异；空 = 全部跟随全局）、场景化模板的显式覆盖，
+       以及模板的**判据范围**逐资产值（当前为「薅羊毛 → 关键业务写接口」「爬取 → 内容型路径」两处用它）。 */
+    dpar: {}, tpl: {}, tplRange: {},
+    bands: [
+      { lo: 0,  hi: 49,  act: "OBSERVE" },
+      { lo: 50, hi: 79,  act: "CHALLENGE" },
+      { lo: 80, hi: 100, act: "REJECT" },
+    ],
+    exempts: exempts || [], dirty: false,
+  };
+}
+function dpDefaultCfg() {
+  return {
+    on: false, onAt: "", behav: "allow",
+    det: { replay: true, challenge: true, semantic: true, baseline: true },
+    /* 检测项参数的逐资产覆盖（只存差异；空 = 全部跟随全局）、场景化模板的显式覆盖，
+       以及模板的**判据范围**逐资产值（当前为「薅羊毛 → 关键业务写接口」「爬取 → 内容型路径」两处用它）。 */
+    dpar: {}, tpl: {}, tplRange: {},
+    bands: [
+      { lo: 0,  hi: 49,  act: "OBSERVE" },
+      { lo: 50, hi: 79,  act: "CHALLENGE" },
+      { lo: 80, hi: 100, act: "REJECT" },
+    ],
+    exempts: [],
+    /* 改动即入待下发队列；点「保存并下发」后清 dirty（热生效 ≤2s） */
+    dirty: false,
+  };
+}
+
+function dpDefaultState() {
+  /* 核心网银门户种子豁免：与「最近配置变更」中 2026-09-28 李莉审批通过的记录同源（7 天窗口） */
+  const cfgNb = dpCfgOn("2026-09-08", [{
+    id: "ex0", src: "动态挑战", from: "2026-09-28 15:00", to: "2026-10-05 15:00",
+    reason: "查询类页面兼容浏览器刷新，低风险路径豁免动态挑战",
+    by: "张伟", approver: "李莉", status: "生效中",
+  }]);
+  return {
+    ver: DP_VER,
+    /* ★ 动态防护**模块总开关**（可拔插模块的总闸，默认启用）。停用时网关第八步整步短路；
+       模板级开关与逐资产开关在总闸关闭时一律不生效（穿透）。 */
+    dpOn: true,
+    /* 防护对象清单：key = 资产 id（取自「资产列表」ASSETS），值 = 该资产的动态防护配置
+       （on / 检测项 / 评分档位 / 豁免 / 启用日期）+ 准入侧状态 behav（allow / deny）。
+       未出现在本表的适用资产 = 尚未纳入防护对象清单（在「＋ 新增防护对象」中由资产目录纳入）。
+       ⚠ 不在此另抄资产名与组织层级 —— 名称 / 分组 / 类型 / 等级 / 部门 / 责任人 / 域名 / 接入状态
+         一律读资产目录，避免两处漂移。 */
+    objs: {
+      "a1":  cfgNb,                                            /* 核心网银门户：已启用（4/4 检测项）· 1 条豁免 */
+      "a9":  dpCfgOn("2026-09-16"),                            /* 手机银行后台：已启用 */
+      "a4":  dpCfgOn("2026-09-27"),                            /* 报表中心：已启用 */
+      "a19": dpCfgOn("2026-09-29"),                            /* 对外行情资讯门户：已启用（不足观察期 → 冷启动） */
+      "a2":  Object.assign(dpDefaultCfg(), { behav: "deny" }),  /* 信贷审批系统：准入侧拒绝（配置置灰） */
+      "a6":  dpDefaultCfg(),                                   /* 监管报送接口：已纳入，动态防护未启用 */
+      /* ---- 2026-10-08：纳入 10 个适用资产（网页应用），使对象清单**多于每页条数**、分页真实可演；
+              新增项一律默认关闭，不改变已启用集合（`DP_LIVE_ASSETS` 不动 ⇒ 基线客体 / 事件流 /
+              冷启动口径全部不变）。**刻意留 1 个适用资产不纳入**，使「＋ 新增防护对象」候选池非空、
+              纳入流程可演（全部纳入会让该流程恒无候选 = 死路）。 ---- */
+      "a5":  dpDefaultCfg(),                                   /* 统一身份门户：已纳入，动态防护未启用 */
+      "a10": dpDefaultCfg(),                                   /* 报表导出网关：已纳入，动态防护未启用 */
+      "a13": dpDefaultCfg(),                                   /* 反洗钱报送门户：已纳入，动态防护未启用 */
+      "a15": dpDefaultCfg(),                                   /* 对公网银体验门户：已纳入，动态防护未启用 */
+      /* 运维堡垒机 Web 控制台（a20）：适用（网页应用）但**未纳入** —— 「＋ 新增防护对象」候选 */
+    },
+    cur: "a1",
+    /* 对抗能力页参数（pg-dparms · 全局默认值 · 五组对应五个页签）：
+       tab = 当前页签（会话态，装载时归位）；dirty = 有改动未下发。
+       ★ 本组是「防护策略 · 检测项与参数」逐资产覆盖的**默认取值来源**，改一处两处同变。 */
+    arms: Object.assign(dpArmsDef(), { tab: "dpA1", dirty: { tok: false, inj: false, ver: false, cha: false, hum: false, tpl: false } }),
+    /* 策略页视图状态（列表 / 对象配置视图 + 筛选与分页） */
+    polView: "list", polCfgTab: "base", polKw: "", polGrp: "", polSt: "", polPage: 1,
+    /* 基线与告警 */
+    base: {
+      /* 三类维度默认判定阈值（单一来源：主体状态 / 判定带 / 总况卡片全部读这里） */
+      dims: Object.assign({}, DP_DIM_TH),
+      win: "24h 滑动", cold: 7,
+      coldEnd: [],
+      /* 已建模主体清单：三类主体各自取自身份管理台账（不另造主体、不硬编码计数）。
+         ★ 总况计数不再另存 pop —— 一律由本清单实算（dpPopStat），杜绝两处口径漂移。
+         ★ 本清单是「数据态」：主体的阈值覆盖与偏离记录随会话保存；检索 / 分页属会话态，每次归位。 */
+      subs: dpSeedSubs(),
+      /* 页签①两态视图：list = 基线主体清单（首页）/ detail = 该主体基线（下钻） */
+      view: "list", cur: "app-BZPC-0007-3A2C", dimFilter: "", stFilter: "", kw: "",
+      sort: "dev", page: 1, pageSize: 10, tab: "dpBaseB",
+      wl: [
+        { id: "wl1", dim: "dev", sub: "t_srv_0002", metric: "访问发起速率", reason: "审计终端访问模式固定，偏离为预期", by: "张伟", approver: "李娜", at: "2026-09-28 09:41", expire: "2026-10-28" },
+      ],
+      /* 运维闭环 · 健康度演示值（指南 §10.1 自监控指标 / §10.4 控制台承载）：
+         降级主体数与前置未满足主体数由主体清单**实算**（见 dpBaseOpsHtml），以下四项为演示样例值。 */
+      ops: { zero: 3, stale: 1, backlog: 1, preOver: 1 },
+      rebuilds: [
+        { at: "2026-09-30 02:00", by: "系统（周期）", result: dpRebuildLine() },
+        { at: "2026-09-27 02:00", by: "系统（周期）", result: "完成 · 应用 4 · 账号 6 · 设备 5 · 客体 4 · 样本充足" },
+        { at: "2026-09-20 02:00", by: "系统（周期）", result: "完成 · 应用 4 · 账号 5 · 设备 4 · 客体 4 · 样本充足" },
+        { at: "2026-09-13 02:00", by: "系统（周期）", result: "完成 · 应用 4 · 账号 5 · 设备 4 · 客体 4 · 设备样本不足 1 个主体跳过" },
+      ],
+    },
+    /* 风险事件告警（公共页：覆盖各防护域；预置模板不可删除，自定义可删除）
+       lv = 告警级别（复用网关运维侧既有「告警级别」口径：提示 / 一般 / 严重 / 紧急）。
+       预置规则按影响面给定：处置链路中断类「紧急 / 严重」，检测命中类「一般」，配置变更类「提示」。 */
+    alerts: [
+      { id: "al1", name: "重放突增",       src: "动态防护",     cond: "重放阻断（replay_blocked）5 分钟内 > 50 次",       tpl: "简洁通知",           ch: ["站内信", "邮件"], on: true, lv: "严重", preset: true },
+      { id: "al2", name: "挑战失败率突增", src: "动态防护",     cond: "动态挑战失败（challenge_failed）占比 10 分钟内 > 15%", tpl: "详细报告（含事件样本）", ch: ["站内信"], on: true, lv: "一般", preset: true },
+      { id: "al3", name: "豁免变更",       src: "动态防护",     cond: "豁免新增 / 延长 / 删除时触发",           tpl: "简洁通知",           ch: ["站内信", "邮件", "Webhook"], on: true, lv: "提示", preset: true },
+      { id: "al4", name: "限流熔断触发",   src: "限流与熔断",   cond: "限流 / 熔断（rate_limited / circuit_open）发生时触发", tpl: "简洁通知",           ch: ["站内信", "邮件"], on: true, lv: "紧急", preset: true },
+      { id: "al5", name: "WAF 命中突增",   src: "Web 安全防护", cond: "WAF 命中（waf_hit）5 分钟内 > 200 次",             tpl: "详细报告（含事件样本）", ch: ["站内信", "Webhook"], on: false, lv: "一般", preset: true },
+      { id: "al6", name: "基线偏离突增",   src: "动态防护",     cond: "基线偏离（baseline_deviation）5 分钟内 > 30 次",   tpl: "详细报告（含事件样本）", ch: ["站内信", "邮件"], on: true, lv: "严重", preset: true },
+      { id: "al7", name: "语义检测命中突增", src: "动态防护",   cond: "语义检测命中（semantic_hit）10 分钟内 > 20 次",    tpl: "简洁通知",           ch: ["站内信", "Webhook"], on: true, lv: "一般", preset: true },
+    ],
+    _alSeq: 8,
+    /* 告警记录（逐条触发明细 · 数据态跨会话）：确认 / 忽略 / 转未处理都落这里。
+       ★ 规则名与来源域**不在本清单冗余**，一律经 rid 回查 DP.alerts（同一事实单一出口）；
+       ★ 通知渠道同样由规则派生，本清单只记「送达失败的渠道」（fail ⊆ 该规则的渠道集）。
+       演示口径：仅「启用中」的规则产生记录（停用规则不触发通知）；从未触发的规则无记录。 */
+    alRecs: dpSeedAlertRecs(),
+    /* 总览事件流（演示）：仅已启用动态防护的资产进入评分（未启用 / 准入拒绝对象不出现）；
+       命中项只取该资产已启用的检测项 */
+    events: dpSeedEvents(),
+    hists: null,
+    ovFilter: null, ovAct: null, ovAsset: null, ovRange: "24h", ovPage: 1, ovTab: "dpOvKpi", paused: false, alSrc: "", alPage: 1, alTab: "dpAlertRule",
+    alRecSrc: "", alRecSt: "", alRecRange: "7d", alRecPage: 1, alRecSel: {},
+    /* 二级页签记忆（一级面板 id → 二级面板 id）· 会话态，每次交互重建后据此归位 */
+    sub: {},
+    /* 配置变更留痕（与操作审计同源的页面侧值守视图） */
+    changes: [
+      { at: "2026-09-29 16:40", by: "张伟", obj: "核心网银门户", act: "启用动态防护并下发（检测项 4/4）" },
+      { at: "2026-09-29 11:05", by: "张伟", obj: "报表中心", act: "调整评分档位（50~79 → 动态挑战）并下发" },
+      { at: "2026-09-28 15:22", by: "李莉", obj: "核心网银门户", act: "审批通过豁免「动态挑战」（7 天）" },
+    ],
+    exSeq: 1,
+    /* 操作身份（演示可切换 · A2-05）：默认 = 顶栏演示账号 */
+    actor: "张伟",
+  };
+}
+
+/* 事件流种子数据：字段口径 = 时间 / 源 IP / 防护对象 / 访问主体(类别 + 标识) / 评分(P1~P4) / 命中项 / 处置档位 / requestId
+   业务约束：防护对象名 = 资产目录中的资产名；仅**已启用动态防护**的对象出现
+   （核心网银门户 / 手机银行后台 / 报表中心 / 对外行情资讯门户；已纳入未启用与准入拒绝对象不出现）；
+   命中项只用该对象已启用检测项（重放 F1.1 / 挑战 F1.2 / 语义检测 F1.4 / 基线 F1.5 四项）。
+   ★ 访问主体标识 = 身份管理台账标识（客户端序列号 / 账号名 / 终端 id），与基线主体清单一一对应，
+     点主体可下钻其行为基线；hist 的 requestId 与事件条目一一对应（跨页可回溯、可交叉核对）。 */
+function dpSeedEvents() {
+  const rows = [
+    /* 行为基线的命中文案由 dpBaseHitText 派生（σ 与指标名与基线下钻页同源，不再手打） */
+    ["10:42:18", "183.136.225.44",  "核心网银门户", 92, ["重放防护：签名校验失败", dpBaseHitText("app", "BZPC-0012-1D8E", "客户端实例 BZPC-0012-1D8E")], "REJECT", "app", "BZPC-0012-1D8E"],
+    ["10:41:55", "61.174.23.9",     "手机银行后台", 74, [dpBaseHitText("app", "BZPC-0007-3A2C", "客户端实例 BZPC-0007-3A2C")], "CHALLENGE", "app", "BZPC-0007-3A2C"],
+    ["10:41:31", "112.65.88.201",   "核心网银门户", 96, ["重放防护：时间戳复用", "语义检测：SQLi 结构级命中"], "REJECT", "app", "BZPC-0012-1D8E"],
+    ["10:40:47", "223.104.41.76",   "手机银行后台", 45, ["动态挑战：挑战响应超时（观察段）"], "OBSERVE", "acct", "wangfang"],
+    ["10:39:58", "183.136.225.44",  "核心网银门户", 62, ["动态挑战：同会话连续失败 3 次 → 升级联动限流熔断"], "LIMIT", "acct", "lijun"],
+    ["10:37:40", "60.12.144.19",    "手机银行后台", 71, [dpBaseHitText("acct", "zhangwei", "账号 zhangwei")], "CHALLENGE", "acct", "zhangwei"],
+    ["10:36:12", "36.152.44.98",    "核心网银门户", 35, [], "OBSERVE", "dev", "t_pc_0007"],
+    ["10:35:03", "111.20.170.55",   "报表中心",     44, ["动态挑战：挑战响应超时（观察段）"], "OBSERVE", "acct", "chenli"],
+    ["10:33:49", "183.136.225.44",  "核心网银门户", 90, ["重放防护：签名复用"], "REJECT", "app", "BZPC-0031-9A2C"],
+    ["10:31:22", "49.86.177.240",   "对外行情资讯门户", 18, [], "OBSERVE", "dev", "t_nb_0031"],
+  ];
+  return rows.map((r, i) => ({
+    id: "ev" + (i + 1), t: DP_TODAY + " " + r[0], ip: r[1], asset: r[2], score: r[3],
+    hits: r[4], act: r[5], reqId: "req-" + (90210 + i * 37), sk: r[6], sub: r[7],
+    open: false, fresh: false,
+  }));
+}
+
+/* 告警记录种子（逐条触发明细）—— 规则名 / 来源域 / 通知渠道**不在本清单冗余**，
+   一律经 rid 回查 DP.alerts（同一事实单一出口）；本清单只记记录特有事实（次数 / 状态 / 送达失败）。
+   业务约束（与规则表交叉可核对）：
+   ① 只有「启用中」的规则产生记录 —— 停用的「WAF 命中突增」与从未触发的「语义检测命中突增」无记录；
+   ② fail ⊆ 该规则的渠道集；③ 规则的「最近触发」由本清单按 rid 取最大时间派生（dpAlertLast），
+   不再另存 last 字段；④ 已处理条一律带处理人与处理时间，未处理条两者皆空；
+   ⑤ 触发时间不晚于演示当前时刻（锚定约 10:42）。
+   演示基准日 = DP_TODAY（2026-09-30）：今日 7 条（未处理 4 条）；其余按日回退，共 16 条
+   ⇒ 每页 10 条，「近 7 天」16 条分 2 页、「今日」7 条单页 —— 分页与筛选均可演。 */
+function dpSeedAlertRecs() {
+  /* [时刻, 规则 id, 命中对象, 窗口内命中次数, 状态, 处理人, 处理时间, 送达失败渠道] */
+  const rows = [
+    ["10:38", "al4", "核心网银门户",     34,  "open",   "",     "",                  []],
+    ["10:33", "al1", "手机银行后台",     87,  "open",   "",     "",                  []],
+    ["10:27", "al3", "核心网银门户",     1,   "open",   "",     "",                  []],
+    ["10:15", "al1", "核心网银门户",     63,  "ack",    "张伟", "2026-09-30 10:21",  []],
+    ["09:35", "al2", "对外行情资讯门户", 156, "open",   "",     "",                  []],
+    ["09:04", "al1", "核心网银门户",     55,  "ignore", "李莉", "2026-09-30 09:18",  []],
+    ["08:20", "al4", "报表中心",         21,  "ack",    "张伟", "2026-09-30 08:26",  []],
+    ["22:06", "al6", "手机银行后台",     41,  "ack",    "张伟", "2026-09-29 22:14",  ["邮件"]],
+    ["19:33", "al4", "手机银行后台",     27,  "ack",    "李莉", "2026-09-29 19:40",  []],
+    ["16:48", "al1", "核心网银门户",     51,  "ack",    "张伟", "2026-09-29 16:55",  []],
+    ["14:12", "al6", "报表中心",         33,  "ack",    "张伟", "2026-09-29 14:20",  []],
+    ["10:06", "al3", "手机银行后台",     1,   "ack",    "李莉", "2026-09-29 10:12",  []],
+    ["17:29", "al4", "对外行情资讯门户", 48,  "ack",    "李莉", "2026-09-28 17:36",  []],
+    ["09:41", "al1", "核心网银门户",     66,  "ignore", "张伟", "2026-09-28 09:50",  []],
+    ["21:37", "al6", "核心网银门户",     29,  "ack",    "李莉", "2026-09-27 21:45",  []],
+    ["08:03", "al2", "手机银行后台",     189, "ack",    "张伟", "2026-09-26 08:11",  []],
+  ];
+  /* 日期逐条回填（不手打日期，避免与 DP_TODAY 脱节） */
+  const OFF = [0, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, -2, -2, -3, -4];
+  const base = new Date(DP_TODAY + "T00:00:00");
+  return rows.map((r, i) => {
+    const d = new Date(base.getTime());
+    d.setDate(d.getDate() + OFF[i]);
+    const ds = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    return {
+      id: "ar" + (i + 1), at: ds + " " + r[0], rid: r[1], obj: r[2], n: r[3],
+      st: r[4], by: r[5], ackAt: r[6], fail: r[7].slice(),
+    };
+  });
+}
+
+let DP = null;
+function dpLoad() {
+  if (DP) return;
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(DP_KEY) || "null"); } catch (e) { s = null; }
+  /* 状态形状判据 = objs（orgs 已随组织级继承建模一并废止；旧守卫导致改动永不落盘）+ ver 严格相等：
+     演示数据字段形状一变就升 DP_VER，让老缓存整体重建而不是带着缺字段的旧对象渲染 */
+  /* ★ 2026-10-09 末轮全量评审（高）：原判据只验 `s.objs` 真值 + ver 相等 —— 存档被截断 /
+     字段类型错（alerts=null、base=null、objs.a1=null、hists 缺键）时 restored 仍为真，
+     渲染阶段抛 TypeError 整页白屏，且 dpLoad 从不回写，坏档会一直崩到用户手动重置。
+     改为**结构白名单**：逐字段验形状与类型，任一不符即整档重建并回写（演示态无「保留用户数据」
+     诉求，健壮性优先；与既有「字段形状一变就升 DP_VER 整体重建」同一思路，只是把判据做实）。 */
+  const restored = !!(s && s.ver === DP_VER
+    && s.objs && typeof s.objs === "object" && !Array.isArray(s.objs) && Object.keys(s.objs).length > 0
+    && s.base && typeof s.base === "object" && !Array.isArray(s.base)
+    && Array.isArray(s.alerts) && Array.isArray(s.alRecs) && Array.isArray(s.events)
+    && s.hists && typeof s.hists === "object" && !Array.isArray(s.hists)
+    && Array.isArray(s.hists["1h"]) && Array.isArray(s.hists["24h"]) && Array.isArray(s.hists["7d"]));
+  DP = restored ? s : dpDefaultState();
+  /* 兜底：极端情况下缺 arms（老缓存形状异常）时补默认值，避免整页读不到参数 */
+  if (!DP.arms) DP.arms = Object.assign(dpArmsDef(), { tab: "dpA1", dirty: { tok: false, inj: false, ver: false, cha: false, hum: false, tpl: false } });
+  /* ★ 参数键集兜底：旧缓存缺某组参数键时**逐键补默认**，否则该控件「能点但状态写不进」、
+     且任一次重渲染把它复位（实测：旧缓存缺 tpl.Crawl ⇒ 启用爬取被启用薅羊毛的重渲染关掉）。 */
+  dpArmsFill(DP.arms);
+  /* ★ A4-I4：已下发值快照兜底（老缓存无该字段时以当前值初始化，避免「放弃改动」无基准） */
+  if (!DP.arms.applied) DP.arms.applied = dpArmsSnap();
+  /* ★ 只让「数据态」跨会话（对象配置 / 基线学习与阈值 / 白名单 / 告警规则 / 变更留痕）；
+     下钻位置、分页、筛选、暂停推送等会话态 UI 字段每次归位 —— 否则上次停在下钻视图，
+     下次打开会直接落进对象配置视图（M1 守卫修好后才显现的副作用）。 */
+  if (restored) {
+    DP.polView = "list"; DP.polCfgTab = "base"; DP.cur = "a1"; DP.polKw = ""; DP.polGrp = ""; DP.polSt = ""; DP.polPage = 1;
+    DP.ovFilter = null; DP.ovAct = null; DP.ovAsset = null; DP.ovPage = 1; DP.ovTab = "dpOvKpi"; DP.paused = false;
+    DP.alSrc = ""; DP.alPage = 1; DP.alTab = "dpAlertRule";
+    DP.alRecSrc = ""; DP.alRecSt = ""; DP.alRecRange = "7d"; DP.alRecPage = 1; DP.alRecSel = {};
+    DP.arms.tab = "dpA1";
+    DP.base.tab = "dpBaseB"; DP.base.view = "list";
+    DP.base.dimFilter = ""; DP.base.stFilter = ""; DP.base.kw = ""; DP.base.sort = "dev"; DP.base.page = 1;
+    /* A2-05：操作身份是会话态（不跨会话），每次装载归位到演示账号 */
+    DP.actor = "张伟";
+    /* ★ 基线主体清单是「派生态」而非数据态：每次装载都由身份管理台账重建 ——
+       ① 台账增删用户 / 终端 / 客户端实例时，主体清单自动跟随，杜绝两处漂移；
+       ② 顺带完成身份台账装载：恢复分支此前从不触发 dpSeedSubs（见 ③），
+          导致缓存存在时 ID 恒为 null（门禁与页面取值同时失真）；
+       ③ 仅在台账不可用的极端情况下退回缓存快照，避免页面整列空白。 */
+    const subsFresh = dpSeedSubs();
+    if (subsFresh.length) DP.base.subs = dpSubsCarry(DP.base.subs, subsFresh);
+    DP.base.cur = "app-BZPC-0007-3A2C";
+    if (!DP.base.subs.some(s => s.id === DP.base.cur)) {
+      const d0 = DP.base.subs.filter(s => dpSubState(s).k === "dev")[0] || DP.base.subs[0];
+      DP.base.cur = d0 ? d0.id : "";
+    }
+  }
+  /* 客体主体 × 冷启动对象同源：冷启动资产（启用不足观察期）基线尚未成形 —— 其客体主体按样本不足落
+     「学习训练中」（只观察、不参与偏离判定），与「学习与判定 · 冷启动中的防护对象」卡同一判据。
+     装载后实算、不落盘，避免与 DP.objs 的启用日期两处维护。 */
+  dpClampColdSubs();
+  if (!DP.hists) DP.hists = { "1h": dpSeedHist("1h"), "24h": dpSeedHist("24h"), "7d": dpSeedHist("7d") };
+  /* ★ 2026-10-09 末轮评审（高）：ovRange 是本模块唯一未做归一化的枚举 —— 直方图直接以它为
+     `DP.hists[DP.ovRange]` 的字典键（:1587 选中态 / :1591 桶数据）。存量非法值（或被人为改写）
+     ⇒ 取到 undefined ⇒ `.map` 抛 TypeError，**防护总览整页不可用**；对照 polSt / base.tab / alTab
+     均为静默降级。此处与其他枚举同范式归一化到默认时段。 */
+  if (!DP.hists[DP.ovRange]) DP.ovRange = "24h";
+  /* ★ 结构不合格而整档重建时立即回写 —— 否则每次装载都在同一份坏档上重演崩溃（dpLoad 有
+     `if (DP) return` 早退，同一会话内不会再走一遍，但跨会话刷新会）。 */
+  if (!restored) dpSave();
+}
+function dpSave() { try { localStorage.setItem(DP_KEY, JSON.stringify(DP)); } catch (e) {} }
+
+/* ★ 2026-10-09 深度评审（A3-01 高）：冷启动对象 → 客体主体的「样本不足 · 学习训练中」是**派生态**，
+   原实现只写在 dpLoad() 里；而 renderDpBaseline() 内部调用的 dpLoad() 因 DP 已存在即早退
+   ⇒ 「提前结束观察期 / 调整观察期」之后，冷启动卡已清空、客体基线却仍停在旧态，同一屏自相矛盾
+   （刷新才自愈）。此处把派生重算抽成独立函数，由动作回调显式调用。 */
+function dpClampColdSubs() {
+  const coldIds = dpColdAssets().map(c => c.id);
+  DP.base.subs.forEach(s => { if (s.dim === "asset" && coldIds.indexOf(s.key) >= 0) s.samples = Math.min(s.samples, DP_MINSAMP - 60); });
+}
+/* 动作路径专用：先按身份台账**重播种**再夹取 —— 只夹取不重播种，已转正的主体永远回不到正常样本。
+   （dpSubsCarry 会回灌用户态 th / rs，不丢人工阈值与已重置标记。） */
+function dpApplyCold() {
+  const fresh = dpSeedSubs();
+  if (fresh.length) DP.base.subs = dpSubsCarry(DP.base.subs, fresh);
+  dpClampColdSubs();
+  if (!DP.base.subs.some(s => s.id === DP.base.cur)) {
+    const d0 = DP.base.subs.filter(s => dpSubState(s).k === "dev")[0] || DP.base.subs[0];
+    DP.base.cur = d0 ? d0.id : "";
+  }
+}
+
+/* 评分分布直方图的时段总量（演示口径）：24h 一组与 DP_STAT24 严格一致；7d 按日 7 桶 */
+const DP_HISTSET = {
+  "1h":  { n: 12, labs: i => "10:" + String(i * 5).padStart(2, "0"), p2: 1300,  p3: 90,    p4: 45 },
+  /* ★ 24h 一组的量值**引用 DP_STAT24**，不另写一份 —— 两处不同步，则「四档计数与直方图相加可核对」破功 */
+  "24h": { n: 12, labs: i => String(i * 2).padStart(2, "0") + ":00", p2: DP_STAT24.p2, p3: DP_STAT24.p3, p4: DP_STAT24.p4 },
+  "7d":  { n: 7,  labs: i => "9-" + (24 + i),                        p2: 218400, p3: 15120, p4: 7560 },
+};
+/* 确定性分配：保证各桶之和严格等于该段总量（KPI 与图形相加可核对） */
+function dpSpread(total, n, seed) {
+  const raw = [];
+  let s = 0;
+  for (let i = 0; i < n; i++) { const v = 0.60 + ((seed + i * 73) % 41) / 40; raw.push(v); s += v; }
+  const out = raw.map(v => Math.round(v / s * total));
+  out[0] += total - out.reduce((a, b) => a + b, 0);
+  return out;
+}
+function dpSeedHist(range) {
+  const c = DP_HISTSET[range];
+  const a = dpSpread(c.p2, c.n, 17), b = dpSpread(c.p3, c.n, 29), d = dpSpread(c.p4, c.n, 41);
+  return a.map((v, i) => ({ lab: c.labs(i), p2: v, p3: b[i], p4: d[i] }));
+}
+
+/* ---- 防护对象直接引用资产目录 ----------------------------------------------
+   对象的 id / 名称 / 分组 / 类型 / 等级 / 部门 / 责任人 / 接入状态 / 域名地址
+   一律读「资产列表」(ASSETS)；本模块只保存「是否纳入 + 该资产的配置」(DP.objs)。
+   ⚠ 已废止「组织 → 资产」两级继承建模：对象即资产，组织只作筛选维度（资产分组 grp）。 */
+/* 防护对象清单**每页条数**（单源）：与全站列表一致（`LIST_PAGE = 6`）—— 原先本列表硬编码 10，
+   与其余列表不一致，且大于演示对象数 ⇒ 分页器永不出现、能力不可见。 */
+const DP_POL_PG = 6;
+function dpCatalog() { return (typeof ASSETS !== "undefined" && ASSETS) ? ASSETS : []; }
+function dpAsset(id) { return dpCatalog().filter(a => a.id === id)[0] || null; }
+/* 适用判据：动态防护工作在 7 层 HTTP 解析 —— 非 HTTP 资产（数据库 / 远程主机 / 文件服务 / 其他 TCP）不适用 */
+function dpApplicable(a) { return !!a && a.type === "网页应用"; }
+/* 外部域名 / 地址：HTTP 资产取资源登记的外部域名；其余取接入地址 + 协议 */
+function dpDomainOf(a) {
+  if (!a) return "—";
+  const r = (a.res || []).filter(x => x.ext && x.ext !== "-")[0];
+  if (r) return r.ext;
+  return a.addr ? a.addr + (a.addrProto ? "（" + a.addrProto + "）" : "") : "—";
+}
+/* 已纳入清单（按资产分组 + 名称稳定排序，保证分页与断言可复现） */
+function dpIncluded() {
+  return Object.keys(DP.objs).map(id => dpAsset(id)).filter(Boolean)
+    .sort((x, y) => (x.grp + "|" + x.name).localeCompare(y.grp + "|" + y.name, "zh"));
+}
+/* 已纳入对象计数 —— **单一出口**（总览 KPI 与防护策略页同读此函数，消除两处各算一份，B6-02） */
+function dpIncludedCount() { return dpIncluded().length; }
+function dpAdmDeny(id) { const c = DP.objs[id]; return !!(c && c.behav === "deny"); }
+function dpEffCfg(id) {
+  /* 生效配置与来源：本资产单独配置 > 内置默认（默认关闭、观察记录起步）—— 无组织级继承 */
+  const c = DP.objs[id];
+  return { cfg: c || dpDefaultCfg(), src: c ? "self" : "default", included: !!c };
+}
+/* 资产目录中适用但尚未纳入的对象（「＋ 新增防护对象」候选） */
+function dpUnIncluded() { return dpCatalog().filter(a => dpApplicable(a) && !DP.objs[a.id]); }
+/* 变更留痕：页面侧值守视图，与操作审计同源 */
+function dpLog(objName, act) {
+  DP.changes.unshift({ at: dpNowTs(), by: DP.actor, obj: objName, act: act });
+  if (DP.changes.length > 20) DP.changes.pop();
+}
+/* 当前选中对象（防护对象 = 资产；不在清单内视为无选中） */
+function dpCurObj() {
+  const a = dpAsset(DP.cur);
+  if (!a || !DP.objs[a.id]) return null;
+  return { id: a.id, kind: "asset", a: a, cfg: DP.objs[a.id], name: a.name, deny: dpAdmDeny(a.id) };
+}
+/* 已启用动态防护的对象（事件流 / 评分 / 对象下拉的统一口径）：
+   准入拒绝对象不进入评分（优先级矩阵）；未启用对象不产生动态防护事件 */
+function dpEnabledAssets() {
+  return dpIncluded().filter(a => !dpAdmDeny(a.id) && DP.objs[a.id].on).map(a => ({ id: a.id, name: a.name }));
+}
+
+/* 本模块局部样式：主体列表 / 对象列表行 —— 不复用 .side 作用域的 .mi/.g（其在侧栏外无样式），
+   也不污染 proto.css 全局基线；全部规则限定在本模块容器内 */
+const DP_CSS = `<style>
+/* 主体 / 客体清单行可点（下钻基线）：与防护策略列表「点行 / 点按钮」同一交互口径。
+   ★ 客体表 id 是 dpBaseOTbl —— 漏写会让客体行没有手型、被读成「不可点」（实测缺陷）。 */
+#dpBaseTbl tbody tr[data-act="dpBasePick"],#dpBaseOTbl tbody tr[data-act="dpBasePick"]{cursor:pointer}
+/* ★ A3-06：行可点即可聚焦 —— 必须给焦点可视，否则纯键盘用户看不到焦点落在哪一行 */
+#dpBaseTbl tbody tr[data-act="dpBasePick"]:focus-visible,#dpBaseOTbl tbody tr[data-act="dpBasePick"]:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
+/* ★ A2-08：防护对象清单行同口径可点（下钻对象配置） */
+#pg-dppol .lst tbody tr[data-act="dpPolCfg"]{cursor:pointer}
+#pg-dppol .lst tbody tr[data-act="dpPolCfg"]:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
+/* 告警记录行可点（下钻详情）：与基线主体行同一交互口径 */
+#pg-alert .lst tbody tr[data-act="dpAlertRecPick"]{cursor:pointer}
+/* ★ 2026-10-09 末轮评审：上两行补 tabindex 后必须同口径给**焦点可视**（基线主体行 / 防护对象行已有，
+   本处原先漏配）—— 否则纯键盘用户看不到焦点落在哪一行，「可点可达」仍等于不可用。 */
+#pg-dpov .lst tbody tr[data-act="dpOvRow"]:focus-visible,#pg-alert .lst tbody tr[data-act="dpAlertRecPick"]:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
+/* ---- DP 侧表格满宽自适应（2026-10-09 用户裁定：「去掉 min-width，列宽自适应」）----
+   ⚠ 本段是 JS 模板字面量内的 CSS：注释里**不得出现反引号、也不得出现美元花括号插值语法**。
+   共享样式表 proto.css 的 .lst 规则（min-width:1160px）服务于**资产侧三件套**（.asp-tbl / .lst /
+   #assetTbl）的视觉基线；在 DP 侧会把表格撑破 .tbl-wrap、渲染出横向滚动条（实测
+   #dpPolTplTbl：sw=1160 > 容器 cw=1125、滚动条占位 15px）。此处按宿主作用域解除该地板，
+   各表仍可用**行内 min-width** 显式声明自身所需宽度。 */
+#pg-dpov .lst,#pg-dppol .lst,#pg-dpbase .lst,#pg-dparms .lst,#pg-alert .lst{min-width:0}
+/* 二级页签（一级页签内的「内容板块」细分）：命名空间独立 —— 容器 .subtabs / 面板 .tbp2 /
+   按钮 data-st，以免被全局 showTab（清 .tbp）与渲染门禁（遍历 .tabs button[data-t]）命中。 */
+.subtabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:0 0 14px;padding:0 4px}
+.subtabs button{border:0;background:none;padding:8px 12px;font-size:12.5px;cursor:pointer;color:var(--txt3);border-bottom:2px solid transparent;margin-bottom:-1px}
+.subtabs button.on{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+.tbp2{display:none}
+.tbp2.on{display:block}
+/* ⚠ A4-L3 的 .subtabs-ph 占位已作废（2026-10-09）：当时「场景化模板」页签无二级页签条、需补同高占位；
+   该页签现已有真页签条（「场景模板 / 判据维度」），再留占位会多出 49px 空档。类名保留供历史引用。 */
+.subtabs-ph{display:none}
+</style>`;
+
+/* ==========================================================================
+   防护总览（pg-dpov）
+   ========================================================================== */
+/* 动态防护**模块总开关**（可拔插模块）：停用时第八步整步短路 —— 不执行判据、
+   不校验与消费动态令牌、不注入防护 JS；第 1~7 环与第 9 环不受影响。
+   启停均改变生效面 ⇒ 走二次认证（与「停用策略」同档，见分档口径）。 */
+function dpModuleBar() {
+  const on = DP.dpOn !== false;
+  return `<div class="card" data-page-node-id="PgDpModBar0000001">
+    <div class="card-b">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="flex:1 1 420px;min-width:280px">
+        <div style="font-weight:600;font-size:14px">动态防护模块</div>
+        <div style="font-size:12.5px;color:var(--txt3);margin-top:2px">模块总开关（可拔插）· ${on ? "启用中 —— 网关第八步按本模块配置执行（判据、动态令牌、行为处置）" : "已停用 —— 网关第八步整步短路；第 1~7 环与第 9 环不受影响"}</div>
+      </div>
+      <button class="btn ${on ? "ghost" : "primary"} sm" type="button" data-act="dpModuleToggle">${on ? "停用动态防护" : "启用动态防护"}</button>
+    </div>
+    ${on ? "" : '<div class="hint-row warn" style="margin:10px 0 0"><i class="ic">!</i><span>模块已停用：不执行判据、不校验与消费动态令牌、不注入防护 JS。下方数据为停用前的历史记录。</span></div>'}
+    </div>
+  </div>`;
+}
+
+function renderDpOverview() {
+  dpLoad();
+  const host = document.getElementById("pg-dpov");
+  if (!host) return;
+  const _y = wsScrollTop();
+  /* 计数口径：近 24h 全量统计（DP_STAT24），与下方直方图同源、客户可相加核对；
+     下方列表为最近实时事件（实时流），两者口径不同，已在页面分别注明。 */
+  const S = DP_STAT24;
+  const nObs = S.p2, nCha = S.p3 - S.limit, nRej = S.p4, nLim = S.limit;
+  const riskN = S.p2 + S.p3 + S.p4;
+  const riskPct = (riskN / S.req * 100).toFixed(1);
+  const allIds = Object.keys(DP.objs);
+  const incIds = allIds.filter(id => !dpAdmDeny(id));
+  const effN = incIds.filter(id => DP.objs[id].on).length;
+  const allN = dpIncludedCount();      /* 已纳入清单基数（单一出口 dpIncludedCount()，与防护策略页同源） */
+  const denyN = allN - incIds.length;
+  const coldN = dpColdAssets().length;
+  const actCnt = (k, v) => `<span data-act="dpOvActF" data-v="${k}" title="点击过滤下方事件流" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer">${dpActTag(k)}<b style="font-size:15px">${v.toLocaleString()}</b></span>`;
+
+  const ovTab = DP.ovTab || "dpOvKpi";
+  host.innerHTML = `
+  ${DP_CSS}
+  <style>@keyframes dpNewRow{from{background:#dbeafe}to{background:transparent}}</style>
+  ${dpModuleBar()}
+  <div class="card" data-page-node-id="PgDpOvTabsCard0001">
+    <div class="tabs" id="dpOvTabs" role="tablist" data-page-node-id="PgDpOvTabs000001">
+      <button type="button" role="tab" data-t="dpOvKpi" id="dpOvTabsTab_dpOvKpi" aria-controls="dpOvKpi" aria-selected="${ovTab === "dpOvKpi" ? "true" : "false"}" class="${ovTab === "dpOvKpi" ? "on" : ""}">防护概览</button>
+      <button type="button" role="tab" data-t="dpOvFlow" id="dpOvTabsTab_dpOvFlow" aria-controls="dpOvFlow" aria-selected="${ovTab === "dpOvFlow" ? "true" : "false"}" class="${ovTab === "dpOvFlow" ? "on" : ""}">实时事件流</button>
+    </div>
+  </div>
+  <div class="tbp${ovTab === "dpOvKpi" ? " on" : ""}" id="dpOvKpi" role="tabpanel" aria-labelledby="dpOvTabsTab_dpOvKpi">
+  <div class="card" data-page-node-id="PgDpOvKpi0000000001">
+    <div class="card-b">
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      ${dpKpi("近 24h 请求量", S.req.toLocaleString(), "全部已启用防护对象（含静态资源）· 较前 24h +3.1%", "PgDpOvKpi1", dpSpark([42,45,44,47,52,49,55,58,54,60,63,66], "#2563eb"))}
+      ${dpKpi("风险请求占比", riskPct + "%", "评分 ≥ 20（P2 及以上）共 " + riskN.toLocaleString() + " 次 · 较前 24h -0.4pt", "PgDpOvKpi2", dpSpark([3.4,3.2,3.5,3.1,2.9,3.0,2.8,2.9,2.7,2.8,2.6,2.7], "#f59e0b"))}
+      ${dpKpi("处置档位计数", "", "按处置结果计数（近 24h）· CHALLENGE 为请求级（仅 P3 档）；会话级口径见「对抗能力 · 挑战效果」", "PgDpOvKpi3",
+        `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:8px">
+           ${actCnt("OBSERVE", nObs)}${actCnt("CHALLENGE", nCha)}${actCnt("REJECT", nRej)}${actCnt("LIMIT", nLim)}
+         </div>
+         <div style="font-size:12px;color:var(--txt3);margin-top:8px">近 24h 合计 ${(nObs + nCha + nRej + nLim).toLocaleString()} 次 = 评分 P2+P3+P4 · 限流熔断由连续失败联动触发</div>`)}
+      ${dpKpi("生效防护对象", effN + " / " + allN, "已纳入 " + allN + " 个防护对象（清单直接引用资产目录）· 其中准入拒绝 " + denyN + " 个不参与评分 · 冷启动中 " + coldN + " 个（不足 " + DP.base.cold + " 天观察期）", "PgDpOvKpi4", "")}
+    </div></div>
+  </div>
+
+  <div class="card" data-page-node-id="PgDpOvHist00000001">
+    <div class="card-h" data-page-node-id="PgDpOvHistH0000001"><h3>风险请求评分分级分布</h3>
+      <span class="sub">仅统计评分 ≥ 20 的风险请求 · 点击数据段可按分级过滤下方事件流（完整检索在审计 Dashboard）</span>
+      <span style="margin-left:auto"><span class="seg">${["1h", "24h", "7d"].map(r => `<button type="button" data-act="dpOvRange" data-v="${r}" class="${DP.ovRange === r ? "on" : ""}">近 ${r}</button>`).join("")}</span></span>
+    </div>
+    <div class="card-b">
+    <div style="display:flex;align-items:flex-end;gap:6px;height:120px;margin-top:6px" id="dpOvHist" data-page-node-id="PgDpOvHistBars001">
+      ${(() => { const hs = DP.hists[DP.ovRange]; const mx = Math.max.apply(null, hs.map(h => h.p2 + h.p3 + h.p4)); return hs.map(h => dpHistBar(h, mx)).join(""); })()}
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--txt3)">
+      <span><i style="display:inline-block;width:9px;height:9px;background:#93c5fd;border-radius:2px;margin-right:4px"></i>P2（${dpLevelRange("P2")}）</span>
+      <span><i style="display:inline-block;width:9px;height:9px;background:#fbbf24;border-radius:2px;margin-right:4px"></i>P3（${dpLevelRange("P3")}）</span>
+      <span><i style="display:inline-block;width:9px;height:9px;background:#f87171;border-radius:2px;margin-right:4px"></i>P4（${dpLevelRange("P4")}）</span>
+      <span style="margin-left:auto">本时段合计 <b>${(() => { const hs = DP.hists[DP.ovRange]; return hs.reduce((n, h) => n + h.p2 + h.p3 + h.p4, 0).toLocaleString(); })()}</b> 次</span>
+    </div></div>
+  </div>
+  </div>
+
+  <div class="tbp${ovTab === "dpOvFlow" ? " on" : ""}" id="dpOvFlow" role="tabpanel" aria-labelledby="dpOvTabsTab_dpOvFlow">
+  <div class="card" data-page-node-id="PgDpOvFlow00000001">
+    <div class="card-h" data-page-node-id="PgDpOvFlowH0000001"><h3>实时事件流</h3>
+      <span class="sub">与审计 Dashboard「动态防护事件流」面板同源 · 点击行展开摘要 · 行内可下钻完整事件</span>
+    </div>
+    <div class="card-b">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0 4px">
+      <select data-dpsel="ovAsset">
+        <option value="">全部防护对象</option>
+        ${dpEnabledAssets().map(a => `<option ${DP.ovAsset === a.name ? "selected" : ""}>${esc(a.name)}</option>`).join("")}
+      </select>
+      <span class="seg">${["", "OBSERVE", "CHALLENGE", "REJECT", "LIMIT"].map(k => `<button type="button" data-act="dpOvActF" data-v="${k}" class="${(DP.ovAct || "") === k ? "on" : ""}">${k ? dpActName(k, true) : "全部"}</button>`).join("")}</span>
+      <button class="btn ghost sm" type="button" data-act="dpOvPause" style="margin-left:auto">${DP.paused ? "▶ 继续推送" : "⏸ 暂停推送"}</button>
+    </div>
+    ${(() => { const fp = []; if (DP.ovFilter) fp.push("评分 " + DP.ovFilter); if (DP.ovAct) fp.push("档位 " + dpActName(DP.ovAct)); if (DP.ovAsset) fp.push("对象 " + DP.ovAsset); return fp.length ? `<div style="font-size:12.5px;color:var(--txt3);margin:0 0 6px">已筛选 <b>${fp.length}</b> 项（${esc(fp.join(" · "))}）<button class="btn link" type="button" data-act="dpOvClearF" style="margin-left:6px">清除全部</button></div>` : ""; })()}
+    ${DP.paused ? '<div class="hint-row warn" style="margin:8px 0"><i class="ic">⏸</i><span>推送已暂停 · 新事件在后台继续累积，恢复后刷新展示</span></div>' : ""}
+    <div class="tbl-wrap"><table class="lst" id="dpOvTbl" style="min-width:1120px" data-page-node-id="PgDpOvFlowTbl0001">
+      <thead><tr><th style="width:92px">时间（今日）</th><th style="width:112px">源 IP</th><th style="width:200px">防护对象</th><th style="width:206px">访问主体</th><th style="width:92px">评分</th><th>命中项</th><th style="width:118px">处置档位</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div id="dpOvPager"></div>
+  </div></div>
+  </div>`;
+  dpOvRenderRows();
+  dpMount("pg-dpov");
+  wsScrollTo(_y);
+  if (!window._dpOvTimer) {
+    window._dpOvTimer = setInterval(() => {
+      if (!document.getElementById("pg-dpov")) { clearInterval(window._dpOvTimer); window._dpOvTimer = null; return; }
+      /* 后台标签页不推送：浏览器切标签 / 最小化时 document.hidden 为真，继续每 6s 入列并
+         全量落盘 localStorage 只是空转（演示态无需后台累积，回到前台即恢复）。 */
+      if (document.hidden) return;
+      /* 暂停即**不写**：原先仍以 false 调 dpOvPushEvent 入列并 dpSave ⇒ 「暂停中事件总数仍在涨」 */
+      /* ★ 2026-10-09 末轮评审（高）：入列照旧（数据要累积），但**仅在事件流页签激活时重绘 DOM** ——
+         原实现恒以 true 调，停在「防护概览」页签时每 6s 重建一张隐藏表（实测 6.5s 新增 140 节点，
+         隐藏表已有 10 行），纯属 churn。切回事件流页签由页签分支补一次重绘（见 showTab 同处）。 */
+      if (!DP.paused) dpOvPushEvent(DP.ovTab === "dpOvFlow");
+    }, 6000);
+  }
+}
+
+function dpOvFiltered() {
+  return DP.events.filter(x => {
+    if (DP.ovFilter) {
+      const lv = dpLevelOf(x.score);
+      /* 分级过滤与直方图分段口径一致：P2 = 20~49（列表含 <20 的正常记录，故用评分区间而非分级标签） */
+      if (DP.ovFilter === "P2" ? !(x.score >= 20 && x.score <= 49) : lv !== DP.ovFilter) return false;
+    }
+    if (DP.ovAct && x.act !== DP.ovAct) return false;
+    if (DP.ovAsset && x.asset !== DP.ovAsset) return false;
+    return true;
+  });
+}
+
+function dpKpi(label, val, sub, nid, inner) {
+  return `<div style="flex:1;min-width:220px;padding:0 14px 0 2px" data-page-node-id="${nid}A">
+    <div style="font-size:12.5px;color:var(--txt3)">${esc(label)}</div>
+    ${val ? `<div style="font-size:24px;font-weight:600;margin:4px 0 2px">${esc(val)}</div>` : ""}
+    ${inner || ""}
+    ${sub ? `<div style="font-size:12px;color:var(--txt3);margin-top:4px;line-height:1.6">${sub}</div>` : ""}
+  </div>`;
+}
+
+/* ===== 指标偏离 → 风险分数（换算链 · 见《动态防护行为基线-技术设计与开发指南-20261010》6.5）=====
+   基线指标是「行为基线」这一路信号的输入，换算分四步：
+     ① 单项偏离 →（以生效阈值为原点、DP_SAT_K × 阈值为饱和点）单项严重度分 s ∈ [0,1]；
+     ② 主体内多项 →（角色权重 + 最大 / 折减合成）主体分 S ∈ [0,1]；
+     ③ 主体分 →（DP_W_BASE 量程）行为基线路分 ∈ [0, DP_W_BASE]；
+     ④ 五路正向求和 → riskScore（其余四路由各自检测点产出，不属基线指标体系）。
+   单路满值 = 该路权重上限 ⇒ 单路偏离通常只贡献个位数分，须多路同时命中才进高 P 级
+   （与误报预算同向：多信号互证才升级，避免弱指标叠加灌分）。 */
+const DP_W_BASE = 25;                                 /* 「行为基线」一路量程上限（与 DP_SIGNALS 同源） */
+const DP_ROLE_W = { main: 1.0, aux: 0.4, cond: 0 };   /* 角色权重：主 / 佐 / 条件（条件不单独进分） */
+const DP_SAT_K = 3;                                   /* 饱和倍数：3σ 门限 ⇒ 9σ 饱和 */
+const DP_FOLD = 0.5;                                  /* 多项折减系数（最大值 + 其余 × 折减，防线性膨胀） */
+
+/* ① 单项严重度分：σ 型以生效阈值为原点线性映射、DP_SAT_K × 阈值处饱和；未越阈得 0。
+   非 σ 型按型取（集合 / 分布 / 稀疏记「落至基线外」满分，状态型结构级变更满分）—— 演示口径，生产按各型判据式取分。 */
+function dpIndScore(m, th) {
+  /* 前置未满足（如路径归一化未实现）：该指标不进判定、**不进评分**（指南 §7.1 / 附录 C）。 */
+  if (m.pre) return 0;
+  if (dpKindIsSigma(m.kind)) {
+    const sd = (m.sd > 0) ? m.sd : DP_SD_EPS;
+    const d = Math.abs((m.cur || 0) - (m.mu || 0)) / sd;
+    if (d <= th) return 0;
+    return Math.min(1, (d - th) / ((DP_SAT_K - 1) * th));
+  }
+  return m.hit ? 0 : 1;
+}
+
+/* ② 主体分：逐项按角色权重取分，合成取「最大值 + 其余 × 折减」——
+   主指标满值即 S = 1（主指标决定权）；多项弱偏离不线性膨胀（误报预算在评分侧的落地）。 */
+function dpSubjScore(dim, key) {
+  let sub = null;
+  try { sub = (DP.base.subs || []).filter(s => s.dim === dim && s.key === key)[0] || null; } catch (e) { sub = null; }
+  if (!sub) return 0;
+  /* 判定链与评分链**同源**：一律取生效阈值（主体覆盖 > 维度默认，指南 §5.6 / §6.5④）——
+     原实现固定取维度默认 ⇒ 给主体设 s.th 后判定与评分各算各的。 */
+  const th = dpEffTh(sub);
+  const ws = (sub.metrics || []).map(m => (DP_ROLE_W[m.role] || 0) * dpIndScore(m, th))
+    .filter(v => v > 0).sort((a, b) => b - a);
+  if (!ws.length) return 0;
+  return Math.min(1, ws[0] + DP_FOLD * ws.slice(1).reduce((a, b) => a + b, 0));
+}
+
+/* ③ 行为基线一路分（0 ~ DP_W_BASE）：主体分 × 量程。多主体会话按信任序（账号 → 设备 → 应用 → 客体）
+   以同形合并；演示事件为单主体，保留单主体路径（合并式见指南 6.5 第 ③ 步）。 */
+function dpBasePathScore(dim, key) {
+  return Math.round(DP_W_BASE * dpSubjScore(dim, key) * 10) / 10;
+}
+
+/* 五路信号分值：**行为基线一路由该主体的真实指标偏离正向派生**（指南 6.5），其余四路按剩余份额分配
+   —— 演示口径：其余四路由各自检测点产出绝对分，本页不模拟其内部换算。各项之和严格等于 riskScore。 */
+function dpSigRows(x) {
+  const score = x.score;
+  const rBase = Math.min(score, Math.round((x.sk && x.sub) ? dpBasePathScore(x.sk, x.sub) : 0));
+  const rest = Math.max(0, score - rBase);
+  const others = DP_SIGNALS.filter(s => s.n !== "行为基线");
+  const seed = dpSigSeed(x);
+  const raw = others.map((s, i) => s.w * (0.72 + ((seed + i * 7) % 9) / 25));
+  const sum = raw.reduce((a, b) => a + b, 0);
+  const ovals = raw.map(v => Math.round(v / sum * rest));
+  ovals[0] += rest - ovals.reduce((a, b) => a + b, 0);   /* 残差并入首项，保证 Σ = score */
+  let oi = 0;
+  return DP_SIGNALS.map(s => (s.n === "行为基线")
+    ? { n: s.n, w: s.w, v: rBase }
+    : { n: s.n, w: s.w, v: Math.max(0, ovals[oi++]) });
+}
+function dpSigSeed(x) {
+  const d = (x.reqId || x.id || "").replace(/\D/g, "");
+  return (parseInt(d.slice(-3), 10) || 7) + x.score;
+}
+/* 五路信号条（事件展开 / 完整事件弹窗共用） */
+function dpSigBars(x, minW) {
+  const rows = dpSigRows(x);
+  const tot = rows.reduce((a, b) => a + b.v, 0);
+  const bars = rows.map(r => `<div style="flex:1;min-width:${minW}px"><div style="font-size:12px;color:var(--txt3)">${esc(r.n)}</div>
+      <div style="height:6px;background:var(--bd,#e5e7eb);border-radius:3px;margin:3px 0"><div style="height:6px;width:${Math.min(100, r.v)}%;background:#2563eb;border-radius:3px"></div></div>
+      <div style="font-size:12px">${r.v} 分</div></div>`).join("");
+  return { bars: bars, sum: tot };
+}
+
+/* KPI 迷你趋势线（内联 SVG · 显式色值） */
+function dpSpark(vals, color) {
+  const W = 120, H = 30, P = 2;
+  const mx = Math.max.apply(null, vals), mn = Math.min.apply(null, vals);
+  const x = i => P + i * (W - 2 * P) / (vals.length - 1);
+  const y = v => H - P - ((v - mn) / Math.max(0.001, mx - mn)) * (H - 2 * P);
+  const pts = vals.map((v, i) => x(i).toFixed(1) + "," + y(v).toFixed(1)).join(" ");
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;margin-top:4px"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.6"/><circle cx="${x(vals.length - 1)}" cy="${y(vals[vals.length - 1])}" r="2.4" fill="${color}"/></svg>`;
+}
+
+function dpHistBar(h, maxTot) {
+  const tot = h.p2 + h.p3 + h.p4, k = 96 / Math.max(1, maxTot || tot);
+  const seg = (v, c, band) => {
+    if (v <= 0) return "";
+    const on = DP.ovFilter === band;
+    const dim = DP.ovFilter && !on;
+    return `<div data-act="dpOvBar" data-band="${band}" title="${h.lab} · ${band}：${v} 次（点击${on ? "取消过滤" : "过滤"}）" style="height:${Math.max(2, Math.round(v * k))}px;background:${c};cursor:pointer;${on ? "outline:2px solid #1e40af;outline-offset:-1px;" : ""}${dim ? "opacity:.35;" : ""}"></div>`;
+  };
+  return `<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:1px" title="${esc(h.lab)} · 合计 ${tot} 次">
+    ${seg(h.p4, "#f87171", "P4")}${seg(h.p3, "#fbbf24", "P3")}${seg(h.p2, "#93c5fd", "P2")}
+    <div style="text-align:center;font-size:11px;color:var(--txt3);margin-top:3px">${esc(h.lab)}</div>
+  </div>`;
+}
+
+function dpEvRow(x) {
+  const lv = dpLevelOf(x.score);
+  /* 冷启动资产（启用不足观察期）只观察不处置：行内标记，避免与正常资产混排产生误读 */
+  const cold = dpColdAssets().some(c => c.name === x.asset);
+  /* 「防护对象」列**不承载操作控件**：该列已无水平余量 —— 实测「对外行情资讯门户 + 冷启动」
+     单是文本固有宽就 218px，而列宽分配 200px；再加任何控件都会把资产名裁掉
+     （由门禁 L2 实测抓出，非推测；相邻的「访问主体」列同处 206px 极限）。
+     对象策略配置的入口落在展开区操作条与「完整事件」弹窗的字段链路上 ——
+     同一事实不该在列宽不足处硬塞入口。 */
+  const objOf = dpIncluded().filter(a => a.name === x.asset)[0] || null;
+  const main = `<tr data-act="dpOvRow" data-id="${x.id}" tabindex="0" aria-label="展开事件详情：${esc(String(x.asset))} · 评分 ${esc(String(x.score))}" style="cursor:pointer;${x.fresh ? "animation:dpNewRow 1.6s ease-out;" : ""}">
+    <td style="white-space:nowrap">${esc(String(x.t).replace(/^\d{4}-\d{2}-\d{2} /, ""))}</td><td style="white-space:nowrap">${esc(x.ip)}</td>
+    <td style="white-space:nowrap">${esc(x.asset)}${cold ? ' <span class="tag t-info" title="该资产启用不足冷启动观察期，只观察不处置">冷启动</span>' : ""}</td>
+    <td style="white-space:nowrap">${dpEvSubCell(x)}</td>
+    <td style="white-space:nowrap">${dpLevelTag(lv)} <b>${x.score}</b></td>
+    <td>${x.hits.length ? esc(x.hits.join("；")) : '<span style="color:var(--txt3)">—</span>'}</td>
+    <td style="white-space:nowrap">${dpActTag(x.act)}</td></tr>`;
+  if (!x.open) return main;
+  const sb = dpSigBars(x, 90);
+  return main + `<tr><td colspan="7" style="background:var(--bg2,#f8fafc)">
+    <div style="display:flex;gap:14px;flex-wrap:wrap;padding:4px 2px 8px">${sb.bars}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:0 2px 6px;gap:10px;flex-wrap:wrap">
+      <span style="font-size:12.5px;color:var(--txt3)">五路加权聚合 = 风险评分 <b>${x.score}</b> 分（Σ 校验 ${sb.sum} = ${x.score}）· requestId：${esc(x.reqId)} · 处置结果：${esc(dpActName(x.act))} 已执行 · 事件唯一归类${cold ? " · 该资产处于冷启动观察期，仅记录" : ""}</span>
+      <span style="display:flex;gap:8px;align-items:center;flex:0 0 auto">
+        ${objOf ? `<button class="btn ghost sm" type="button" data-act="dpOvGoObj" data-id="${esc(objOf.id)}">该对象策略配置</button>` : ""}
+        <button class="btn ghost sm" type="button" data-act="dpOvFull" data-id="${x.id}">查看完整事件</button>
+      </span>
+    </div></td></tr>`;
+}
+
+/* 访问主体（规划 §4.1：事件流每行给出访问主体并可下钻其基线）——
+   sk = 主体类别（app / acct / dev），sub = 主体标识（应用标识 / 账号名 / 设备指纹短码）；
+   标识命中已建模主体时给下钻入口，未建模的只显示标识与类别，不伪造可点入口 */
+function dpEvSubInfo(x) {
+  const dim = dpDim(x.sk || "app");
+  const s = DP.base.subs.find(v => v.dim === (x.sk || "app") && dpSubKey(v) === (x.sub || "")) || null;
+  return { dim: dim, sid: s ? s.id : "", label: x.sub || "—", tag: dim.w };
+}
+/* 事件行主体单元格 */
+function dpEvSubCell(x) {
+  const i = dpEvSubInfo(x);
+  return '<span class="tag t-gray">' + esc(i.tag) + '</span> ' + (i.sid
+    ? '<button class="btn link" type="button" data-act="dpOvGoSub" data-id="' + esc(i.sid) + '" title="查看该主体基线">' + esc(i.label) + "</button>"
+    : '<span title="该主体尚未建模，不参与基线判定">' + esc(i.label) + "</span>");
+}
+/* 完整事件弹窗主体取值格 */
+function dpEvSubKv(x) {
+  const i = dpEvSubInfo(x);
+  const base = '<span class="tag t-gray">' + esc(i.tag) + "</span> <b>" + esc(i.label) + "</b>";
+  return i.sid
+    ? base + ' <button class="btn link" type="button" data-act="dpOvGoSub" data-id="' + esc(i.sid) + '">查看该主体基线 →</button>'
+    : base + ' <span style="font-size:12.5px;color:var(--txt3)">未建模（不参与基线判定）</span>';
+}
+
+/* 事件类型：界面以中文标签呈现，括号内为审计域事件类型契约标识（不把 snake_case 直接当文案） */
+function dpEvType(x) {
+  const h = x.hits.join("");
+  if (x.act === "LIMIT") return "风险升级处置（risk_action_taken）";
+  if (h.indexOf("重放防护") >= 0) return "重放防护阻断（replay_blocked）";
+  if (h.indexOf("动态挑战") >= 0) return "动态挑战失败（challenge_failed）";
+  if (h.indexOf("行为基线") >= 0) return "行为基线偏离（baseline_deviation）";
+  if (h.indexOf("语义检测") >= 0) return "语义检测命中（semantic_hit）";
+  return "正常流量记录（未达命中阈值）";
+}
+/* 完整事件详情（弹窗 xl）：字段口径与审计 Dashboard 一致（只读）——
+   基本信息 + 事件类型 + 命中项逐条 + 五路信号构成 + 决策链路 + 关联基线主体 */
+function dpOvFullDlg(x) {
+  const lv = dpLevelOf(x.score);
+  const steps = [
+    { t: "检测命中", d: x.hits.length ? x.hits.join("；") : "五路信号均未达命中阈值", ts: x.t },
+    { t: "评分聚合", d: "五路信号加权聚合 → 风险评分 " + x.score + "（" + lv + "）", ts: x.t },
+    { t: "档位决策", d: "命中评分区间 → " + dpActName(x.act) + "（优先级矩阵校验通过 · 事件唯一归类）", ts: x.t },
+    { t: "处置执行", d: dpActName(x.act) + " 已执行 · 结果写入事件流与操作审计", ts: x.t },
+  ];
+  const sb = dpSigBars(x, 110);
+  const hitsHtml = x.hits.length
+    ? x.hits.map(h => `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed #eef2f7;font-size:12.5px">
+        <span style="flex:1">${esc(h)}</span>
+        ${h.indexOf("语义检测") === 0 ? '<button class="btn link" type="button" data-act="dpPolGotoRulelib">前往规则库对应条目 →</button>' : ""}
+      </div>`).join("")
+    : '<div style="font-size:12.5px;color:var(--txt3);padding:4px 0">五路信号均未达命中阈值（正常流量记录）</div>';
+  /* 关联基线主体：以**事件自身的访问主体**为准（x.sk / x.sub，与上方「访问主体」字段同源），
+     不得改回「在命中项文案里找主体名」—— 命中项不含主体名的事件会整块隐去，与上方字段自相矛盾。 */
+  /* 「防护对象」字段的下钻入口：与紧邻的「访问主体」字段同一交互范式（字段即入口） */
+  const _objL = dpIncluded().filter(a => a.name === x.asset)[0] || null;
+  const _si = dpEvSubInfo(x);
+  const sub = _si.sid ? (DP.base.subs.filter(s => s.id === _si.sid)[0] || null) : null;
+  const subHtml = sub
+    ? `<div style="margin:14px 0 6px;font-weight:600;font-size:13px">关联基线主体</div>
+       <div style="display:flex;align-items:center;gap:10px;background:#f8fafc;border:1px solid #eef2f7;border-radius:8px;padding:8px 12px;font-size:12.5px">
+         <span style="flex:1"><b>${esc(sub.key)}</b> ${esc(sub.name)} · 访问防护对象 ${(sub.assets || []).length} 个 · 当前状态 ${dpSubState(sub).t}（最大偏离 ${dpSubState(sub).d.toFixed(1)}σ）</span>
+         <button class="btn ghost sm" type="button" data-act="dpOvGoSub" data-id="${esc(sub.id)}">查看该主体基线 →</button>
+       </div>`
+    : "";
+  openDlg("完整事件 · " + esc(x.reqId), "字段口径与审计 Dashboard「动态防护事件流」面板一致（只读）。", `
+    <div class="kv"><span class="k">时间</span><div>${esc(x.t)}</div></div>
+    <div class="kv"><span class="k">源 IP</span><div><span class="kr">${esc(x.ip)}</span></div></div>
+    <div class="kv"><span class="k">防护对象</span><div><b>${esc(x.asset)}</b>${_objL ? ` <button class="btn link" type="button" data-act="dpOvGoObj" data-id="${esc(_objL.id)}">查看该对象策略配置 →</button>` : ""}</div></div>
+    <div class="kv"><span class="k">访问主体</span><div>${dpEvSubKv(x)}</div></div>
+    <div class="kv"><span class="k">事件类型</span><div><span class="kr">${esc(dpEvType(x))}</span></div></div>
+    <div class="kv"><span class="k">评分 / 分级</span><div>${dpLevelTag(lv)} <b>${x.score}</b> 分</div></div>
+    <div class="kv"><span class="k">处置档位</span><div>${dpActTag(x.act)}</div></div>
+    <div class="kv"><span class="k">requestId</span><div><span class="kr">${esc(x.reqId)}</span><button class="btn sm" style="margin-left:8px" type="button" onclick="clipText('${esc(x.reqId)}')">复制</button></div></div>
+    <div style="margin:12px 0 4px;font-weight:600;font-size:13px">命中项（${x.hits.length} 条）</div>
+    ${hitsHtml}
+    <div style="margin:12px 0 4px;font-weight:600;font-size:13px">五路信号构成（行为基线一路由该主体指标偏离正向派生 · 各项之和 = 风险评分 ${x.score} 分）</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap">${sb.bars}</div>
+    <div style="margin:14px 0 6px;font-weight:600;font-size:13px">决策链路</div>
+    <div>${steps.map((s, i) => `<div class="fx-step" style="margin-bottom:8px"><div style="flex:0 0 86px;font-weight:600;font-size:12.5px;color:#2563eb">${i + 1}. ${esc(s.t)}</div><div style="flex:1;font-size:12.5px">${esc(s.d)}</div><div style="flex:0 0 150px;text-align:right;font-size:12px;color:var(--txt3)">${esc(s.ts)}</div></div>`).join("")}</div>
+    ${subHtml}
+    <div style="font-size:12.5px;color:var(--txt3);margin-top:10px">完整检索与长期归档（≥180 天）在审计 Dashboard · 跳转携带 requestId 过滤条件</div>`, "xl");
+  document.getElementById("dlg1Ok").onclick = () => closeDlg();
+}
+
+/* 演示：每 6 秒追加一条事件。事件池 = 已启用动态防护的资产（未启用 / 准入拒绝对象不进入评分）；
+   命中项只取该资产已启用的检测项；处置档位按该资产「生效档位映射」计算；
+   CHALLENGE 档有一定概率按联动规则升级为限流熔断（带升级来源说明）；
+   冷启动资产只观察：评分照算、档位强制「观察记录」（PRD F1.5 边界：新资产无历史基线） */
+function dpOvPushEvent(render) {
+  if (DP.dpOn === false) return;   /* 模块停用（网关第八步整步短路）：停用态不再产生新事件记录 */
+  const pool = dpEnabledAssets();
+  if (!pool.length) return;
+  const ip = () => [61, 112, 183, 223][Math.floor(Math.random() * 4)] + "." + Math.floor(Math.random() * 254) + "." + Math.floor(Math.random() * 254) + "." + Math.floor(Math.random() * 254);
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  const eff = dpEffCfg(pick.id).cfg;
+  const sc = Math.floor(Math.random() * 100);
+  const band = eff.bands.find(b => sc >= b.lo && sc <= b.hi);
+  const isCold = dpColdAssets().some(c => c.id === pick.id);
+  let act = isCold ? "OBSERVE" : (band ? band.act : "OBSERVE");
+  const hitPool = [];
+  if (eff.det.replay) hitPool.push("重放防护：签名校验失败");
+  if (eff.det.challenge) hitPool.push("动态挑战：挑战校验失败");
+  if (eff.det.baseline) hitPool.push("行为基线：调用速率偏离基线");
+  if (eff.det.semantic) hitPool.push("语义检测：参数污染");   /* 本域检测项（F1.4）：受检测项开关约束，判定档 OBSERVE 起步 */
+  let hits = (sc >= 20 && hitPool.length) ? [hitPool[Math.floor(Math.random() * hitPool.length)]] : [];
+  if (act === "CHALLENGE" && Math.random() < 0.18) {
+    act = "LIMIT";
+    hits = ["动态挑战：同会话连续失败 3 次 → 升级联动限流熔断"];
+  }
+  /* 访问主体：优先命中的基线主体 → 该资产已建模主体 → 按类别合成标识（未建模） */
+  const cand = DP.base.subs.filter(v => (v.assets || []).some(a => a.name === pick.name));
+  const hitSub = cand.filter(v => hits.join("").indexOf(dpSubKey(v)) >= 0)[0] || null;
+  const pickSub = hitSub || cand[Math.floor(Math.random() * cand.length)] || null;
+  let sk = "app", sub = "";
+  if (pickSub) { sk = pickSub.dim; sub = dpSubKey(pickSub); }
+  else {
+    const kb = [["app", "BZPC-"], ["acct", "svc_"], ["dev", "dev_"]][Math.floor(Math.random() * 3)];
+    sk = kb[0]; sub = kb[1] + Math.floor(1000 + Math.random() * 8999).toString(36);
+  }
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  DP.events.forEach(x => { x.fresh = false; });
+  DP.events.unshift({
+    id: "ev" + Date.now(), t: `${DP_TODAY} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`,
+    ip: ip(), asset: pick.name, sk: sk, sub: sub, score: sc,
+    hits: hits, act: act, reqId: "req-" + (90000 + Math.floor(Math.random() * 9999)), open: false, fresh: true,
+  });
+  if (DP.events.length > 40) DP.events.pop();
+  dpSave();
+  if (render !== false) dpOvRenderRows();
+}
+/* 事件流列表 + 分页（pgmk：与资产访问控制策略页同一分页组件） */
+function dpOvRenderRows() {
+  const tb = document.querySelector("#dpOvTbl tbody");
+  if (!tb) return;
+  const ev = dpOvFiltered();
+  const pages = Math.max(1, Math.ceil(ev.length / 10));
+  DP.ovPage = Math.min(Math.max(1, DP.ovPage || 1), pages);
+  const rows = ev.slice((DP.ovPage - 1) * 10, DP.ovPage * 10);
+  tb.innerHTML = rows.length ? rows.map(x => dpEvRow(x)).join("") : '<tr><td colspan="7"><div class="empty"><div class="big">当前过滤条件下暂无事件</div></div></td></tr>';
+  pgmk("#dpOvPager", ev.length, DP.ovPage, "dpOvPg", "条事件", 10, "推送事件实时入列 · 过滤条件作用于全量");
+}
+window.dpOvPg = function (p) { dpLoad(); DP.ovPage = Math.max(1, p | 0); dpSave(); dpOvRenderRows(); };
+
+/* ==========================================================================
+   防护策略（pg-dppol）—— 对齐「资产访问控制策略」设计语言：
+   列表视图（筛选 + 对象表 + pgmk 分页 + 变更留痕）⇄ 对象配置视图（下钻，按配置面分卡）
+   ========================================================================== */
+function renderDpPolicy() {
+  dpLoad();
+  dpDeepLink("pg-dppol");
+  const host = document.getElementById("pg-dppol");
+  if (!host) return;
+  const _y = wsScrollTop();
+  host.innerHTML = `
+  ${DP_CSS}
+  <div id="dpPolWrap">${DP.polView === "cfg" ? dpPolCfgView() : dpPolListView()}</div>`;
+  dpMount("pg-dppol");
+  wsScrollTo(_y);
+  if (DP.polView !== "cfg") {
+    const rows = dpPolRows();
+    pgmk("#dpPolPager", rows.length, DP.polPage, "dpPolPg", "个防护对象", DP_POL_PG, "对象清单直接引用资产目录 · 点「配置」进入对象视图");
+  }
+}
+window.dpPolPg = function (p) { dpLoad(); DP.polPage = Math.max(1, p | 0); dpSave(); renderDpPolicy(); };
+window.dpPolCfgTab = function (k) {
+  dpLoad();
+  if (DP_POL_CFG_TABS.some(x => x[0] === k)) DP.polCfgTab = k;
+  dpSave(); renderDpPolicy();
+};
+window.dpBasePg = function (p) { dpLoad(); DP.base.page = Math.max(1, p | 0); dpSave(); renderDpBaseline(); };
+
+/* 对象行（一行 = 一个已纳入的资产；全部属性读资产目录，本模块只提供配置态） */
+function dpPolRows() {
+  const kw = (DP.polKw || "").trim().toLowerCase();
+  const coldIds = dpColdAssets().map(c => c.id);
+  const out = [];
+  dpIncluded().forEach(a => {
+    const c = DP.objs[a.id], deny = dpAdmDeny(a.id);
+    const r = {
+      /* 不携带 type：本模块只适用「网页应用」，逐行列同一常量无信息量（该列已从清单移除） */
+      id: a.id, name: a.name, grp: a.grp, lv: a.lv, open: a.open,
+      dom: dpDomainOf(a), deny: deny, on: deny ? null : !!c.on, cold: coldIds.indexOf(a.id) >= 0,
+      detN: (!deny && c.on) ? DP_DETS.filter(d => c.det[d.k]).length : null, bands: c.bands,
+    };
+    if (kw && (r.name + " " + r.dom + " " + r.grp).toLowerCase().indexOf(kw) < 0) return;
+    if (DP.polGrp && r.grp !== DP.polGrp) return;
+    if (DP.polSt === "on" && r.on !== true) return;
+    if (DP.polSt === "off" && r.on !== false) return;
+    if (DP.polSt === "deny" && !r.deny) return;
+    if (DP.polSt === "cold" && !r.cold) return;
+    out.push(r);
+  });
+  return out;
+}
+
+function dpPolListView() {
+  const rows = dpPolRows();
+  const pages = Math.max(1, Math.ceil(rows.length / DP_POL_PG));
+  DP.polPage = Math.min(Math.max(1, DP.polPage || 1), pages);
+  const pageRows = rows.slice((DP.polPage - 1) * DP_POL_PG, DP.polPage * DP_POL_PG);
+  const bandTxt = r => !r.bands ? '<span style="color:var(--txt3)">—</span>'
+    : `<span title="${esc(r.bands.map(b => b.lo + "~" + b.hi + " " + dpBandActName(b.act)).join(" · "))}">${r.bands.map(b => b.hi).join(" / ")} 分段</span>`;
+  /* ★ A2-08：整行可点下钻（与行为基线清单同一交互口径）—— 原来只有行尾「配置」按钮可点 */
+  const body = pageRows.map(r => `<tr data-act="dpPolCfg" data-id="${esc(r.id)}" tabindex="0" aria-label="打开「${esc(r.name)}」的防护配置" title="点击打开该对象的防护配置">
+    <td style="white-space:nowrap"><b>${esc(r.name)}</b> <span class="tag t-gray">L${r.lv}</span>
+      ${r.deny ? '<span class="tag t-err">准入拒绝</span>' : ""}
+      ${r.cold ? '<span class="tag t-info" title="启用不足冷启动观察期，只观察不处置">冷启动中</span>' : ""}
+      ${r.open !== "已开通" ? '<span class="tag t-warn">' + esc(r.open) + "</span>" : ""}
+      <div style="font-size:11.5px;color:var(--txt3);margin-top:2px">${esc(r.dom)}</div></td>
+    <td style="white-space:nowrap">${esc(r.grp)}</td>
+    <td style="white-space:nowrap">${r.deny ? '<span class="tag t-gray">不适用（准入拒绝）</span>' : r.on ? '<span class="tag t-ok">启用</span>' : '<span class="tag t-gray">关闭</span>'}</td>
+    <td style="white-space:nowrap">${r.detN === null ? '<span style="color:var(--txt3)">—</span>' : "已启用 <b>" + r.detN + "</b>/" + DP_DETS.length}</td>
+    <td style="white-space:nowrap">${bandTxt(r)}</td>
+    <td style="width:90px;white-space:nowrap"><button class="btn sm" type="button" data-act="dpPolCfg" data-id="${esc(r.id)}">配置</button></td></tr>`).join("");
+  const grps = Array.from(new Set(dpCatalog().map(a => a.grp)));
+  const incN = dpIncluded().length, appN = dpCatalog().filter(dpApplicable).length;
+  return `
+  <div class="card" data-page-node-id="PgDpPolListCard001">
+    <div class="card-h"><h3>防护对象</h3><span class="sub">处置优先级：准入拒绝 > 动态防护处置 > 准入放行</span></div>
+    <div class="card-b">
+    <div class="toolbar" style="margin-bottom:12px">
+      <div class="input-w"><input type="search" data-dpsel="polKw" maxlength="40" placeholder="搜索资产名称 / 域名（回车）" style="width:220px" value="${esc(DP.polKw || "")}"></div>
+      <select data-dpsel="polGrp"><option value="">全部资产分组</option>${grps.map(g => `<option ${DP.polGrp === g ? "selected" : ""}>${esc(g)}</option>`).join("")}</select>
+      <select data-dpsel="polSt"><option value="">全部状态</option>
+        <option value="on" ${DP.polSt === "on" ? "selected" : ""}>已启用</option>
+        <option value="off" ${DP.polSt === "off" ? "selected" : ""}>已关闭</option>
+        <option value="deny" ${DP.polSt === "deny" ? "selected" : ""} title="对象被准入侧切断（CUT）后不参与动态防护评分">切断</option>
+        <option value="cold" ${DP.polSt === "cold" ? "selected" : ""}>冷启动中</option></select>
+      <span style="flex:1"></span>
+      <span style="font-size:12.5px;color:var(--txt3);margin-right:8px">对象清单直接引用「资产列表」：已纳入 ${incN} 个 / 适用资产 ${appN} 个</span>
+      <button class="btn primary sm" type="button" data-act="dpPolAddObj">＋ 新增防护对象</button>
+    </div>
+    <div class="tbl-wrap"><table class="lst" style="min-width:820px" data-page-node-id="PgDpPolListTbl0001">
+      <thead><tr><th>防护对象（资产）</th><th style="width:110px">资产分组</th><th style="width:110px">动态防护</th><th style="width:110px">检测项</th><th style="width:150px">评分档位分段</th><th style="width:90px">操作</th></tr></thead>
+      <tbody>${body || '<tr><td colspan="6"><div class="empty"><div class="big">当前筛选条件下无防护对象</div><div style="margin-top:10px"><button class="btn sm" type="button" data-act="dpPolClearF">清除全部筛选</button></div></div></td></tr>'}</tbody></table></div>
+    <div id="dpPolPager"></div>
+  </div></div>
+  ${dpChangesHtml()}`;
+}
+
+/* 对象配置视图（下钻）：头部 + 三页签（基础信息 ／ 检测策略 ／ 评分处置与豁免）——
+   2026-10-08 精简：原单页首屏 3120px 拆三页签、条件渲染（非当前页签卡片不进 DOM）。 */
+const DP_POL_CFG_TABS = [
+  ["base", "基础信息"],
+  ["det", "检测策略"],
+  ["grade", "评分处置与豁免"],
+];
+function dpPolCfgView() {
+  const cur = dpCurObj();
+  if (!cur) { DP.polView = "list"; return dpPolListView(); }
+  const a = cur.a;
+  const deny = cur.deny;
+  const eff = { cfg: cur.cfg, src: "self" };
+  const cold = dpColdAssets().some(c => c.id === cur.id);
+  const stTag = deny ? '<span class="tag t-err">准入拒绝</span>' : (eff.cfg.on ? '<span class="tag t-ok">已启用</span>' : '<span class="tag t-gray">已关闭</span>');
+  const detN = DP_DETS.filter(d => eff.cfg.det[d.k]).length;
+  const srcTxt = "本资产单独配置（无组织级继承）";
+  const info = `
+  <div class="card" data-page-node-id="PgDpPolInfoCard001"><div class="card-h"><h3>对象基本信息</h3><span class="sub">以下资产属性读取自「资产列表」，本页不重复维护</span></div><div class="card-b">
+    <div class="info-grid">
+      <div class="ig"><div class="k">资产名称</div><div class="v"><b>${esc(a.name)}</b> <span class="tag t-gray">L${a.lv}</span></div></div>
+      <div class="ig"><div class="k">资产分组 / 类型</div><div class="v">${esc(a.grp)} · ${esc(a.type)}</div></div>
+      <div class="ig"><div class="k">所属部门 / 责任人</div><div class="v">${esc(a.dept)} · ${esc(a.owner)}</div></div>
+      <div class="ig"><div class="k">外部域名 / 地址</div><div class="v">${esc(dpDomainOf(a))}</div></div>
+      <div class="ig"><div class="k">资产接入状态</div><div class="v">${esc(a.open)}${a.en === 0 ? "（未启用）" : ""}</div></div>
+      <div class="ig"><div class="k">关联资源</div><div class="v">${(a.res || []).length} 项（在「资产列表」维护）</div></div>
+      <div class="ig"><div class="k">纳入清单 / 启用日期</div><div class="v">${eff.cfg.onAt ? esc(eff.cfg.onAt) + (cold ? "（冷启动观察期）" : "") : "—"}</div></div>
+      <div class="ig"><div class="k">配置来源</div><div class="v">${esc(srcTxt)}</div></div>
+      <div class="ig"><div class="k">准入侧状态</div><div class="v">${deny ? "拒绝（请求不达动态防护）" : "放行"}</div></div>
+      <div class="ig"><div class="k">生效检测项</div><div class="v">${deny ? "不适用（准入拒绝，流量不进入动态防护）" : (eff.cfg.on ? detN + " / " + DP_DETS.length + "（外部命中默认汇入）" : "动态防护未启用")}</div></div>
+    </div>
+  </div></div>`;
+  /* ★ 2026-10-08 三页签：条件渲染（只输出当前页签的面板）—— 非当前页签卡片不进 DOM */
+  const ct = DP_POL_CFG_TABS.some(x => x[0] === DP.polCfgTab) ? DP.polCfgTab : "base";
+  const pane = ct === "det"
+    ? `<div id="dpPolDet">${dpPolDetHtml(deny, eff, cur)}</div>`
+    : (ct === "grade"
+      ? `<div id="dpPolBand">${dpPolBandHtml(deny, eff, cur)}</div><div id="dpPolEx">${dpPolExHtml(deny, cur)}</div>`
+      : info);
+  return `
+  <div class="title-row">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button class="btn" type="button" data-act="dpPolBack">← 返回列表</button>
+      <h2 style="margin:0">${esc(a.name)}</h2>
+      <span class="tag t-gray">资产</span>${stTag}
+      ${cold ? '<span class="tag t-info" title="启用不足冷启动观察期，只观察不处置">冷启动</span>' : ""}
+    </div>
+    <div class="toolbar">
+      <button class="btn sm" type="button" data-act="dpPolRemove" data-id="${esc(a.id)}">移出防护对象清单</button>
+    </div>
+  </div>
+  ${deny ? `<div class="note red" data-page-node-id="PgDpPolCutNote0001" style="margin:10px 0">
+    该对象在准入侧被拒绝。按优先级矩阵（准入拒绝 &gt; 动态防护处置 &gt; 准入放行），其流量不进入动态防护评分 —— 下方配置已置灰。</div>` : ""}
+  <div class="tabs" id="dpPolCfgTabs" data-page-node-id="PgDpPolCfgTabs001">
+    ${DP_POL_CFG_TABS.map(x => `<button type="button" data-ct="${x[0]}" class="${ct === x[0] ? "on" : ""}">${x[1]}</button>`).join("")}</div>
+  ${pane}`;
+}
+
+function dpPolDetHtml(deny, eff, cur) {
+  const dis = deny ? "disabled" : "";
+  const cfg = eff.cfg;
+  const lv = (cur.a && cur.a.lv) | 0;
+  const mainSw = `<span class="switch" title="动态防护默认关闭，逐资产启用">
+      <input type="checkbox" data-dpsw="main" aria-label="本资产动态防护总开关" ${cfg.on ? "checked" : ""} ${dis}><span class="sl"></span></span>`;
+  /* 检测项主表：启用开关 + 参数覆盖计数 + 参数出处 */
+  const rows = DP_DETS.map(d => {
+    const def = dpDetParamDef(d.k);
+    const cov = def ? dpDetCovCount(cfg, d.k) : 0;
+    /* 参数出处 = 本行唯一出口：本页只做逐资产覆盖，参数本体在出处页维护 ——
+       同一行不给两个通往同一处的入口（原先「参数出处」是纯文本、另配「前往维护」按钮，
+       语义检测行因而有两个出口）。第三列只承载本资产的覆盖态。 */
+    const paraCell = def
+      ? (cov ? `<span class="tag t-warn">已覆盖 ${cov} 项</span>` : '<span class="tag t-gray">跟随全局</span>')
+      : '<span class="tag t-gray">规则库维护</span>';
+    return `<tr><td style="white-space:nowrap"><b>${esc(d.n)}</b></td>
+      <td>${esc(d.d)}<div style="font-size:12px;color:var(--txt3);margin-top:3px">参数出处：<button class="btn link" type="button" data-act="dpNav" data-v="${esc(d.srcPg)}" data-tab="${esc(d.st || "")}" title="前往参数出处页维护">${esc(d.srcT)}</button></div></td>
+      <td style="width:150px;white-space:nowrap">${paraCell}</td>
+      <td style="width:132px;white-space:nowrap"><span class="switch"><input type="checkbox" data-dpsw="det.${esc(d.k)}" aria-label="检测项：${esc(d.n)}" ${cfg.det[d.k] ? "checked" : ""} ${dis}><span class="sl"></span></span><span style="font-size:12px;color:var(--txt3);margin-left:8px">${cfg.det[d.k] ? "已启用" : "已停用"}</span></td></tr>`;
+  }).join("");
+  /* 检测项参数块（逐资产覆盖）：未覆盖项显示全局值并标「跟随全局」 */
+  const paramBlocks = DP_DET_PARAMS.map(g => {
+    const det = DP_DETS.find(x => x.k === g.d) || { n: g.d };
+    const cov = dpDetCovCount(cfg, g.d);
+    /* ★ A2-03：检测项停用后其参数块仍完整可编辑、仍会被「保存并下发」推送 —— 改动无实际作用却
+       进下发队列，且界面无任何提示。此处让状态回流参数区：块头标注 + 控件置灰。 */
+    const off = !cfg.det[g.d];
+    const pdis = (deny || off) ? "disabled" : "";
+    const body = g.ks.map(p => {
+      const val = dpDetEff(cfg, g.d, p);
+      const own = dpDetOverridden(cfg, g.d, p);
+      const fixed = dpDetFixed(p);
+      const ctl = fixed
+        ? `<b>${esc(dpDetFixedLabel(p))}</b>`
+        : (p.t === "sw"
+          ? `<span class="switch"><input type="checkbox" data-dparam="${g.d}.${p.k}" aria-label="参数：${esc(p.n)}" ${val ? "checked" : ""} ${pdis}><span class="sl"></span></span>`
+          : `<select data-dparam="${g.d}.${p.k}" aria-label="参数：${esc(p.n)}" ${pdis}>${p.xs.map(x => `<option value="${esc(x[0])}"${String(val) === String(x[0]) ? " selected" : ""}>${esc(x[1])}</option>`).join("")}</select>`);
+      /* ★ A2-02：覆盖后看不到被覆盖前的全局值、也无法只回退单个参数（原只有整块「全部恢复继承」）。
+         标记补「全局默认：<值>」，并在覆盖时给单参数「恢复继承」。 */
+      const mark = fixed
+        ? '<span class="tag t-gray" style="margin-left:6px" title="口径固定值：不随其他参数联动，也不提供逐资产覆盖">固定值</span>'
+        : (own
+          ? `<span class="tag t-warn" style="margin-left:6px" title="已按本资产覆盖 · 全局默认：${esc(dpDetGlobalLabel(p))}">本资产</span>` +
+            `<button class="btn link" type="button" data-act="dpDetReset1" data-p="${esc(g.d)}.${esc(p.k)}" ${dis} title="仅把本参数恢复为全局默认（${esc(dpDetGlobalLabel(p))}），不影响其它覆盖">恢复继承</button>`
+          : `<span class="tag t-gray" style="margin-left:6px" title="未覆盖 · 取全局默认：${esc(dpDetGlobalLabel(p))}">跟随全局</span>`);
+      return `<div class="ig"><div class="k">${esc(p.n)}</div><div class="v">${ctl}${mark}</div></div>`;
+    }).join("");
+    return `<div class="card-b" style="border-top:1px solid var(--line)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+        <b>${esc(det.n)} · 参数</b>
+        <span style="font-size:12px;color:var(--txt3)">${cov ? "已按本资产覆盖 " + cov + " 项" : "未覆盖 · 取全局默认 + 口径固定值"}</span>
+        ${off ? '<span class="tag t-gray" title="该检测项已停用：此处参数不参与评分，也不随「保存并下发」推送">检测项已停用 · 参数暂不生效</span>' : ""}
+        ${cov ? `<button class="btn ghost sm" type="button" data-act="dpDetInherit" data-det="${esc(g.d)}" style="margin-left:auto" ${dis}>全部恢复继承</button>` : ""}
+      </div>
+      <div class="info-grid" style="grid-template-columns:repeat(2, minmax(0,1fr))">${body}</div>
+    </div>`;
+  }).join("");
+  /* 场景化防护模板：逐资产开关 + **判据范围**（判据是接口级、模板是逐资产开关，范围是两者之间的桥）。
+     ★ 原「默认继承」列已删（2026-10-09 裁定）：该列内容是**全局规则的文本**（「L4~L5 资产默认启用」
+       「按资产手动启用」），对每个资产逐行重复同一句 —— 规则属全局定义，只在「对抗能力 · 场景化模板」
+       一个出口承载；本表只答「这一行现在为何是这个状态」，故只在**不自明**时于开关下补一行小字。
+     ★ 全局开关 = 能力总闸：全局未启用 ⇒ 本表开关置灰且为否（显式覆盖亦不生效）。 */
+  const tplRows = DP_TPLS.map(t => {
+    const on = dpTplOn(cfg, lv, t.k);
+    const act = dpTplActive(cfg, lv, t.k);   /* 生效判定：开关 ∧ (无需范围 ∨ 范围非空) */
+    const own = !!(cfg.tpl && cfg.tpl[t.k] != null);
+    const gOn = !!(DP.arms.tpl && DP.arms.tpl[t.k]);
+    const rng = dpTplRange(cfg, t.k);
+    const scopeCell = t.needRange
+      ? (rng.length
+          ? '<span class="tag t-ok">已配 ' + rng.length + dpTplCandShort(t.k) + '</span><div style="font-size:11.5px;color:var(--txt3);line-height:1.5">' + esc(rng.map(x => x[0]).join("、")) + "</div>"
+          : '<span class="tag t-warn" title="范围为空 ⇒ 判据无识别对象、该模板对本资产不生效">未配置</span>')
+      : '<span style="color:var(--txt3)">系统识别（不须配置范围）</span>';
+    /* 「开关为何是关的」只在**不自明**时补一句（全局未启用 / 未达 L4 默认门槛）；
+       继承且已开时开关状态自明，不再加字 —— 规则文本只在全局定义页承载，本表不重复。 */
+    const why = !gOn
+      ? '<div style="font-size:11.5px;color:var(--txt3);margin-top:3px">全局未启用</div>'
+      : (!on && !own && !t.manual && (lv | 0) < 4
+          ? '<div style="font-size:11.5px;color:var(--txt3);margin-top:3px">未达 L4 默认门槛 · 须显式开启</div>'
+          : "");
+    return `<tr><td style="white-space:nowrap"><b>${esc(t.n)}</b>${own ? ' <span class="tag t-warn">本资产覆盖</span>' : ""}</td>
+      <td>${esc(dpTplCombo(t))}</td>
+      <td style="width:260px">${scopeCell}</td>
+      <td style="width:236px;white-space:nowrap"><span class="switch"><input type="checkbox" data-dptpl="${esc(t.k)}" ${on ? "checked" : ""} ${gOn ? dis : "disabled"}><span class="sl"></span></span><span data-dptplst="${esc(t.k)}" style="font-size:12px;color:var(--txt3);margin-left:6px">${act ? "已生效" : (on ? "已启用 · 未配范围（不生效）" : "已停用")}</span>${t.needRange ? ' <button class="btn ghost sm" type="button" data-act="dpTplRange" data-tpl="' + esc(t.k) + '" ' + ((dis || !gOn) ? "disabled" : "") + ' title="' + (gOn ? "配置本模板的判据范围" : "全局未启用：请先在「对抗能力 · 场景化模板」启用全局开关") + '">配置范围</button>' : ""}${why}</td></tr>`;
+  }).join("");
+  return `<div class="card" data-page-node-id="PgDpPolDetCard0001">
+    <div class="card-h"><h3>检测项与参数</h3><span class="sub">检测项与参数逐资产可覆盖 · 全局默认在参数出处页维护</span>${mainSw}</div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst" style="min-width:1120px"><thead><tr><th style="width:220px">检测项</th><th>说明</th><th style="width:150px">参数覆盖</th><th style="width:132px">启用 / 停用</th></tr></thead>
+      <tbody>${rows}
+      <tr><td style="white-space:nowrap"><b>WAF / 限流命中</b> <span class="tag t-gray">外部风险因子</span></td><td>由 Web 安全防护与限流模块实施，作为评分输入默认汇入，不在本页配置</td>
+        <td><span class="tag t-gray">不可配置</span></td>
+        <td style="white-space:nowrap"><span class="switch" title="默认汇入，不可关闭"><input type="checkbox" checked disabled><span class="sl"></span></span><span style="font-size:12px;color:var(--txt3);margin-left:8px">默认汇入</span></td></tr>
+      </tbody></table></div>
+    </div>
+    ${paramBlocks}
+    <div class="card-b" style="border-top:1px solid var(--line)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+        <b>场景化防护模板</b>
+        <span style="font-size:12px;color:var(--txt3)">口径与<b>全局开关</b>在「对抗能力 · 场景化模板」维护（<b>全局关则本处不生效</b>）· 本处做逐资产开关与<b>判据范围</b>配置（只存差异）</span>
+      </div>
+      <div class="tbl-wrap"><table class="lst" id="dpPolTplTbl"><thead><tr><th style="width:140px">模板</th><th>组合</th><th style="width:260px">判据范围</th><th style="width:236px">启用 / 配置</th></tr></thead>
+        <tbody>${tplRows}</tbody></table></div>
+    </div>
+    <div class="card-b" style="border-top:1px solid var(--line);display:flex;justify-content:flex-end;align-items:center">
+      <span id="dpPolDetStat" style="font-size:12.5px;color:var(--txt3);margin-right:auto">${dpShipHtml(cfg, "det")}</span>
+      <button class="btn primary" type="button" data-act="dpPolDetSave" ${dis}>保存并下发</button>
+    </div></div>`;
+}
+
+/* 档位区间 → 彩色分段预览条（0~100 评分轴 · 编辑联动） */
+function dpBandPreview(bands, errIdx) {
+  const rows = bands.map((b, i) => {
+    /* ★ 2026-10-09 末轮评审（中）：档位边界输入框无 type=number，清空 / 填非数字 ⇒ parseInt 得 NaN，
+       原式直接算出 `width:NaN%` 与「NaN~49 分 → 观察记录」文案（非法 CSS + 不可读文案，不崩但脏）。 */
+    const lo = Number.isFinite(b.lo) ? b.lo : 0, hi = Number.isFinite(b.hi) ? b.hi : 0;
+    const w = Math.max(0, hi - lo + 1);
+    const bad = errIdx === i;
+    /* ★ A2-01：档位中文名（界面文案统一用中文）—— 原直接拼契约键值 b.act，把 OBSERVE/CHALLENGE/REJECT
+       泄漏进用户可见 tooltip，与本页自定规则冲突（同页其余档位文案一律中文）。 */
+    return `<div title="${lo}~${hi} 分 → ${dpBandActName(b.act)}" style="width:${w}%;background:${dpActColor(b.act)};height:16px;${bad ? "outline:2px solid #b91c1c;outline-offset:-2px;" : ""}"></div>`;
+  }).join("");
+  return `<div style="margin:10px 0 2px">
+    <div style="display:flex;gap:0;border-radius:6px;overflow:hidden;border:1px solid #e5e7eb">${rows}</div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--txt3);margin-top:3px"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+  </div>`;
+}
+
+function dpPolBandHtml(deny, eff, cur) {
+  const dis = deny ? "disabled" : "";
+  const bands = eff.cfg.bands;
+  const rows = bands.map((b, i) => `
+    <tr data-bandrow="${i}"><td style="width:190px;white-space:nowrap">
+        <input class="mini-inp" style="width:56px" data-band="${i}" data-f="lo" value="${esc(b.lo)}" ${dis}> ~
+        <input class="mini-inp" style="width:56px" data-band="${i}" data-f="hi" value="${esc(b.hi)}" ${dis}> 分</td>
+      <td><select data-band="${i}" data-f="act" ${dis} style="width:100%">${DP_BAND_ACTS.map(a => `<option value="${a.k}" ${b.act === a.k ? "selected" : ""}>${a.t}</option>`).join("")}</select></td>
+      <td style="width:84px;white-space:nowrap">${bands.length > 2 ? `<button class="btn ghost sm" type="button" data-act="dpBandDel" data-band="${i}" ${dis}>删除</button>` : '<span style="color:var(--txt3);font-size:12px">—</span>'}</td></tr>`).join("");
+  const sig = DP_SIGNALS.map(s => `
+    <div style="flex:1;min-width:120px"><div style="font-size:12px;color:var(--txt3)">${esc(s.n)}</div>
+      <div class="bars" style="margin:3px 0"><i class="b1" style="width:${s.w}%"></i></div>
+      <div style="font-size:12px">权重 ${s.w}</div></div>`).join("");
+  return `<div class="card" data-page-node-id="PgDpPolBandCard001">
+    <div class="card-h"><h3>评分与处置档位</h3><span class="sub">区间须连续、不重叠、闭合 0~100 · 对应 ${DP_LEVELS.map(l => l.k + "（" + dpLevelRange(l.k) + "）").join(" / ")}</span></div>
+    <div class="card-b" style="display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap">
+      <div style="flex:1 1 620px;min-width:560px">
+      <div id="dpBandPreview">${dpBandPreview(bands, -1)}</div>
+    <div class="tbl-wrap"><table class="lst" style="min-width:0"><thead><tr><th style="width:190px">评分区间</th><th style="width:250px">处置档位</th><th style="width:84px">操作</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--txt3)">段数 ${bands.length} / 上限 ${DP_BAND_ACTS.length}（可用处置档位 ${DP_BAND_ACTS.length} 个 · 至少 2 段）</span>
+      <span style="flex:1"></span>
+      <button class="btn ghost sm" type="button" data-act="dpBandAdd" ${(dis || bands.length >= DP_BAND_ACTS.length) ? "disabled" : ""} title="${bands.length >= DP_BAND_ACTS.length ? "已达上限：可用处置档位只有 " + DP_BAND_ACTS.length + " 个" : "在末段中点拆出一段"}">＋ 添加档位段</button>
+    </div>
+    <div id="dpPolBandErr" style="font-size:12.5px;color:#b91c1c;margin-top:6px"></div>
+      </div>
+      <div data-page-node-id="PgDpPolLinkCard0001" style="flex:1 1 380px;min-width:340px;border-left:1px solid var(--line);padding-left:24px">
+        <div style="font-size:13px;margin-bottom:8px"><b>档位联动规则</b><span style="font-size:12px;color:var(--txt3)"> · 固化语义 · 评分区间之外的升级路径</span></div>
+        <div style="font-size:12.5px;line-height:1.85"><b>连续失败升级</b>：<b>三键并行计数</b>（5 分钟窗口）——同一<b>会话</b>「动态挑战」连续失败 ≥ ${DP.arms.cha.failLimit} 次（取值域 3 / 5），或该会话所属<b>账号</b>、<b>来源</b>的失败计数达阈值（来源键沿用一期限流的量级、高于前两键 ⇒ 企业出口 / NAT 不连带正常用户）；<b>任一键超限即升级</b>为<b>联动全局限流与熔断</b>（走既有全局限流与熔断通道，<b>不另立熔断模块</b>）。该路径不经评分区间，故「限流熔断」计数与评分分级非一一对应。</div>
+        <div style="font-size:12.5px;line-height:1.85;margin-top:8px"><b>P4 档（80~100 分）的处置不越过追加认证</b>：先请求一次认证强度升级，用户以合适方式重新认证、<b>不通过则不得继续执行</b>；认证失败，或认证通过后仍异常，才转<b>拒绝访问 / 切断</b>。该次追加认证由<b>动态防护主动发起</b>（按目标级别即被访问目标资产的安全等级请求认证服务）。</div>
+      </div>
+    </div>
+    <div class="card-b" style="border-top:1px solid var(--line);display:flex;justify-content:flex-end;align-items:center">
+      <span id="dpPolBandStat" style="font-size:12.5px;color:var(--txt3);margin-right:auto">${dpShipHtml(eff.cfg, "grade")}</span>
+      <button class="btn ghost" type="button" data-act="dpPolBandReset" ${dis}>恢复默认</button>
+      <button class="btn primary" type="button" data-act="dpPolBandSave" ${dis} style="margin-left:8px">保存并下发</button>
+    </div></div>
+  <div class="card" data-page-node-id="PgDpPolSigCard0001">
+    <div class="card-h"><h3>评分信号构成</h3><span class="sub">只读 · 权重随模型版本治理，不在本页编辑 · 五路互斥不重复计分（语义检测只计本行，外部行仅 WAF / 限流命中）· 行为基线一路由主体指标偏离正向派生，非按权重反推</span></div>
+    <div class="card-b">
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px">${sig}</div></div></div>
+  `;
+}
+
+/* ★ A2-04 / A2-05：豁免操作列的**状态—动作映射**（单一出口）——
+   ① 待审批且创建人 = 当前操作身份：三权互斥，不得自审（原实现无条件给「通过 / 驳回」，
+      并把审批人伪写成他人）；② 已驳回：从未生效，无「延长」可言（该动作实为重新提交）。 */
+function dpExActions(x, dis) {
+  const del = `<button class="btn ghost sm" type="button" data-act="dpPolExDel" data-id="${esc(x.id)}" ${dis}>删除</button>`;
+  if (x.status === "待审批" && x.by === DP.actor) {
+    return '<span class="tag t-gray" title="审批人 ≠ 创建人：本条由「' + esc(x.by) + '」提交，须由他人审批">待他人审批</span> ' + del;
+  }
+  if (x.status === "待审批") {
+    return `<button class="btn ghost sm" type="button" data-act="dpPolExApprove" data-id="${esc(x.id)}" ${dis}>通过</button>`
+      + ` <button class="btn ghost sm" type="button" data-act="dpPolExReject" data-id="${esc(x.id)}" ${dis}>驳回</button> ` + del;
+  }
+  if (x.status === "已驳回") {
+    return `<button class="btn ghost sm" type="button" data-act="dpPolExExtend" data-id="${esc(x.id)}" ${dis} title="本条曾被驳回（从未生效）；提交后重新进入「待审批」">重新申请</button> ` + del;
+  }
+  return `<button class="btn ghost sm" type="button" data-act="dpPolExExtend" data-id="${esc(x.id)}" ${dis}>延长</button> ` + del;
+}
+function dpPolExHtml(deny, cur) {
+  const dis = deny ? "disabled" : "";
+  const sub = "豁免按资产粒度维护，仅对本资产生效";
+  const eff = { cfg: cur.cfg };
+  const rows = eff.cfg.exempts.length ? eff.cfg.exempts.map(x => `
+    <tr><td style="white-space:nowrap"><b>${esc(x.src)}</b></td><td>${x.from ? esc(x.from) : '<span class="tag t-ok">即时</span>'}<br>~ ${esc(x.to)}</td><td>${esc(x.reason)}</td>
+      <td>${esc(x.by)}</td><td>${esc(x.approver)}</td>
+      <td>${x.status === "生效中" ? '<span class="tag t-ok">生效中</span>' : x.status === "待审批" ? '<span class="tag t-warn">待审批</span>' : '<span class="tag t-gray">' + esc(x.status) + "</span>"}</td>
+      <td style="width:230px;white-space:nowrap">${dpExActions(x, dis)}</td></tr>`).join("")
+    : '<tr><td colspan="7"><div class="empty"><div class="big">暂无豁免条目（豁免默认空）</div></div></td></tr>';
+  return `<div class="card" data-page-node-id="PgDpPolExCard00001">
+    <div class="card-h"><h3>豁免</h3><span class="sub">${sub}</span>
+      <span style="margin-left:auto;font-size:12px;color:var(--txt3);white-space:nowrap">操作身份
+        <select data-dpsel="exRole" style="width:auto;margin-left:6px">${DP_ACTORS.map(r => `<option value="${esc(r)}"${DP.actor === r ? " selected" : ""}>${esc(r)}</option>`).join("")}</select>
+        <span title="演示用：切换后本模块记录的操作人随之变化，用于演示「申请 → 他人审批」链路">（演示）</span></span>
+      <button class="btn primary sm" type="button" data-act="dpPolExAdd" ${dis} style="margin-left:12px">新增豁免</button></div>
+    <div class="card-b">
+    <div class="hint-row warn" style="margin:8px 0" data-page-node-id="PgDpPolExNote0001"><span>
+      豁免不覆盖切断（CUT）语义；新增与延长均需填原因、经二次确认，并全量落操作审计；豁免必须设结束时间（不设永久豁免）；<b>审批人 ≠ 创建人</b>：同一操作身份不得审批本人提交的豁免（当前操作身份「${esc(DP.actor)}」，可切换演示）。</span></div>
+    <div class="tbl-wrap"><table class="lst" style="min-width:760px"><thead><tr><th>风险源类型</th><th>生效时间窗</th><th>原因</th><th>创建人</th><th>审批人</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody>${rows}</tbody></table></div></div></div>`;
+}
+
+/* 最近配置变更（与操作审计同源的页面侧值守视图 · 列表视图常驻） */
+function dpChangesHtml() {
+  const rows = DP.changes.slice(0, 8).map(c => `
+    <tr><td style="width:150px;white-space:nowrap">${esc(c.at)}</td><td style="width:80px">${esc(c.by)}</td><td style="width:130px">${esc(c.obj)}</td><td>${esc(c.act)}</td></tr>`).join("");
+  return `<div class="card" data-page-node-id="PgDpPolChanges001" style="margin-top:14px">
+    <div class="card-h"><h3>最近配置变更</h3><span class="sub">全量记录与长期归档在审计 Dashboard · 操作审计</span></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst"><thead><tr><th>时间</th><th>操作人</th><th>对象</th><th>动作</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4"><div class="empty"><div class="big">暂无变更</div></div></td></tr>'}</tbody></table></div></div></div>`;
+}
+
+/* ==========================================================================
+   行为基线（pg-dpbase）—— 四页签：主体基线 / 客体基线 / 学习与判定 / 白名单
+   学习对象 = 访问主体（应用 / 账号 / 设备）+ 客体（防护对象）；会话只作观测样本与偏离证据
+   ★ 主体与客体分列两个页签（2026-10-08 裁定）：主体基线刻画「谁在访问」、客体基线刻画「被谁访问」，
+     两者判定对象与判据不同向，混在同一张清单里既不便比对、也易被读成同一类学习对象。
+   ========================================================================== */
+function renderDpBaseline() {
+  dpLoad();
+  dpDeepLink("pg-dpbase");
+  const host = document.getElementById("pg-dpbase");
+  if (!host) return;
+  const _y = wsScrollTop();
+  const tab = DP.base.tab || "dpBaseB";
+  const tabs = [["dpBaseB", "主体基线"], ["dpBaseO", "客体基线"], ["dpBaseP", "学习与判定"], ["dpBaseW", "白名单"]];
+  host.innerHTML = `
+  ${DP_CSS}
+  <div class="card" data-page-node-id="PgDpBaseTabsCard01">
+    <div class="tabs" id="dpBaseTabs" role="tablist" data-page-node-id="PgDpBaseTabs000001">
+      ${tabs.map(t => `<button type="button" role="tab" data-t="${t[0]}" id="dpBaseTabsTab_${t[0]}" aria-controls="${t[0]}" aria-selected="${tab === t[0] ? "true" : "false"}" class="${tab === t[0] ? "on" : ""}">${t[1]}</button>`).join("")}
+    </div>
+  </div>
+  <div class="hint-row" role="note" data-page-node-id="PgDpBaseUseNote0001">
+    <i class="ic" aria-hidden="true">ⓘ</i>
+    <div><b>数据用途边界</b>：本模块的主体画像、偏离记录与告警<b>仅用于安全防护与威胁处置</b>，不得用于员工绩效、考勤或效率评估；主体维度的历史行为检索限安全管理员，操作留痕。</div>
+  </div>
+  <div class="tbp${tab === "dpBaseB" ? " on" : ""}" id="dpBaseB" role="tabpanel" aria-labelledby="dpBaseTabsTab_dpBaseB">${dpBaseBHtml()}</div>
+  <div class="tbp${tab === "dpBaseO" ? " on" : ""}" id="dpBaseO" role="tabpanel" aria-labelledby="dpBaseTabsTab_dpBaseO">${dpBaseOHtml()}</div>
+  <div class="tbp${tab === "dpBaseP" ? " on" : ""}" id="dpBaseP" role="tabpanel" aria-labelledby="dpBaseTabsTab_dpBaseP">${dpBasePHtml()}</div>
+  <div class="tbp${tab === "dpBaseW" ? " on" : ""}" id="dpBaseW" role="tabpanel" aria-labelledby="dpBaseTabsTab_dpBaseW">${dpBaseWlHtml()}</div>`;
+  dpMount("pg-dpbase");
+  /* 主体清单分页器（与防护策略列表同款 pgmk）：分页作用于筛选结果 */
+  if (tab === "dpBaseB" && DP.base.view === "list") {
+    const P0 = dpBasePageList();
+    pgmk("#dpBasePager", P0.all.length, P0.page, "dpBasePg", "个已建模主体", DP.base.pageSize,
+      "分页作用于当前筛选结果 · 点行或「查看基线」下钻该主体");
+  }
+  wsScrollTo(_y);
+}
+
+/* ---- 主体视图与工具 ---- */
+/* 清单筛选：检索（主体标识 / 名称 / 归属 / 访问防护对象名）+ 维度 + 状态 三重筛选 + 排序（会话态，不跨会话）。
+   scope = "asset" → 客体清单（只含客体）；缺省 = 主体清单（应用 / 账号 / 设备）。
+   两个页签各自成表 —— 不在同一张清单里混排，也不共用维度筛选（客体页固定客体维度）。 */
+function dpBaseFiltered(scope) {
+  const b = DP.base;
+  const kw = (b.kw || "").trim().toLowerCase();
+  const isObj = scope === "asset";
+  const out = b.subs.filter(s => {
+    if (isObj ? s.dim !== "asset" : s.dim === "asset") return false;
+    if (!isObj && b.dimFilter && s.dim !== b.dimFilter) return false;
+    if (b.stFilter && dpSubState(s).k !== b.stFilter) return false;
+    if (kw) {
+      const hay = (s.label + " " + s.id + " " + s.key + " " + s.name + " " + s.meta + " " +
+        (s.assets || []).map(a => a.name).join(" ") + " " +
+        (s.sources || []).map(a => a.acct).join(" ") + " " + dpDim(s.dim).w).toLowerCase();
+      if (hay.indexOf(kw) < 0) return false;
+    }
+    return true;
+  });
+  const k = b.sort || "dev";
+  if (k === "samples") out.sort((x, y) => y.samples - x.samples);
+  else if (k === "name") out.sort((x, y) => String(x.label).localeCompare(String(y.label), "zh"));
+  else out.sort((x, y) => dpSubState(y).d - dpSubState(x).d
+    || (y.hist.length ? 1 : 0) - (x.hist.length ? 1 : 0)
+    || String(x.label).localeCompare(String(y.label), "zh"));
+  return out;
+}
+/* 当前页（分页作用于筛选结果；page 越界时夹回有效区间并写回状态） */
+function dpBasePageList() {
+  const all = dpBaseFiltered("subject");
+  const ps = DP.base.pageSize || 20;
+  const pages = Math.max(1, Math.ceil(all.length / ps));
+  const page = Math.min(Math.max(1, DP.base.page || 1), pages);
+  DP.base.page = page;
+  return { all: all, page: page, pages: pages, rows: all.slice((page - 1) * ps, page * ps) };
+}
+function dpBaseTotal() { return DP.base.subs.length; }
+/* 分面计数（页面卡片头用）：主体 = 应用 / 账号 / 设备，客体 = 客体 —— 两边各自成表，计数各自成口径 */
+function dpBaseScopeN(scope) {
+  return DP.base.subs.filter(s => scope === "asset" ? s.dim === "asset" : s.dim !== "asset").length;
+}
+/* 总况计数 = 清单实算（★ 不再单独存 pop：口径唯一，杜绝「总览 5 / 策略 6」那类两处漂移） */
+function dpPopStat(k) {
+  const list = DP.base.subs.filter(s => s.dim === k);
+  const r = { n: list.length, dev: 0, learn: 0, wl: 0, ok: 0 };
+  list.forEach(s => {
+    const st = dpSubState(s).k;
+    if (st === "dev") r.dev++; else if (st === "learn") r.learn++; else if (st === "wl") r.wl++; else r.ok++;
+  });
+  return r;
+}
+/* ★ A3-03：基线重建的「结果」文案单源派生 —— 原先在重建回调里内联，与同页「学习训练中」的主体
+   互斥（页面写着 N 个主体样本不足，重建结果却写死「样本充足」）。抽成函数后：口径唯一、可被门禁断言。 */
+function dpRebuildLvl() {
+  const bad = dpPopStat("app").learn + dpPopStat("acct").learn + dpPopStat("dev").learn + dpPopStat("asset").learn;
+  return bad ? "样本不足 " + bad + " 个主体跳过" : "样本充足";
+}
+function dpDimTag(k) { return '<span class="tag t-gray">' + esc(dpDim(k).w) + "</span>"; }
+function dpStateTag(st) { return '<span class="tag ' + st.cls + '">' + st.t + "</span>"; }
+/* 主体标识（客户端序列号 / 账号名 / 终端 id）—— 取值与身份管理台账一致，用于白名单与事件流对齐。
+   ★ 直接读字段，不再从 label 反解（label 一改文案就整片对不上） */
+function dpSubKey(s) { return s.key || s.id; }
+/* ★ A3-09：白名单「主体」列只有标识，认不出是谁；死条目（不在台账）更无从发现 —— 补名称与命中态。 */
+function dpWlSubName(w) {
+  const s = DP.base.subs.find(v => v.dim === w.dim && dpSubKey(v) === w.sub);
+  return s ? ' <span class="muted">' + esc(s.name) + '</span>'
+           : ' <span class="tag t-warn">未匹配到已建模主体</span>';
+}
+/* 主体 × 客体联合聚合键：基线学习 / 偏离记录 / 事件回溯的统一钥匙。
+   只看主体会把跨资产的行为混成一份画像，只看客体会把不同主体的行为混成一份画像 ——
+   两者都失真，故聚合单位取「谁 在 哪个客体上」。 */
+function dpJointKey(dim, key, asset) { return dim + ":" + key + "@" + asset; }
+
+/* 页签① 主体基线：首页 = 全量主体清单（可检索 / 筛选 / 排序 / 分页）；点行下钻 = 该主体基线详情。
+   view / cur 由两页签共用，但**下钻归属由所选对象的维度决定** —— 主体对象在主体页签展开详情、
+   客体对象在客体页签展开；这样即使状态里留着上一页签的选择，也不会把客体详情画进主体页（反之亦然）。 */
+function dpBaseBHtml() {
+  const b = DP.base;
+  /* ⚠ 只读判定、不写状态：本函数与 dpBaseOHtml 会在**同一次渲染**里先后求值，
+     任何一方写 b.view 都会把另一方刚渲染的详情复位掉（实测：深链详情落不住、状态掉回 list）。 */
+  const s = b.view === "detail" ? b.subs.find(v => v.id === b.cur) : null;
+  if (s && s.dim !== "asset") return dpBaseDetailHtml(s);
+  /* ★ 2026-10-09 用户裁定：主体侧总况（1 张卡 / 3 个 KPI）与主体清单（15 行表）**合并为一页** ——
+     与客体侧（同轮已合并）形态一致：总况卡在上、清单在下，页面不再切二级页签。 */
+  return dpBasePopHtml("subject") + dpBaseListView();
+}
+/* 页签② 客体基线：首页 = 全量客体清单；点行下钻 = 该客体基线详情（含「来源观测」卡）。
+   ★ 同样只读判定：下钻归属由「所选对象的维度」决定，主体对象归页签①、客体对象归本页签。 */
+function dpBaseOHtml() {
+  const b = DP.base;
+  const s = b.view === "detail" ? b.subs.find(v => v.id === b.cur) : null;
+  if (s && s.dim === "asset") return dpBaseDetailHtml(s);
+  /* ★ 2026-10-09 用户裁定：客体侧内容量小（总况 1 张 KPI + 全量 4 行清单）——
+     二级页签属**过度拆分**，两卡上下并列即完整；主体侧（3 张 KPI + 分页大清单）保留二级页签。 */
+  return dpBasePopHtml("asset") + dpBaseObjView();
+}
+
+/* 主体清单（首页）：一行 = 一个已建模主体的「基线概况 + 操作」 */
+function dpBaseListView() {
+  const b = DP.base;
+  const P = dpBasePageList();
+  const rows = P.rows.map(dpBaseRowHtml).join("");
+  /* 客体已独立成页（页签②）⇒ 主体页的维度筛选不再列「客体」 */
+  const dims = [["", "全部维度"], ["app", "应用"], ["acct", "账号"], ["dev", "设备"]];
+  const sts = [["", "全部状态"], ["dev", "偏离中"], ["ok", "正常"], ["wl", "白名单命中"], ["learn", "学习训练中"]];
+  const sorts = [["dev", "最大偏离倒序"], ["samples", "样本数倒序"], ["name", "主体标识序"]];
+  const sel = (k, xs, cur) => `<select data-dpsel="${k}">${xs.map(x =>
+    `<option value="${x[0]}"${(cur || "") === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select>`;
+  return `
+  <div class="card" data-page-node-id="PgDpBaseListCard01">
+    <div class="card-h"><h3>基线主体清单</h3>
+      <span class="sub">全量 ${dpBaseScopeN("subject")} 个已建模主体（应用 ${dpPopStat("app").n} · 账号 ${dpPopStat("acct").n} · 设备 ${dpPopStat("dev").n}）· 客体 ${dpPopStat("asset").n} 个见「客体基线」页签 · 学习窗口 ${esc(DP.base.win)} · 逐主体学习 · 点行或「查看基线」下钻该主体</span></div>
+    <div class="card-b">
+    <div class="toolbar" style="margin-bottom:10px">
+      <div class="input-w"><input type="search" data-dpsel="baseKw" maxlength="40" placeholder="搜索主体标识 / 名称 / 访问防护对象（回车）" style="width:274px" value="${esc(b.kw || "")}"></div>
+      ${sel("baseDim", dims, b.dimFilter)}
+      ${sel("baseSt", sts, b.stFilter)}
+      ${sel("baseSort", sorts, b.sort || "dev")}
+      <span style="flex:1"></span>
+      <span style="font-size:12.5px;color:var(--txt3);margin-right:8px">筛选命中 ${P.all.length} 个主体</span>
+      <button class="btn sm" type="button" data-act="dpBaseReset" title="清空关键词并复位维度 / 状态筛选与排序">重置全部筛选</button>
+    </div>
+    <div class="tbl-wrap"><table class="lst" style="min-width:0" id="dpBaseTbl" data-page-node-id="PgDpBaseListTbl001">
+      <thead><tr><th>主体（标识 · 名称）</th><th style="width:76px">维度</th><th style="width:200px">访问防护对象（近 24h）</th>
+        <th style="width:76px">样本</th><th style="width:92px">最近活跃</th><th style="width:100px">最大偏离</th>
+        <th style="width:110px">状态</th><th style="width:216px">操作</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="8"><div class="empty"><div class="big">当前筛选条件下无基线主体</div></div></td></tr>'}</tbody></table></div>
+    <div id="dpBasePager"></div>
+    </div>
+  </div>`;
+}
+
+/* 一行 = 一个主体的基线概况（样本 / 最近活跃 / 最大偏离 / 状态）+ 相关操作按钮 */
+function dpBaseRowHtml(s) {
+  const st = dpSubState(s);
+  const attr = dpObjAttr(s);   /* 仅客体非空：偏离归因（主体侧为 null） */
+  const wl = dpSubWl(s);
+  const as = s.assets || [];
+  const src = s.sources || [];
+  /* 客体主体这一列写「来源账号」（客体的被访问来源），主体写「访问防护对象」—— 两侧语义不同，不混用 */
+  const rel = s.dim === "asset"
+    ? `<td style="white-space:nowrap" title="${esc(src.map(a => a.acct + " " + a.n + " 次").join("；"))}">${esc(src[0] ? src[0].acct : "—")}${src.length > 1 ? '<span class="muted"> 等 ' + src.length + " 个来源</span>" : ""}</td>`
+    : `<td style="white-space:nowrap" title="${esc(as.map(a => a.name + " " + a.n + " 次").join("；"))}">${esc(as[0] ? as[0].name : "—")}${as.length > 1 ? '<span class="muted"> 等 ' + as.length + " 个</span>" : ""}</td>`;
+  return `<tr data-act="dpBasePick" data-id="${esc(s.id)}" tabindex="0" aria-label="下钻查看该${s.dim === "asset" ? "客体" : "主体"}的基线" title="点击下钻该${s.dim === "asset" ? "客体" : "主体"}的基线">
+    <td style="white-space:nowrap"><b>${esc(s.key)}</b><span class="muted" style="display:block;font-size:11.5px;line-height:1.35">${esc(s.name)}</span></td>
+    <td>${dpDimTag(s.dim)}</td>
+    ${rel}
+    <td style="white-space:nowrap" title="${s.samples < DP_MINSAMP ? "样本不足 24h 判定窗要求（" + DP_MINSAMP + "）· 学习训练中" : "样本充足 · 参与偏离判定"}">${s.samples}</td>
+    <td style="white-space:nowrap">${esc(s.last)}</td>
+    <td style="white-space:nowrap">${s.hist.length ? "<b>" + st.d.toFixed(1) + "σ</b>" : "—"}</td>
+    <td style="white-space:nowrap" title="生效判定阈值 ±${dpEffTh(s).toFixed(1)}σ（σ 为稳健尺度 = MAD×1.4826）${s.th != null ? "（本主体单独覆盖）" : "（维度默认）"}">${dpStateTag(st)}${attr && attr.k !== "none" ? '<div style="margin-top:5px"><span class="tag ' + attr.cls + '" title="' + esc(attr.act) + '">' + esc(attr.n) + "</span></div>" : ""}</td>
+    <td style="white-space:nowrap">
+      <button class="btn sm" type="button" data-act="dpBasePick" data-id="${esc(s.id)}">查看基线</button>
+      ${wl ? '<span class="tag t-info" title="已命中观察期白名单：偏离只记录、不处置">已在白名单</span>'
+           : `<button class="btn ghost sm" type="button" data-act="dpBaseSubWl" data-id="${esc(s.id)}">加入白名单</button>`}
+    </td></tr>`;
+}
+
+/* 总况 KPI：按分面渲染 —— 主体页只出应用 / 账号 / 设备三张，客体页只出客体一张（两个页签各表其表）。 */
+function dpBasePopHtml(scope) {
+  const isObj = scope === "asset";
+  const cards = DP_BASEDIMS.filter(d => isObj ? d.k === "asset" : d.k !== "asset").map(d => {
+    const p = dpPopStat(d.k);
+    /* 四项状态全出并明示合计：原先只出「偏离中 / 学习训练中」，剩下的正常 + 白名单命中无处交代，
+       客户把两个数相加对不上总数 n（dpPopStat 明明算了 ok / wl，只是没渲染）。 */
+    return dpKpi(d.n, p.n + " 个", "主指标 " + esc(d.metric) + (d.unit ? "（" + esc(d.unit) + "）" : "") +
+      " · 偏离中 " + p.dev + " · 正常 " + p.ok + " · 白名单命中 " + p.wl +
+      " · 学习训练中 " + p.learn + "（四项合计 = " + p.n + "）",
+      "PgDpBasePop" + (isObj ? "Obj" : "Subj") + d.k + "01", "");
+  }).join("");
+  const title = isObj ? "客体基线总况" : "主体基线总况";
+  const sub = isObj
+    ? "客体（被谁访问）＝ 防护对象 · 主指标为<b>访问速率</b>（来源构成降条件族）· 偏离须带归因 · 判定阈值默认 ±" + DP.base.dims.asset.toFixed(1) + "σ"
+    : "主体（谁在访问）＝ 应用 / 账号 / 设备，取自<b>身份管理台账</b> · 逐个体建模 · 判定阈值默认 ±" + DP.base.dims.app.toFixed(1) + "σ";
+  return `<div class="card" data-page-node-id="PgDpBasePop${isObj ? "Obj" : "Subj"}Card01">
+    <div class="card-h"><h3>${title}</h3><span class="sub">${sub}</span></div>
+    <div class="card-b">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:2px">${cards}</div>
+    </div>
+  </div>`;
+}
+
+/* 客体清单（页签② 首页）：一行 = 一个客体（防护对象）的基线概况 + 操作。
+   ★ 客体数 = 已启用动态防护的防护对象数（演示环境 4 个）→ 一页展示全量，不设分页器；
+     列表只读资产目录与已启用清单，不另存一份客体名册。 */
+function dpBaseObjView() {
+  const b = DP.base;
+  const list = dpBaseFiltered("asset");
+  const rows = list.map(dpBaseRowHtml).join("");
+  const sts = [["", "全部状态"], ["dev", "偏离中"], ["ok", "正常"], ["wl", "白名单命中"], ["learn", "学习训练中"]];
+  const sorts = [["dev", "最大偏离倒序"], ["samples", "样本数倒序"], ["name", "客体标识序"]];
+  const sel = (k, xs, cur) => `<select data-dpsel="${k}">${xs.map(x =>
+    `<option value="${x[0]}"${(cur || "") === x[0] ? " selected" : ""}>${x[1]}</option>`).join("")}</select>`;
+  return `
+  <div class="card" data-page-node-id="PgDpBaseObjCard01">
+    <div class="card-h"><h3>客体清单</h3>
+      <span class="sub">全量 ${dpBaseScopeN("asset")} 个客体（已启用动态防护的防护对象）· 逐客体刻画「被谁访问」· 偏离只作风险信号 · 检索条件与主体页共用 · 点行或「查看基线」下钻该客体</span></div>
+    <div class="card-b">
+    <div class="toolbar" style="margin-bottom:10px">
+      <div class="input-w"><input type="search" data-dpsel="baseKw" maxlength="40" placeholder="搜索客体名称 / 来源账号（回车）" style="width:274px" value="${esc(b.kw || "")}"></div>
+      ${sel("baseSt", sts, b.stFilter)}
+      ${sel("baseSort", sorts, b.sort || "dev")}
+      <span style="flex:1"></span>
+      <span style="font-size:12.5px;color:var(--txt3);margin-right:8px">筛选命中 ${list.length} 个客体</span>
+      <button class="btn sm" type="button" data-act="dpBaseReset" title="清空关键词并复位维度 / 状态筛选与排序">重置全部筛选</button>
+    </div>
+    <div class="tbl-wrap"><table class="lst" style="min-width:0" id="dpBaseOTbl" data-page-node-id="PgDpBaseObjTbl001">
+      <thead><tr><th>客体（标识 · 名称）</th><th style="width:76px">维度</th><th style="width:200px">来源账号 / 来源（近 24h）</th>
+        <th style="width:76px">样本</th><th style="width:92px">最近活跃</th><th style="width:100px">最大偏离</th>
+        <th style="width:160px">偏离状态 / 归因</th><th style="width:216px">操作</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="8"><div class="empty"><div class="big">当前筛选条件下无客体</div></div></td></tr>'}</tbody></table></div>
+    </div>
+  </div>`;
+}
+
+/* 设备环境姿态卡（仅设备主体）：姿态是二值状态与状态迁移 —— 判定式 = 与登记基态不符 / 基态发生迁移，
+   **不并入 σ 偏离记录**；处置上作准入与追加认证的策略条件。无端主体此处只显示网络与浏览器可采面。 */
+/* 客体偏离归因卡（仅客体）：把「偏离」翻译成**可操作的处置** —— 来源侧 + 该资产档位。
+   关键口径：客体是被访问方，偏离本身不处置客体；偏离期数据不并入基线学习。 */
+function dpObjAttrCard(s) {
+  const a = dpObjAttr(s);
+  if (!a) return "";
+  const d = (s.hist || [])[0];
+  const body = a.k === "none"
+    ? '<div style="font-size:12.5px;color:var(--txt3)">观察窗内访问图案与基线一致：访问速率、资源覆盖与重复拉取均在判定带内。</div>'
+    : '<div class="info-grid" style="margin:6px 0 4px">' +
+      '<div class="ig"><div class="k">归因</div><div class="v"><span class="tag ' + a.cls + '">' + esc(a.n) + "</span></div></div>" +
+      '<div class="ig"><div class="k">处置落点</div><div class="v">' + esc(a.act) + "</div></div>" +
+      '<div class="ig"><div class="k">偏离量</div><div class="v">' + (d ? d.dev.toFixed(1) + "σ" : "—") + "</div></div>" +
+      '<div class="ig"><div class="k">基线学习</div><div class="v">偏离期数据不并入学习窗</div></div>' +
+      "</div>" +
+      '<div style="font-size:11.5px;color:var(--txt3);line-height:1.7">' + esc(d ? d.note : "") + "</div>";
+  return '<div style="font-size:13px;font-weight:600;margin:14px 0 2px">访问速率偏离与归因</div>' +
+    '<div style="font-size:11.5px;color:var(--txt3);margin-bottom:4px">客体是被访问方，偏离本身<b>不处置客体</b>；处置落在<b>来源侧</b>（挑战 / 限流该来源）与<b>该资产的防护档位</b>。</div>' +
+    body;
+}
+function dpPostureCard(s) {
+  const p = s.posture;
+  if (!p) return "";
+  const okCls = (ok) => ok === 1 ? "t-ok" : (ok === 0 ? "t-err" : "t-gray");
+  const orows = p.items.map(i => `<tr><td style="white-space:nowrap">${esc(i.fam)}</td><td style="white-space:nowrap">${esc(i.n)}</td>
+      <td>${esc(i.v)}</td><td><span class="tag ${okCls(i.ok)}">${i.ok === 1 ? "符合基态" : (i.ok === 0 ? "与基态不符" : "未采集")}</span></td></tr>`).join("");
+  const hrows = p.hist.length ? p.hist.map(h => `<tr><td style="white-space:nowrap">${esc(h.at)}</td><td style="white-space:nowrap">${esc(h.item)}</td>
+      <td>${esc(h.from)} → <b>${esc(h.to)}</b></td><td>${esc(h.act)}</td></tr>`).join("")
+    : '<tr><td colspan="4"><div class="empty"><div class="big">登记基态建立后未发生姿态迁移</div></div></td></tr>';
+  return `
+    <div style="font-size:13px;font-weight:600;margin:14px 0 2px">环境姿态（设备姿态面 · 与行为面并列）</div>
+    <div style="font-size:11.5px;color:var(--txt3);margin-bottom:4px">姿态项是二值状态，走「与登记基态比对 + 迁移检测」，<b>不进 σ 偏离记录</b>；不合规更适合作准入与追加认证的策略条件。采集来源：${esc(p.src)}。</div>
+    <div class="info-grid" style="margin:6px 0 8px">
+      <div class="ig"><div class="k">登记基态</div><div class="v">${esc(p.base)}</div></div>
+      <div class="ig"><div class="k">当前姿态</div><div class="v"><b>${esc(p.cur)}</b></div></div>
+      <div class="ig"><div class="k">与基态不符</div><div class="v">${p.bad} 项 / 共 ${p.total} 项</div></div>
+      <div class="ig"><div class="k">未采集项</div><div class="v">${p.off} 项</div></div>
+    </div>
+    <div class="tbl-wrap"><table class="lst" style="min-width:0" id="dpBasePosTbl">
+      <thead><tr><th style="width:110px">类别</th><th style="width:190px">姿态项</th><th>当前值</th><th style="width:120px">与基态比对</th></tr></thead>
+      <tbody>${orows}</tbody></table></div>
+    <div style="font-size:12.5px;font-weight:600;margin:10px 0 2px">姿态变更记录</div>
+    <div class="tbl-wrap"><table class="lst" style="min-width:0">
+      <thead><tr><th style="width:100px">时间</th><th style="width:190px">姿态项</th><th>迁移</th><th>建议动作</th></tr></thead>
+      <tbody>${hrows}</tbody></table></div>`;
+}
+/* 客体「来源观测」卡（仅客体主体）：来源账号为主子键，另附来源 IP / 来源客户端规模。
+   ★ 联合聚合键的**定义与权威出口在本卡**（客体侧「来源账号分布」）—— R38-5 按口径 §5.2
+     「主体 × 客体联合键两者择一、不重复建键」删去账号侧「访问防护对象分布」**维度**后，客体侧成为唯一登记处；
+     账号详情页仍以「近 24h 访问对象」**呈现**该主体的访问分布（呈现，非维度登记）。 */
+function dpSourcesCard(s) {
+  if (s.dim !== "asset") return "";
+  const src = s.sources || [];
+  const totN = src.reduce((n, a) => n + a.n, 0) || 1;
+  const rows = src.length ? src.map(a => `
+    <tr><td style="white-space:nowrap"><b>${esc(a.acct)}</b><span class="muted" style="display:block;font-size:11.5px;line-height:1.35">${esc(a.name)} · ${esc(a.role)}</span></td>
+      <td>${a.n} 次</td><td>${(a.n / totN * 100).toFixed(1)}%</td>
+      <td style="white-space:nowrap">${a.ipN} 个</td><td style="white-space:nowrap">${a.cli} 个</td>
+      <td style="white-space:nowrap">${esc(a.last)}</td>
+      <td><span class="kr">${esc(a.joint)}</span></td></tr>`).join("")
+    : '<tr><td colspan="7"><div class="empty"><div class="big">观察窗内该客体无来源记录</div></div></td></tr>';
+  return `
+    <div style="font-size:13px;font-weight:600;margin:12px 0 2px">来源观测（来源账号为主子键）</div>
+    <div style="font-size:11.5px;color:var(--txt3);margin-bottom:4px">以<b>来源账号</b>挂在「客体 ${esc(s.name)}」之下的来源构成，是<b>主体 × 客体联合聚合键</b>的<b>权威出口</b>（账号侧不再重复登记该维度）—— 同一账号在不同客体上的行为分开学习，同一客体被不同来源的访问也分开看。</div>
+    <div class="tbl-wrap"><table class="lst" style="min-width:0" id="dpBaseSrcTbl">
+      <thead><tr><th style="width:200px">来源账号</th><th style="width:100px">访问次数</th><th style="width:90px">占比</th>
+        <th style="width:110px">来源 IP</th><th style="width:120px">来源客户端</th><th style="width:100px">最近访问</th><th>联合聚合键</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+}
+/* 主体基线详情（下钻）：基本信息 + 主指标曲线 + 指标表 + 偏离记录 + 近实时事件 + 操作 */
+function dpBaseDetailHtml(s) {
+  const th = dpEffTh(s);
+  const st = dpSubState(s);
+  const wl = dpSubWl(s);
+  const train = s.samples < DP_MINSAMP;
+  const mrows = s.metrics.map(m => {
+    /* 判定式随型而定：连续正态 / 连续有界走 σ 标准分；其余型走各自判定法（集合 / 时段、窗口计数、
+       状态判定、同行组基准），不共用 σ 公式 */
+    const sigma = dpKindIsSigma(m.kind) && m.sd > 0;
+    const dv = sigma ? Math.abs(m.cur - m.mu) / m.sd : 0;
+    const base = sigma ? (m.mu + " ± " + m.sd + (m.u ? " " + m.u : "") + (m.rt ? " · 出入比 " + m.rt : "")) : (m.txt || "—");
+    const curv = m.curTxt || (m.cur + (m.u ? " " + m.u : ""));
+    const devTxt = m.pre ? "—" : (sigma ? dv.toFixed(1) + "σ" : "—");
+    /* 条件族（role = cond）**不参与偏离判定**（评估 §一 总闸）：判定列显式标注，不再套用「集合 /
+       时段判定」这类判定式表述 —— 否则条件族看起来像在参与判定。 */
+    /* 判定列渲染**七种情形**（指南 §8.2）：前置未满足 > 条件族 > 训练中 > 带内 / 偏离（主）> 非连续型判据式。
+       第 7 种「前置未满足 · 待补」= 依赖路径归一化等前置的形状族指标（m.pre），未满足时**不进判定、不进评分**。 */
+    const cell = m.pre
+      ? '<span class="tag t-gray" title="前置未满足：' + esc(m.pre) + '未实现，该指标不进判定与评分">前置未满足 · 待补</span>'
+      : (m.role === "cond")
+      ? '<span class="tag t-gray" title="条件族仅作策略条件与评分聚合输入，不参与偏离判定">条件输入 · 不参与判定</span>'
+      : (sigma
+          ? (train ? '<span class="tag t-gray">训练中不判定</span>'
+                   : (dv < th ? '<span class="tag t-ok">带内</span>' : '<span class="tag t-err">偏离</span>'))
+          : '<span class="tag ' + (m.hit ? "t-ok" : "t-warn") + '">' + esc(dpKindJudge(m.kind)) + (m.hit ? "" : " 偏离") + '</span>');
+    /* 佐项（role = aux）偏离只入评分与画像佐证，**不单独生成告警**（评估 §一 总闸）；
+       判定列加 title 说明，与条件族标注对称（主项偏离红 t-err / 佐项偏离黄 t-warn 已有颜色区分）。 */
+    const cellW = (m.role === "aux")
+      ? '<span title="佐项偏离仅入评分与画像佐证，不单独生成告警">' + cell + "</span>"
+      : cell;
+    const roleTxt = m.role === "main" ? "<b>" + DP_ROLES.main + "</b>"
+      : '<span class="muted">' + esc(DP_ROLES[m.role] || m.role) + "</span>";
+    return `<tr><td style="white-space:nowrap">${esc(m.n)}<span class="muted" style="display:block;font-size:11px;line-height:1.35">${esc(m.fam)} · ${esc(dpKindTag(m.kind))}</span></td>`
+      + `<td style="white-space:nowrap">${roleTxt}</td><td>${esc(base)}</td><td>${esc(curv)}</td><td>${devTxt}</td><td>${cellW}</td></tr>`;
+  }).join("");
+  /* 记录行两态：主体 hist 带 act / rid（按档位处置）；客体 hist 带 attr / note
+     （偏离不处置客体 —— 展示归因与「处置落点」，见 dpObjAttr）。 */
+  const hrows = s.hist.length ? s.hist.map(h => {
+    const _a = h.attr || null;
+    return `
+    <tr><td style="white-space:nowrap">${esc(h.at)}</td><td>${esc(h.m)}</td><td><b>${h.dev.toFixed(1)}σ</b></td>
+      <td>${_a ? '<span class="tag ' + _a.cls + '">' + esc(_a.n) + "</span> " + esc(_a.act) : dpActTag(h.act)}</td>
+      <td><span class="kr">${esc(h.rid || "—")}</span></td><td>${esc(h.note || "按档位处置已执行")}</td></tr>`;
+  }).join("")
+    : '<tr><td colspan="6"><div class="empty"><div class="big">观察窗内该${s.dim === "asset" ? "客体" : "主体"}未产生偏离</div></div></td></tr>';
+  const key = dpSubKey(s);
+  /* 访问防护对象分布：主体的访问行为跨资产，不设单一「承载资产」 */
+  const as = s.assets || [];
+  const totN = as.reduce((n, a) => n + a.n, 0) || 1;
+  const arows = as.length ? as.map(a => `
+    <tr><td style="white-space:nowrap">${esc(a.name)}</td><td>${a.n} 次</td>
+      <td>${(a.n / totN * 100).toFixed(1)}%</td><td style="white-space:nowrap">${esc(a.last)}</td>
+      <td><span class="kr">${esc(dpJointKey(s.dim, key, a.name))}</span></td></tr>`).join("")
+    : '<tr><td colspan="5"><div class="empty"><div class="big">观察窗内该${s.dim === "asset" ? "客体" : "主体"}无访问记录</div></div></td></tr>';
+  /* ★ A3-04：客体不在事件流里（其偏离是聚合信号），原先沿用主体键 sk/sub 过滤 ⇒ 客体详情恒
+     「0 条」，与防护总览「该资产有真实事件」跨页矛盾。客体改按资产名过滤。 */
+  const evs = s.dim === "asset"
+    ? DP.events.filter(x => x.asset === s.name)
+    : DP.events.filter(x => x.sk === s.dim && x.sub === key);
+  const erows = evs.length ? evs.map(x => `
+    <tr><td style="white-space:nowrap">${esc(String(x.t).slice(11))}</td><td style="white-space:nowrap">${esc(x.asset)}</td>
+      <td><b>${x.score}</b> 分</td><td>${esc(x.hits.join("；") || "五路信号均未达命中阈值")}</td>
+      <td>${dpActTag(x.act)}</td><td><span class="kr">${esc(x.reqId)}</span></td></tr>`).join("")
+    : '<tr><td colspan="6"><div class="empty"><div class="big">近实时事件池中该${s.dim === "asset" ? "客体" : "主体"}暂无记录</div></div></td></tr>';
+  return `
+  <div class="title-row">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button class="btn" type="button" data-act="dpBaseBack">← 返回${s.dim === "asset" ? "客体" : "主体"}清单</button>
+      <h2 style="margin:0">${esc(s.label)}</h2>
+      ${dpDimTag(s.dim)}${dpStateTag(st)}
+    </div>
+  </div>
+  <div class="card" data-page-node-id="PgDpBaseDetail0001">
+    <div class="card-h"><h3>${esc(s.label)}</h3> ${dpDimTag(s.dim)}
+      <span class="sub">${esc(s.name)} · ${s.dim === "asset" ? "来源账号 " + (s.sources || []).length + " 个" : "访问防护对象 " + (s.assets || []).length + " 个"} · 样本 ${s.samples} · 学习窗口 ${esc(DP.base.win)} · 生效判定阈值 ±${th.toFixed(1)}σ（稳健尺度）${s.th != null ? "（本主体单独覆盖）" : "（取维度默认）"}</span>
+      <span style="margin-left:auto">${dpStateTag(st)}</span></div>
+    <div class="card-b">
+    <div class="info-grid" style="margin-bottom:10px">
+      <div class="ig"><div class="k">${s.dim === "asset" ? "客体标识" : "主体标识"}</div><div class="v"><b>${esc(key)}</b></div></div>
+      <div class="ig"><div class="k">${s.dim === "asset" ? "客体名称" : "主体名称"}</div><div class="v" title="${esc(s.name)}">${esc(s.name)}</div></div>
+      <div class="ig"><div class="k">归属信息</div><div class="v" title="${esc(s.meta)}">${esc(s.meta)}</div></div>
+      <div class="ig"><div class="k">基线维度</div><div class="v">${esc(dpDim(s.dim).n)}</div></div>
+      <div class="ig"><div class="k">${s.dim === "asset" ? "来源账号（近 24h）" : "访问防护对象（近 24h）"}</div><div class="v" title="${esc(s.dim === "asset" ? (s.sources || []).map(a => a.acct).join("、") : (s.assets || []).map(a => a.name).join("、"))}">${s.dim === "asset" ? (s.sources || []).length + " 个" : (s.assets || []).length + " 个"}</div></div>
+      <div class="ig"><div class="k">训练样本 / 最近活跃</div><div class="v">${s.samples} · ${esc(s.last)}</div></div>
+      <div class="ig"><div class="k">学习窗口</div><div class="v">${esc(DP.base.win)}</div></div>
+      <div class="ig"><div class="k">生效判定阈值</div><div class="v">±${th.toFixed(1)}σ${s.th != null ? "（本主体单独覆盖）" : "（维度默认 ±" + DP.base.dims[s.dim].toFixed(1) + "σ）"}</div></div>
+      <div class="ig"><div class="k">观察期白名单</div><div class="v">${wl ? "已命中（" + esc(wl.metric) + "）" : "未命中"}</div></div>
+      <div class="ig"><div class="k">样本是否充足</div><div class="v">${train ? "不足 200（学习训练中，只观察不处置）" : "充足（参与偏离判定）"}</div></div>
+    </div>
+    <div style="font-size:12.5px;color:var(--txt3);margin:6px 0 2px">主指标：<b>${esc(s.main)}${s.unit ? "（" + esc(s.unit) + "）" : ""}</b> · 近 24h 逐小时实际值与判定带</div>
+    ${dpBaseChart(s, th)}
+    <div style="font-size:13px;font-weight:600;margin:12px 0 4px">行为面指标（按维度族与型）</div>
+    <div style="font-size:11.5px;color:var(--txt3);margin-bottom:4px">判定式随型而定：连续型走<b>稳健标准分</b>（中位数 + MAD×1.4826，有界型另做量程裁剪）；集合 / 分布 / 稀疏计数走各自判定法；事件状态型只做状态判定与变更检测，不进 σ 体系。角色：主 = 定主体状态，佐 = 画像佐证，条件 = 策略条件与评分聚合输入。</div>
+    <div class="tbl-wrap"><table class="lst" style="min-width:0" id="dpBaseMTbl">
+      <thead><tr><th>指标（维度族 · 型）</th><th style="width:52px">角色</th><th>基线（中位数 ± 稳健尺度）</th><th>当前值</th><th style="width:72px">偏离</th><th>判定</th></tr></thead>
+      <tbody>${mrows}</tbody></table></div>
+    ${s.dim === "asset" ? dpObjAttrCard(s) : ""}
+    ${dpPostureCard(s)}
+    ${s.dim === "asset" ? "" : `<div style="font-size:13px;font-weight:600;margin:12px 0 2px">访问防护对象分布（近 24h）</div>
+    <div style="font-size:11.5px;color:var(--txt3);margin-bottom:4px">该主体近 24h 在各防护对象上的访问次数与占比（同一主体可跨资产访问）· 每行给出「主体 × 客体」联合聚合键</div>
+    <div class="tbl-wrap"><table class="lst" style="min-width:0" id="dpBaseAsTbl">
+      <thead><tr><th>防护对象</th><th style="width:120px">访问次数</th><th style="width:100px">占比</th><th style="width:120px">最近访问</th><th>联合聚合键</th></tr></thead>
+      <tbody>${arows}</tbody></table></div>`}
+    ${dpSourcesCard(s)}
+    <div style="font-size:13px;font-weight:600;margin:12px 0 2px">该${s.dim === "asset" ? "客体偏离" : "主体偏离"}记录</div>
+    <div style="font-size:11.5px;color:var(--txt3);margin-bottom:4px">近 24h 滑动窗内该${s.dim === "asset" ? "客体的全部偏离（含归因与处置落点）" : "主体的全部偏离"}；总览事件流仅展示最近实时记录（实时流，上限 40 条），两者口径不同（完整检索在审计 Dashboard）</div>
+    <div class="tbl-wrap"><table class="lst" style="min-width:0">
+      <thead><tr><th>时间</th><th>指标</th><th>偏离</th><th>${s.dim === "asset" ? "归因 / 处置落点" : "处置档位"}</th><th>requestId</th><th>说明</th></tr></thead>
+      <tbody>${hrows}</tbody></table></div>
+    <div style="font-size:13px;font-weight:600;margin:12px 0 2px">该${s.dim === "asset" ? "客体" : "主体"}近实时事件（${evs.length} 条）</div>
+    <div style="font-size:11.5px;color:var(--txt3);margin-bottom:4px">取自防护总览事件流的实时池（仅最近 40 条）；完整检索与长期归档（≥180 天）在审计 Dashboard</div>
+    <div class="tbl-wrap"><table class="lst" style="min-width:0">
+      <thead><tr><th>时间</th><th>防护对象</th><th>评分</th><th>命中项</th><th>处置档位</th><th>requestId</th></tr></thead>
+      <tbody>${erows}</tbody></table></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;flex-wrap:wrap">
+      ${wl ? '<span class="tag t-info" title="已命中观察期白名单：偏离只记录、不处置">已在白名单</span>' : `<button class="btn ghost sm" type="button" data-act="dpBaseSubWl" data-id="${esc(s.id)}">加入观察期白名单</button>`}
+      <button class="btn ghost sm" type="button" data-act="dpBaseSubTh" data-id="${esc(s.id)}">调整本${s.dim === "asset" ? "客体" : "主体"}阈值</button>
+      <button class="btn ghost sm" type="button" data-act="dpBaseSubReset" data-id="${esc(s.id)}">重置该${s.dim === "asset" ? "客体" : "主体"}基线</button>
+    </div>
+    </div>
+  </div>`;
+}
+
+/* 主体主指标曲线（内联 SVG · 显式色值）：纵轴按指标量纲自动定刻度并标单位；
+   非负指标纵轴下限钳 ≥0（速率 / 频次类不会出现负值），百分比指标上限钳 ≤100 */
+function dpBaseChart(s, th) {
+  const W = 640, H = 200, L = 52, R = 14, T = 12, B = 30;
+  const vals = s.series || [];
+  const lo0 = Math.min(s.mu - th * s.sd, Math.min.apply(null, vals));
+  const hi0 = Math.max(s.mu + th * s.sd, Math.max.apply(null, vals));
+  const pad = Math.max(0.3, (hi0 - lo0) * 0.12);
+  const lo = Math.max(0, lo0 - pad);
+  const hi = (s.unit === "%") ? Math.min(100, hi0 + pad) : hi0 + pad;
+  const span = (hi - lo) || 1;
+  const X = i => L + i * (W - L - R) / 23;
+  const Y = v => T + (hi - v) / span * (H - T - B);
+  const fx = v => span >= 50 ? v.toFixed(0) : span >= 5 ? v.toFixed(1) : v.toFixed(2);
+  const ticks = [0, 1, 2, 3].map(k => lo + span * k / 3);
+  const grid = ticks.map(v => `<line x1="${L}" y1="${Y(v).toFixed(1)}" x2="${W - R}" y2="${Y(v).toFixed(1)}" stroke="#eef2f7" stroke-width="1"/>` +
+    `<text x="${L - 7}" y="${(Y(v) + 3.4).toFixed(1)}" data-ax="y" text-anchor="end" font-size="10" fill="#94a3b8">${fx(v)}</text>`).join("");
+  /* 判定带按纵轴量程裁剪：非负指标不画 0 以下、百分比指标不画 100 以上。
+     ⚠ 主体单独覆盖阈值时（如某账号主体取 4.0σ，μ 1.8 / σ 0.6）理论下沿为 -0.6，
+       不裁剪则矩形会越出绘图区（渲染级缺陷，非数据错误）。 */
+  const bTop = Y(Math.min(hi, s.mu + th * s.sd)), bBot = Y(Math.max(lo, s.mu - th * s.sd));
+  const band = `<rect x="${L}" y="${bTop.toFixed(1)}" width="${(W - L - R)}" height="${Math.max(1, bBot - bTop).toFixed(1)}" fill="#2563eb" opacity="0.08"/>`;
+  const mean = `<line x1="${L}" y1="${Y(s.mu).toFixed(1)}" x2="${W - R}" y2="${Y(s.mu).toFixed(1)}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3"/>`;
+  const mainIdx = parseInt((s.hist[0] || {}).at, 10);
+  /* 学习训练中（样本不足判定窗）不参与判定 ⇒ 曲线不标带外红点、图例不出「偏离 N 个」，
+     否则与「训练中只观察不处置」的口径矛盾（渲染级缺陷）。 */
+  const train = s.samples < DP_MINSAMP;
+  const nDev = train ? 0 : vals.filter(v => Math.abs(v - s.mu) > th * s.sd).length;
+  const pts = vals.map((v, i) => X(i).toFixed(1) + "," + Y(v).toFixed(1)).join(" ");
+  const dots = vals.map((v, i) => {
+    const dev = Math.abs(v - s.mu) / s.sd;
+    if (train || dev <= th) return "";
+    return `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${i === mainIdx ? 4.3 : 3.3}" fill="#ef4444" stroke="#fff" stroke-width="1.2"><title>${String(i).padStart(2, "0")}:00 · ${esc(s.main)} ${v}${esc(s.unit)} · 偏离 ${dev.toFixed(1)}σ（判定阈值 ${th.toFixed(1)}σ）</title></circle>`;
+  }).join("");
+  const xlab = [0, 6, 12, 18, 23].map(i => `<text x="${X(i).toFixed(1)}" y="${H - 9}" text-anchor="middle" font-size="10" fill="#94a3b8">${String(i).padStart(2, "0")}:00</text>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" style="display:block;width:100%;height:auto">
+    ${grid}${band}${mean}
+    <polyline points="${pts}" fill="none" stroke="#2563eb" stroke-width="1.8"/>
+    ${dots}${xlab}
+  </svg>
+  <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--txt3);margin-top:2px">
+    <span>基线 ${s.mu} ± ${s.sd}${s.unit ? " " + esc(s.unit) : ""}（训练窗 ${esc(DP.base.win)} · 样本 ${s.samples}）</span>
+    <span>阴影 = ±${th.toFixed(1)}σ 判定带（σ 为稳健尺度）· ${train ? "学习训练中：不参与判定、不标红点" : "红点 = 偏离 " + nDev + " 个"}</span>
+  </div>`;
+}
+
+/* 页签② 学习与判定：参数 + 冷启动对象 + 重建记录 */
+function dpBasePHtml() {
+  return dpSubTabs("dpBaseP", [["dpBasePs1", "学习与判定参数", dpBaseParamHtml()], ["dpBasePs2", "冷启动对象", dpBaseColdHtml()], ["dpBasePs3", "基线重建", dpBaseRebuildHtml()], ["dpBasePs4", "运维闭环", dpBaseOpsHtml()]], "dpBasePs1");
+}
+
+function dpBaseParamHtml() {
+  const b = DP.base;
+  const ov = b.subs.filter(s => s.th != null);
+  const inputs = DP_BASEDIMS.map(d => `
+    <div class="fld"><label>${esc(d.n)}默认阈值（σ）</label>
+      <input class="mini-inp" style="width:90px" data-dimbase="${d.k}" value="${esc(b.dims[d.k])}" step="0.1"></div>`).join("");
+  return `<div class="card" data-page-node-id="PgDpBaseParam0001">
+    <div class="card-h"><h3>学习与判定参数</h3><span class="sub">对未单独覆盖的主体生效 · 保存并下发后热生效 ≤2s、不触发 reload</span></div>
+    <div class="card-b">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px 18px;margin-top:6px">
+      <div class="fld"><label>学习时间窗</label><input value="${esc(DP.base.win)}（当前仅提供 24h 滑动窗口）" readonly></div>
+      <div class="fld"><label>冷启动观察期（天）</label><input class="mini-inp" type="number" min="1" step="1" style="width:90px" id="dpBaseCold" value="${esc(b.cold)}"></div>
+      ${inputs}
+    </div>
+    <div style="font-size:12.5px;color:var(--txt3);margin-top:8px;line-height:1.7">
+      偏离判定 = 主指标超出「该主体基线中心（中位数）± 生效阈值 × 稳健尺度（MAD×1.4826）」；冷启动期内只观察、不产生「动态挑战」/「拒绝访问」。
+      已按主体单独覆盖阈值的：${ov.length ? ov.map(s => esc(s.label) + "（" + s.th.toFixed(1) + "σ）").join("、") : "无"}。
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:10px">
+      <button class="btn primary" type="button" data-act="dpBaseParamSave">保存并下发</button></div>
+    </div>
+  </div>`;
+}
+
+function dpBaseColdHtml() {
+  const cs = dpColdAssets();
+  const rows = cs.map(c => `
+    <tr><td style="white-space:nowrap"><b>${esc(c.name)}</b></td><td style="white-space:nowrap">第 ${c.day} 天 / 共 ${c.total} 天</td>
+      <td style="width:220px"><div class="bars" style="margin-top:0"><i class="b1" style="width:${Math.round(Math.min(1, c.day / c.total) * 100)}%"></i></div></td>
+      <td><span class="tag t-info">只观察</span></td>
+      <td style="width:170px"><button class="btn ghost sm" type="button" data-act="dpBaseColdEnd" data-id="${esc(c.id)}">提前结束观察期</button></td></tr>`).join("");
+  return `<div class="card" data-page-node-id="PgDpBaseColdCard01">
+    <div class="card-h"><h3>冷启动中的防护对象</h3><span class="sub">已启用动态防护、但启用天数不足观察期（${DP.base.cold} 天）的资产 · 观察期内只记录、不处置</span></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst"><thead><tr><th>防护对象</th><th style="width:150px">观察进度</th><th style="width:220px"></th><th style="width:110px">当前策略</th><th style="width:170px">操作</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="5"><div class="empty"><div class="big">当前没有冷启动中的防护对象</div></div></td></tr>'}</tbody></table></div>
+    </div>
+  </div>`;
+}
+
+/* 页签③ 白名单 */
+function dpBaseWlHtml() {
+  const wl = DP.base.wl.map(w => `
+    <tr><td style="white-space:nowrap">${esc(dpDim(w.dim).n)}</td><td><span class="kr">${esc(w.sub)}</span>${dpWlSubName(w)}</td><td>${esc(w.metric)}</td><td>${esc(w.reason)}</td><td>${esc(w.by)}</td><td>${esc(w.approver || "—")}</td><td style="white-space:nowrap">${esc(w.at)}</td><td style="white-space:nowrap">${esc(w.expire || "—")}</td>
+      <td style="width:80px"><button class="btn ghost sm" type="button" data-act="dpBaseWlDel" data-id="${esc(w.id)}">移除</button></td></tr>`).join("");
+  return `<div class="card" data-page-node-id="PgDpBaseWlCard0001">
+    <div class="card-h"><h3>观察期白名单</h3><span class="sub">基线漂移误报治理 · 命中条目的偏离只记录、不处置（观察记录起步期生效）</span>
+      <button class="btn primary sm" type="button" data-act="dpBaseWlAdd" style="margin-left:auto">新增条目</button></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst" style="min-width:720px"><thead><tr><th style="width:110px">基线维度</th><th style="width:130px">主体</th><th style="width:110px">指标</th><th>原因</th><th style="width:76px">创建人</th><th style="width:76px">审批人</th><th style="width:150px">创建时间</th><th style="width:110px">到期时间</th><th style="width:76px">操作</th></tr></thead>
+      <tbody>${wl || '<tr><td colspan="9"><div class="empty"><div class="big">暂无白名单条目</div></div></td></tr>'}</tbody></table></div>
+    </div>
+  </div>`;
+}
+
+function dpBaseRebuildHtml() {
+  const rb = DP.base.rebuilds.map(r => `<tr><td style="white-space:nowrap">${esc(r.at)}</td><td>${esc(r.by)}</td><td>${esc(r.result)}</td></tr>`).join("");
+  return `<div class="card" data-page-node-id="PgDpBaseRbCard0001">
+    <div class="card-h"><h3>基线重建</h3><span class="sub">全量重算已建模主体的基线（周期任务 · 可手动触发）</span>
+      <button class="btn ghost sm" type="button" data-act="dpBaseRebuild" style="margin-left:auto">手动触发重建</button></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst"><thead><tr><th style="width:170px">时间</th><th style="width:140px">触发方</th><th>结果</th></tr></thead><tbody>${rb}</tbody></table></div>
+    </div>
+  </div>`;
+}
+
+/* 页签④ 运维闭环（指南 §10.4）—— 健康度视图回答「检测能力是否还在」（与安全告警分流：
+   安全告警答「谁可疑」，本表答「检测能力是否还在」）；处置入口只**指向既有运维动作**，
+   不新立动作面（死按钮门禁 B 域：每个 data-act 必须有分派分支）。 */
+function dpBaseOpsHtml() {
+  const subs = DP.base.subs;
+  /* 降级主体数 = 学习训练中（样本不足）；前置未满足主体数 = 含待补前置指标的主体 ——
+     两项由清单**实算**，与主体基线页签的状态口径同源（dpSubState 单源，不另立一份统计）。 */
+  const deg = subs.filter(s => dpSubState(s).k === "learn").length;
+  const preN = subs.filter(s => (s.metrics || []).some(m => m.pre)).length;
+  const O = DP.base.ops;
+  const kpi = (k, v, note, lv) =>
+    '<tr><td>' + k + '</td><td><span class="tag ' + lv + '">' + v + '</span></td><td style="color:var(--txt3)">' + note + '</td></tr>';
+  return `<div class="card" data-page-node-id="PgDpBaseOpsCard0001">
+    <div class="card-h"><h3>健康度视图</h3><span class="sub">检测能力自身的运行状态 · 与安全告警分流（安全告警答「谁可疑」，本表答「检测能力是否还在」）</span></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst"><thead><tr><th style="width:220px">运行指标</th><th style="width:90px">当前</th><th>口径</th></tr></thead><tbody>
+      ${kpi("降级主体数", deg, "学习训练中（样本不足）的主体数 · 检测能力退化面", deg ? "t-warn" : "t-ok")}
+      ${kpi("零触发主体数", O.zero, "判定恒不触发（漏报会伪装成正常）· 超阈值即告警", O.zero ? "t-warn" : "t-ok")}
+      ${kpi("摘要过期", O.stale, "样本龄超基线陈旧窗（7 天）· 判定已退化为只观察", O.stale ? "t-warn" : "t-ok")}
+      ${kpi("重建堆积", O.backlog, "待重建主体数 · 重建期间该主体只观察", O.backlog ? "t-warn" : "t-ok")}
+      ${kpi("前置待补超期", O.preOver, "前置未满足超 30 天 · 在总览升为需处理风险项", O.preOver ? "t-warn" : "t-ok")}
+      ${preN ? kpi("前置未满足主体数", preN, "含「路径归一化」等前置未满足指标的主体 · 该指标不进判定与评分", "t-info") : ""}
+    </tbody></table></div>
+    </div>
+  </div>
+  <div class="card" data-page-node-id="PgDpBaseOpsEntry001">
+    <div class="card-h"><h3>处置入口</h3><span class="sub">误报治理与基线重建 · 承接既有运维动作（动作面不新立）</span></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst"><thead><tr><th style="width:200px">入口</th><th>承接</th></tr></thead><tbody>
+      <tr><td>误报复核队列</td><td>逐条复核判定结果 → 确认为误报则回流；落在主体基线的偏离记录与「观察期白名单」（一级页签「白名单」）</td></tr>
+      <tr><td>误报回流</td><td>回流去向二选一：阈值调整（本页签「学习与判定参数」的主体覆盖）或加入观察期白名单（一级页签「白名单」）</td></tr>
+      <tr><td>阈值调优评审</td><td>以「已单独覆盖阈值的主体」清单为输入，见本页签「学习与判定参数」</td></tr>
+      <tr><td>基线重建触发与确认</td><td>手工触发入口与重建记录见本页签「基线重建」；低频运维操作，执行期间该主体只观察</td></tr>
+    </tbody></table></div>
+    </div>
+  </div>`;
+}
+
+/* ==========================================================================
+   风险事件告警（pg-alert · 公共页）—— 覆盖各防护域的统一告警规则与通知出口，
+   不属动态防护模块（动态防护只是其中一个防护域来源）
+   ========================================================================== */
+function renderDpAlert() {
+  dpLoad();
+  const host = document.getElementById("pg-alert");
+  if (!host) return;
+  const _y = wsScrollTop();
+  const alTab = DP.alTab || "dpAlertRule";
+  host.innerHTML = `
+  <div class="title-row" data-page-node-id="PgDpAlertTitle001"><div>
+    <h2 style="margin:0">风险事件告警</h2>
+    <div class="muted" style="margin-top:6px">各防护域风险事件的统一告警规则、统计与逐条触发明细 · 通知渠道接入既有告警通道（站内信 / 邮件 / Webhook） · 触发明细与处理状态在本页「告警记录」，长期归档（≥180 天）与全量检索在审计 Dashboard</div>
+  </div></div>
+  ${DP_CSS}
+  <div class="hint-row warn" role="note" data-page-node-id="PgAlertDeferNote0001">
+    <i class="ic" aria-hidden="true">⏸</i>
+    <div><b>本页暂缓实施</b>：页面设计尚未定稿，本期不纳入开发实现。本页保留作为设计参考。</div>
+  </div>
+  <div class="card" data-page-node-id="PgDpAlertTabsCard001">
+    <div class="tabs" id="dpAlertTabs" role="tablist" data-page-node-id="PgDpAlertTabs000001">
+      <button type="button" role="tab" data-t="dpAlertRule" id="dpAlertTabsTab_dpAlertRule" aria-controls="dpAlertRule" aria-selected="${alTab === "dpAlertRule" ? "true" : "false"}" class="${alTab === "dpAlertRule" ? "on" : ""}">告警规则</button>
+      <button type="button" role="tab" data-t="dpAlertStat" id="dpAlertTabsTab_dpAlertStat" aria-controls="dpAlertStat" aria-selected="${alTab === "dpAlertStat" ? "true" : "false"}" class="${alTab === "dpAlertStat" ? "on" : ""}">告警统计</button>
+      <button type="button" role="tab" data-t="dpAlertRec" id="dpAlertTabsTab_dpAlertRec" aria-controls="dpAlertRec" aria-selected="${alTab === "dpAlertRec" ? "true" : "false"}" class="${alTab === "dpAlertRec" ? "on" : ""}">告警记录</button>
+    </div>
+  </div>
+  <div class="tbp${alTab === "dpAlertRule" ? " on" : ""}" id="dpAlertRule" role="tabpanel" aria-labelledby="dpAlertTabsTab_dpAlertRule">
+  ${dpAlertListHtml()}
+  </div>
+  <div class="tbp${alTab === "dpAlertStat" ? " on" : ""}" id="dpAlertStat" role="tabpanel" aria-labelledby="dpAlertTabsTab_dpAlertStat">
+  ${dpAlertStatHtml()}
+  ${dpAlertAggHtml()}
+  ${dpAlertChanHtml()}
+  </div>
+  <div class="tbp${alTab === "dpAlertRec" ? " on" : ""}" id="dpAlertRec" role="tabpanel" aria-labelledby="dpAlertTabsTab_dpAlertRec">
+  ${dpAlertRecHtml()}
+  </div>`;
+  dpMount("pg-alert");
+  wsScrollTo(_y);
+  pgmk("#dpAlertPager", dpAlertRows().length, DP.alPage, "dpAlertPg", "条规则", 10, "启停即时生效 · 变更入操作审计");
+  pgmk("#dpAlertRecPager", dpAlertRecRows().length, DP.alRecPage, "dpAlertRecPg", "条记录", 10, "");
+}
+window.dpAlertPg = function (p) { dpLoad(); DP.alPage = Math.max(1, p | 0); dpSave(); renderDpAlert(); };
+window.dpAlertRecPg = function (p) { dpLoad(); DP.alRecPage = Math.max(1, p | 0); DP.alRecSel = {}; dpSave(); renderDpAlert(); };
+
+function dpAlertRows() {
+  return DP.alerts.filter(a => !DP.alSrc || a.src === DP.alSrc);
+}
+
+function dpAlertStatHtml() {
+  const total = DP.alerts.length;
+  const onN = DP.alerts.filter(a => a.on).length;
+  const presetN = DP.alerts.filter(a => a.preset).length;
+  const srcs = [];
+  DP.alerts.forEach(a => { if (srcs.indexOf(a.src) < 0) srcs.push(a.src); });
+  /* ★ A5-A4：筛选段给出 4 个候选域、KPI 只报实际覆盖数 ⇒ 客户会当成漏配。未覆盖域一并点名。 */
+  const missSrc = DP_ALERT_SRCS.filter(s => srcs.indexOf(s) < 0);
+  /* 今日触发的规则与「告警记录」同源（按 rid 去重），不再另读一份 last 字段 */
+  const todayN = dpAlertTodayRules().length;
+  const openN = DP.alRecs.filter(r => r.st === "open").length;
+  return `<div class="card" data-page-node-id="PgDpAlertKpiCard001">
+    <div class="card-b">
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      ${dpKpi("告警规则", total + " 条", "预置 " + presetN + " 条（不可删除）· 自定义规则可增删改", "PgDpAlertKpi001", "")}
+      ${dpKpi("启用中", onN + " 条", "停用的规则不触发通知 · 启停变更入操作审计", "PgDpAlertKpi002", "")}
+      ${dpKpi("覆盖防护域", srcs.length + " 个", srcs.map(esc).join(" / ") + (missSrc.length ? "（未覆盖：" + missSrc.map(esc).join(" / ") + "）" : ""), "PgDpAlertKpi003", "")}
+      ${dpKpi("今日触发的规则", todayN + " 条", "按规则去重计数 · 与「告警记录」同源，逐条明细见该页签", "PgDpAlertKpi004", "")}
+      ${dpKpi("待处理记录", openN + " 条", "未处理的触发明细 · 点下方按钮进入告警记录", "PgDpAlertKpi005",
+        `<button class="btn ghost sm" type="button" style="margin-top:6px" data-act="dpAlertRecGo" data-v="open">查看未处理 →</button>`)}
+    </div>
+    </div>
+  </div>`;
+}
+
+/* 通知出口覆盖：按渠道聚合当前规则集（派生视图，不另存数据） */
+function dpAlertChanHtml() {
+  const chs = [];
+  DP.alerts.forEach(a => a.ch.forEach(c => { if (chs.indexOf(c) < 0) chs.push(c); }));
+  const rows = chs.map(c => {
+    const hit = DP.alerts.filter(a => a.ch.indexOf(c) >= 0);
+    const on = hit.filter(a => a.on).length;
+    return `<tr><td><b>${esc(c)}</b></td><td>${hit.length} 条</td><td>${on} 条</td><td>${hit.length - on} 条</td></tr>`;
+  }).join("");
+  return `<div class="card" data-page-node-id="PgDpAlertChanCard001" style="margin-top:14px">
+    <div class="card-h"><h3>通知出口覆盖</h3><span class="sub">按渠道聚合当前规则集 · 与「告警规则」列表同源</span></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst" style="min-width:0">
+      <thead><tr><th>通知渠道</th><th style="width:120px">覆盖规则</th><th style="width:120px">其中启用中</th><th style="width:120px">其中已停用</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    </div></div>`;
+}
+
+/* 近 7 日触发趋势 + 按防护域分布（★ A5-A8）——
+   页签名「告警统计」原先只有「当前快照计数」与「渠道覆盖」，无任何时间/域维聚合，名不副实。
+   本卡一律**读 DP.alRecs / DP.alerts 派生**，不另存数据、不与记录页分叉；
+   「近 7 日」= 基准日往前 7 个自然日（含基准日），与记录页「近 7 天」同一判据。 */
+function dpAlertAggDays() {
+  const out = [];
+  const base = new Date(DP_TODAY + "T00:00:00");
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(base.getTime());
+    d.setDate(d.getDate() - i);
+    const ds = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    out.push({ day: ds, lab: ds.slice(5), n: DP.alRecs.filter(r => r.at.indexOf(ds) === 0).length });
+  }
+  return out;
+}
+function dpAlertAggHtml() {
+  const days = dpAlertAggDays();
+  const mx = Math.max(1, Math.max.apply(null, days.map(d => d.n)));
+  const tot = days.reduce((n, d) => n + d.n, 0);
+  const bars = days.map(d => `<div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;gap:2px" title="${esc(d.day)} · 触发 ${d.n} 条">
+    <div style="text-align:center;font-size:11.5px;color:#64748b">${d.n}</div>
+    <div style="height:${Math.max(2, Math.round(d.n / mx * 72))}px;background:${d.n ? "#93c5fd" : "#e2e8f0"};border-radius:3px 3px 0 0"></div>
+    <div style="text-align:center;font-size:11px;color:#64748b">${esc(d.lab)}</div></div>`).join("");
+  const rows = DP_ALERT_SRCS.map(s => {
+    const a = DP.alerts.filter(x => x.src === s);
+    const recs = DP.alRecs.filter(r => { const u = dpAlertRuleOf(r.rid); return u && u.src === s; }).length;
+    return `<tr><td><span class="tag t-gray">${esc(s)}</span></td><td>${a.length} 条</td><td>${a.filter(x => x.on).length} 条</td><td>${recs} 条</td></tr>`;
+  }).join("");
+  return `<div class="card" data-page-node-id="PgDpAlertAggCard001" style="margin-top:14px">
+    <div class="card-h"><h3>近 7 日触发趋势</h3><span class="sub">按触发日聚合「告警记录」· 与记录页同源，逐日可相加核对 · 未触发的日显示 0</span></div>
+    <div class="card-b">
+    <div style="display:flex;align-items:flex-end;gap:6px;height:118px;margin:6px 0 2px" data-page-node-id="PgDpAlertAggBars001">${bars}</div>
+    <div style="font-size:12px;color:var(--txt3);margin-top:6px">近 7 日合计 <b>${tot}</b> 条 · 日均 <b>${(tot / 7).toFixed(1)}</b> 条（分母固定 7 天，含未触发日）</div>
+    </div></div>
+  <div class="card" data-page-node-id="PgDpAlertAggSrc001" style="margin-top:14px">
+    <div class="card-h"><h3>按防护域分布</h3><span class="sub">规则数与「告警规则」列表同源；触发数由记录经规则回查归域</span></div>
+    <div class="card-b">
+    <div class="tbl-wrap" tabindex="0" role="region" aria-label="按防护域分布（可横向滚动）"><table class="lst" style="min-width:0">
+      <thead><tr><th>防护域</th><th style="width:140px">规则数</th><th style="width:140px">其中启用中</th><th style="width:140px">触发记录</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    </div></div>`;
+}
+
+/* ==========================================================================
+   风险事件告警 · 页签③「告警记录」—— 逐条触发明细与处理状态流转
+   --------------------------------------------------------------------------
+   口径（与规则表、统计卡同源，客户可相加核对）：
+   · 规则名 / 来源域 / 通知渠道一律经 rid 回查 DP.alerts，本清单不另存一份；
+   · 规则表的「最近触发」= 本清单中该规则的最大触发时间（dpAlertLast），不再另存 last 字段；
+   · 只有「启用中」的规则产生记录 ⇒ 记录里出现的规则必然在规则表且在启用态；
+   · 处理状态：未处理 → 已确认 / 已忽略，已处理可「转未处理」回退（双向可演）；
+   · 「确认 / 忽略」只改记录的处理状态，**不改变任何防护生效面**（不动放行与阻断），
+     故走普通操作、不经二次认证；规则本身的启停与删除仍按既有分档走二次认证。
+   ========================================================================== */
+const DP_ALERT_STS = [["", "全部"], ["open", "未处理"], ["ack", "已确认"], ["ignore", "已忽略"]];
+const DP_ALERT_ST_LABEL = { open: "未处理", ack: "已确认", ignore: "已忽略" };
+const DP_ALERT_ST_TAG = { open: "t-warn", ack: "t-ok", ignore: "t-gray" };
+const DP_ALERT_RANGES = [["today", "今日"], ["7d", "近 7 天"], ["all", "全部"]];
+
+/* 规则回查：规则名 / 来源域 / 渠道的唯一出口（记录不冗余这三项） */
+function dpAlertRuleOf(rid) { return DP.alerts.filter(a => a.id === rid)[0] || null; }
+function dpAlertRecName(r) { const a = dpAlertRuleOf(r.rid); return a ? a.name : "（规则已删除）"; }
+function dpAlertRecSrc(r) { const a = dpAlertRuleOf(r.rid); return a ? a.src : "—"; }
+function dpAlertRecCh(r) { const a = dpAlertRuleOf(r.rid); return a ? a.ch : []; }
+/* 规则的最近触发（唯一来源）：从未触发的规则返回空串，表格渲染「—」 */
+function dpAlertLast(rid) {
+  let mx = "";
+  DP.alRecs.forEach(r => { if (r.rid === rid && r.at > mx) mx = r.at; });
+  return mx;
+}
+/* 今日触发的规则（按规则去重）—— 统计卡与记录页同源，不再读另一份 last */
+function dpAlertTodayRules() {
+  const ids = [];
+  DP.alRecs.forEach(r => { if (r.at.indexOf(DP_TODAY) === 0 && ids.indexOf(r.rid) < 0) ids.push(r.rid); });
+  return ids;
+}
+/* 时间窗判据：today = 演示基准日当天；7d = 基准日往前 7 个自然日（基准日当天记第 1 天） */
+function dpAlertRecInRange(r, range) {
+  if (range === "today") return r.at.indexOf(DP_TODAY) === 0;
+  if (range === "7d") return dpDaysSince(r.at.slice(0, 10)) <= 6;
+  return true;
+}
+/* 记录行：时间窗 → 处理状态 → 防护域 三层筛选，按触发时间倒序（最新在上） */
+function dpAlertRecRows() {
+  return DP.alRecs.filter(r =>
+    (!DP.alRecRange || dpAlertRecInRange(r, DP.alRecRange)) &&
+    (!DP.alRecSt || r.st === DP.alRecSt) &&
+    (!DP.alRecSrc || dpAlertRecSrc(r) === DP.alRecSrc)
+  ).sort((x, y) => (x.at < y.at ? 1 : (x.at > y.at ? -1 : 0)));
+}
+function dpAlertRecSeg(act, cur, arr) {
+  return `<span class="seg">${arr.map(x =>
+    `<button type="button" data-act="${act}" data-v="${esc(x[0])}" class="${cur === x[0] ? "on" : ""}">${esc(x[1])}</button>`).join("")}</span>`;
+}
+/* 处理状态落定：单条确认 / 忽略与批量确认共用（处理人固定为当前值守人） */
+function dpAlertRecMark(list, st, batch) {
+  const verb = (st === "ack" ? "确认" : "忽略");
+  list.forEach(r => { r.st = st; r.by = DP.actor; r.ackAt = dpNowTs(); });
+  dpLog("全局", (batch ? "批量" : "") + verb + "告警记录 " + list.length + " 条");
+  DP.alRecSel = {};
+  dpSave();
+  closeDlg();
+  renderDpAlert();
+  toast(batch ? ("已批量" + verb + " " + list.length + " 条告警记录")
+              : ("已" + verb + "：" + dpAlertRecName(list[0]) + " · " + list[0].at));
+}
+
+function dpAlertRecHtml() {
+  const rows = dpAlertRecRows();
+  const pages = Math.max(1, Math.ceil(rows.length / 10));
+  DP.alRecPage = Math.min(Math.max(1, DP.alRecPage || 1), pages);
+  const pageRows = rows.slice((DP.alRecPage - 1) * 10, DP.alRecPage * 10);
+  const sel = DP.alRecSel || {};
+  /* 批量确认的作用域 = 当前页中状态为「未处理」且已勾选的条目（勾选不跨页累积） */
+  const pickable = pageRows.filter(r => r.st === "open");
+  const selN = pickable.filter(r => sel[r.id]).length;
+  const body = pageRows.map(r => {
+    const ch = dpAlertRecCh(r), fail = r.fail || [];
+    const chHtml = ch.length
+      ? ch.map(c => {
+          const bad = fail.indexOf(c) >= 0;
+          return `<span class="tag ${bad ? "t-err" : "t-gray"}" title="${bad ? "送达失败" : "已送达"}">${esc(c)}${bad ? " ×" : ""}</span>`;
+        }).join(" ")
+      : '<span class="muted">—</span>';
+    const ops = r.st === "open"
+      ? `<button class="btn ghost sm" type="button" data-act="dpAlertRecAck" data-id="${esc(r.id)}">确认</button>
+         <button class="btn ghost sm" type="button" data-act="dpAlertRecIgn" data-id="${esc(r.id)}">忽略</button>`
+      : `<button class="btn ghost sm" type="button" data-act="dpAlertRecRs" data-id="${esc(r.id)}">转未处理</button>`;
+    /* 点行 = 详情（与基线主体行同一交互口径）；行内按钮 / 勾选框因 closest 更近而不会误触 */
+    return `<tr data-act="dpAlertRecPick" data-id="${esc(r.id)}" tabindex="0" aria-label="查看告警记录详情：${esc(dpAlertRecName(r))}">
+      <td class="cell-sel">${r.st === "open" ? `<input type="checkbox" data-act="dpAlertRecSel" data-id="${esc(r.id)}" ${sel[r.id] ? "checked" : ""}>` : ""}</td>
+      <td style="white-space:nowrap">${esc(r.at)}</td>
+      <td><b>${esc(dpAlertRecName(r))}</b><div class="muted" style="font-size:11.5px;margin-top:2px">${esc(dpAlertRecSrc(r))}</div></td>
+      <td style="white-space:nowrap">${esc(r.obj)}</td>
+      <td style="white-space:nowrap">${r.n} 次</td>
+      <td>${chHtml}</td>
+      <td style="white-space:nowrap"><span class="tag ${DP_ALERT_ST_TAG[r.st] || "t-gray"}">${esc(DP_ALERT_ST_LABEL[r.st] || r.st)}</span>${r.by ? `<div class="muted" style="font-size:11.5px;margin-top:2px">${esc(r.by)} · ${esc((r.ackAt || "").slice(5))}</div>` : ""}</td>
+      <td style="white-space:nowrap">${ops}</td>
+    </tr>`;
+  }).join("");
+  const cnt = st => DP.alRecs.filter(r => r.st === st).length;
+  return `<div class="card" data-page-node-id="PgDpAlertRecCard001"><div class="card-b" style="padding-top:12px">
+    <div class="toolbar" style="margin-bottom:12px">
+      ${dpAlertRecSeg("dpAlertRecRange", DP.alRecRange, DP_ALERT_RANGES)}
+      ${dpAlertRecSeg("dpAlertRecStF", DP.alRecSt, DP_ALERT_STS)}
+      ${dpAlertRecSeg("dpAlertRecSrcF", DP.alRecSrc, [["", "全部防护域"]].concat(DP_ALERT_SRCS.map(s => [s, s])))}
+      <span style="flex:1"></span>
+      <span class="muted" style="font-size:12.5px">未处理 ${cnt("open")} · 已确认 ${cnt("ack")} · 已忽略 ${cnt("ignore")}（共 ${DP.alRecs.length} 条）</span>
+      <button class="btn primary sm" type="button" data-act="dpAlertRecBatch" ${selN ? "" : "disabled"}>批量确认${selN ? "（" + selN + "）" : ""}</button>
+    </div>
+    <div class="tbl-wrap"><table class="lst" style="min-width:1130px" data-page-node-id="PgDpAlertRecTbl001">
+      <thead><tr><th style="width:40px"></th><th style="width:146px">触发时间</th><th style="width:196px">规则 / 防护域</th><th style="width:158px">命中对象</th><th style="width:92px">窗口内命中</th><th style="width:196px">通知送达</th><th style="width:150px">处理状态</th><th style="width:158px">操作</th></tr></thead>
+      <tbody>${body || '<tr><td colspan="8"><div class="empty"><div class="big">当前筛选条件下暂无告警记录</div></div></td></tr>'}</tbody></table></div>
+    <div id="dpAlertRecPager"></div>
+    <div style="font-size:12.5px;color:var(--txt3);margin-top:8px">点行查看该次触发的详情；「确认 / 忽略」只改变记录的处理状态，<b>不影响任何防护生效面</b>（不改动放行与阻断），故不经二次认证；规则本身的启停与删除仍按二次认证执行。长期归档（≥180 天）与全量检索在审计 Dashboard。</div>
+  </div></div>`;
+}
+
+/* 单条触发详情（只读呈现 + 状态操作入口）：规则条件与模板经规则表回查，不冗余 */
+function dpAlertRecDlg(r) {
+  const a = dpAlertRuleOf(r.rid);
+  const ch = dpAlertRecCh(r), fail = r.fail || [];
+  const chLine = ch.length
+    ? ch.map(c => {
+        const bad = fail.indexOf(c) >= 0;
+        return `<span class="tag ${bad ? "t-err" : "t-ok"}">${esc(c)} · ${bad ? "送达失败" : "已送达"}</span>`;
+      }).join(" ")
+    : '<span class="muted">—</span>';
+  const cell = (k, v) => `<div><div style="color:var(--txt3);font-size:12.5px">${k}</div><div style="margin-top:3px">${v}</div></div>`;
+  openDlg("告警记录 · " + dpAlertRecName(r),
+    "触发时间 " + esc(r.at) + " · 规则名 / 防护域 / 通知渠道经规则表回查，同一事实单一出口。", `
+    <div style="display:flex;flex-wrap:wrap;gap:14px 30px;font-size:13px;margin-top:4px">
+      ${cell("触发时间", esc(r.at))}
+      ${cell("防护域", esc(dpAlertRecSrc(r)))}
+      ${cell("命中对象", esc(r.obj))}
+      ${cell("窗口内命中", r.n + " 次")}
+      ${cell("处理状态", esc(DP_ALERT_ST_LABEL[r.st] || r.st) + (r.by ? "（" + esc(r.by) + " · " + esc(r.ackAt) + "）" : "（待值守处理）"))}
+    </div>
+    <div style="margin-top:14px;font-size:13px">通知送达：<span style="display:inline-flex;gap:6px;flex-wrap:wrap;vertical-align:middle;margin-left:6px">${chLine}</span></div>
+    <div style="margin-top:14px;font-size:12.5px;color:var(--txt3);line-height:1.75">
+      触发条件（规则表原文）：<b>${a ? esc(a.cond) : "规则已删除"}</b><br>
+      通知模板：${a ? esc(a.tpl) : "—"}${a && !a.on ? ' · <span class="tag t-gray">该规则当前已停用</span>' : ""}<br>
+      本页承载逐条触发明细与处理状态；完整事件检索与长期归档（≥180 天）在审计 Dashboard。
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px">
+      ${r.st === "open"
+        ? `<button class="btn primary sm" type="button" data-act="dpAlertRecAck" data-id="${esc(r.id)}">确认该条</button>
+           <button class="btn ghost sm" type="button" data-act="dpAlertRecIgn" data-id="${esc(r.id)}">忽略该条</button>`
+        : `<button class="btn ghost sm" type="button" data-act="dpAlertRecRs" data-id="${esc(r.id)}">转回未处理</button>`}
+    </div>`, "lg");
+  const okb = document.getElementById("dlg1Ok");
+  if (okb) { okb.textContent = "关闭"; okb.onclick = () => closeDlg(); }
+  /* 只读详情弹窗无「取消」语义 —— 隐藏左键，关闭后 openDlg 会自动恢复显示 */
+  const noB = document.getElementById("dlg1No");
+  if (noB) noB.style.display = "none";
+}
+
+function dpAlertListHtml() {
+  const rows = dpAlertRows();
+  const pages = Math.max(1, Math.ceil(rows.length / 10));
+  DP.alPage = Math.min(Math.max(1, DP.alPage || 1), pages);
+  const pageRows = rows.slice((DP.alPage - 1) * 10, DP.alPage * 10);
+  const body = pageRows.map(a => `<tr>
+    <td><div style="display:flex;align-items:center;gap:6px;min-width:0"><b title="${esc(a.name)}" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</b>${a.preset ? '<span class="tag t-info" style="flex:0 0 auto">预置</span>' : ""}</div></td>
+    <td style="white-space:nowrap"><span class="tag t-gray">${esc(a.src)}</span></td>
+    <td><div title="${esc(a.cond)}" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;line-height:1.55;max-height:3.2em">${esc(a.cond)}</div></td>
+    <td style="white-space:nowrap">${esc(a.tpl || "简洁通知")}</td>
+    <td>${a.ch.map(c => '<span class="tag t-gray">' + esc(c) + "</span>").join(" ")}</td>
+    <td style="white-space:nowrap">${esc(dpAlertLast(a.id) || "—")}</td>
+    <td><span class="tag ${DP_ALERT_LV_TAG[a.lv] || "t-gray"}" title="告警级别：${esc(a.lv || "一般")}">${esc(a.lv || "一般")}</span></td>
+    <td style="width:76px"><span class="switch"><input type="checkbox" data-dpsw="alert.${esc(a.id)}" aria-label="启用或停用告警规则 ${esc(a.name)}" title="启用 / 停用「${esc(a.name)}」" ${a.on ? "checked" : ""}><span class="sl"></span></span></td>
+    <td style="white-space:nowrap"><button class="btn ghost sm" type="button" data-act="dpAlertTest" data-id="${esc(a.id)}" aria-label="测试发送告警规则 ${esc(a.name)}">测试发送</button>
+      <button class="btn ghost sm" type="button" data-act="dpAlertEdit" data-id="${esc(a.id)}" aria-label="编辑告警规则 ${esc(a.name)}">编辑</button>${a.preset ? "" : `
+      <button class="btn ghost sm" type="button" data-act="dpAlertDel" data-id="${esc(a.id)}" aria-label="删除告警规则 ${esc(a.name)}">删除</button>`}</td></tr>`).join("");
+  const seg = [["", "全部"]].concat(DP_ALERT_SRCS.map(s => [s, s]))
+    .map(x => `<button type="button" data-act="dpAlertSrcF" data-v="${esc(x[0])}" class="${(DP.alSrc || "") === x[0] ? "on" : ""}">${esc(x[1])}</button>`).join("");
+  return `<div class="card" data-page-node-id="PgDpAlertListCard1"><div class="card-b" style="padding-top:12px">
+    <div class="toolbar" style="margin-bottom:12px">
+      <span class="seg">${seg}</span>
+      <span style="flex:1"></span>
+      <button class="btn primary sm" type="button" data-act="dpAlertAdd">＋ 新增规则</button>
+    </div>
+    <div class="tbl-wrap" tabindex="0" role="region" aria-label="告警规则列表（可横向滚动查看右侧列）"><table class="lst" style="min-width:1316px" data-page-node-id="PgDpAlertTbl00001">
+      <thead><tr><th style="width:184px">名称</th><th style="width:120px">防护域</th><th>触发条件</th><th style="width:176px">通知模板</th><th style="width:150px">通知渠道</th><th style="width:140px">最近触发</th><th style="width:76px">级别</th><th style="width:70px">启用</th><th style="width:212px">操作</th></tr></thead>
+      <tbody>${body || '<tr><td colspan="9"><div class="empty"><div class="big">当前防护域下暂无告警规则</div></div></td></tr>'}</tbody></table></div>
+    <div id="dpAlertPager"></div>
+    <div style="font-size:12.5px;color:var(--txt3);margin-top:8px">「测试发送」立即经所选渠道发一条测试告警，<b>不写入触发时间</b>（触发时间只由真实命中更新）；<b>不改变规则的启用态</b>（停用规则仅验证通道配置）。</div>
+  </div></div>`;
+}
+
+/* ==========================================================================
+   对抗能力（pg-dparms）—— 五页签（二期 F1.1 + F1.2 的**配置面**与**效果面**）
+   --------------------------------------------------------------------------
+   · 动态令牌与防重放（F1.1）
+   · JS 注入与动态封装（F1.2 规则 1 / 5 / 7）
+   · 真实浏览器验证（F1.2 规则 3 exec 与自动化识别）
+   · 动态挑战与人机验证（F1.2 规则 3 / 6）—— 挑战页两形态在此承载（2026-10-08 合并原页签⑤）
+   · 场景化模板（F1.2 规则 9）
+
+   口径要点（与权威源逐条对齐，勿改）：
+   · 动态封装 = **仅代码级变体**（变量名 / 字符串 / 控制流随机化）；表单字段名 / Cookie 名 /
+     URL 混淆**按二期 PRD F1.2 规则 5 不做**，页面以一句脚注说明、不逐行列出。
+   · 令牌由**网关签发与校验**，会话密钥不出网关、不进 Cookie，浏览器与 SDK 均不参与生成。
+   · `X-Baize-Proof` 通道 TTL 独立取 60s，短于浏览器通道 60~300s。
+   · 挑战模式 fp / exec 默认启用；interact 触发档位为**口径固定值 P3**、不提供切换配置，启停由
+     「启用」开关承载（P4 档不注入客户端挑战，改由追加认证承接）· 误杀率（= 正常用户被挑战率）≤0.5%。
+   · 同一会话（+ 账号 / 来源键并行计数）挑战连续失败 3 次转 F1.6 / 限流处置，**不无限循环挑战**。
+   · stealth 级（undetected-chromedriver / puppeteer-stealth）**明确不承诺识别**。
+   · 本页参数与「防护策略 · 检测项与参数」**同源**，改一处两处同变。
+   · **注入跳过规则不是配置项**（现行件注入相关配置项仅 enabled / version / max_size_mb）⇒ 页面只读呈现。
+   · 挑战页两形态（行为验证 / 计算题）是 **`interact` 触发后的页面呈现**，与模式层同页承载。
+   ========================================================================== */
+const DP_ARMS_TABS = [
+  ["dpA1", "动态令牌与防重放"],
+  ["dpA2", "JS 注入与动态封装"],
+  ["dpA3", "真实浏览器验证"],
+  ["dpA4", "动态挑战与人机验证"],
+  ["dpA5", "场景化模板"],
+];
+
+/* 对抗能力参数默认值（单一来源；「防护策略 · 检测项与参数」的逐资产覆盖读这里取默认） */
+function dpArmsDef() {
+  return {
+    tok: { ttl: 120, ttlProof: 60, issueRate: 5, getCheck: "key", failMode: "open", failClose: true, spaMerge: true },
+    /* ★ 2026-10-08：删四个 skip* 状态键 —— 跳过规则属引擎固有行为、非配置项。 */
+    inj: { varName: true, varStr: true, varFlow: true },
+    ver: { execResult: true, execTime: true, hashGuard: true, autoFactor: true },
+    cha: { fp: true, exec: true, interact: true, failLimit: 3, trigScore: 50 },
+    hum: { quiz: true, beh: true },
+    /* 场景化模板全局开关（F1.2 规则 9）—— 独立于 hum：模板的动作落在动态挑战的参数面上，
+       不属人机验证（该页签的权威边界是不产出决策动作），故单列一组、单开页签。
+       ★ 本键集必须与 DP_TPLS 的模板清单**满配同源**：缺键的模板在「场景化模板」页仍渲染成
+       可点的 checkbox，但 change 委派的 hasOwnProperty 守卫会整块跳过（能点、状态写不进），
+       且任一次重渲染按 undefined 重绘为关 —— 实测现象「先启用爬取、再启用薅羊毛，爬取被关掉」。 */
+    tpl: { Crack: true, Scan: true, Wool: false, Crawl: false },
+  };
+}
+/* 把 dpArmsDef() 的分组默认键**逐键补进**已装载的 DP.arms（已有值不动）。
+   装载端兜底：旧缓存 / 旧种子缺某个参数键时自动补齐，使「默认键集」与「读取端」同源 ——
+   不依赖人工在新增参数键时同步改 dpLoad（上述实测缺陷正是该漏改造成的）。 */
+function dpArmsFill(dst) {
+  const def = dpArmsDef();
+  Object.keys(def).forEach(g => {
+    if (!dst[g] || typeof dst[g] !== "object") { dst[g] = Object.assign({}, def[g]); return; }
+    Object.keys(def[g]).forEach(k => {
+      if (!Object.prototype.hasOwnProperty.call(dst[g], k)) dst[g][k] = def[g][k];
+    });
+  });
+  return dst;
+}
+/* 注入响应体阈值（MiB）· 默认 2 —— 探针式网关须**全量缓冲**响应体才能改写，该阈值即单连接内存上界：
+   原 10 MiB 在数百并发下会放大成 GB 级内存尖峰，故收敛为 2 MiB（可配置）。 */
+const DP_INJ_MAX_MB = 2;
+/* 对抗效果（演示口径 · 确定性）：与总览 24h 风险请求底数 DP_STAT24 一致，可相加核对 */
+const DP_ARMS_EFF = {
+  tokIssue: 486220, tokReplay: 1374, tokExpire: 412, tokTamper: 96, tokThirdParty: 61, tokRateLimit: 18,
+  injPages: 8, injSkip: 3, injWhite: "0.06%", injDelay: 34, injReportDelay: 86,
+  verIssued: 21740, verPass: 21386, verFail: 354, verNaive: "96.2%", verFpOk: "99.4%",
+  /* ★ 被挑战率 = 挑战下达 ÷ 近 24h 请求（实算，不存比率常量）——
+     3981 / 1284306 = 0.31%，落在「域级验收 ≤0.5%」内且**会话数不大于请求数**
+     （原 chaIssued 31260 按 0.31% 反推需 1008 万会话，是请求量的 7.8 倍，自相矛盾）。 */
+  chaIssued: 3981, chaPass: 3623, chaFail: 358,
+  /* 人机验证：呈现量（比率的分母）与通过会话数 —— 页面比率一律由这两个数实算 */
+  /* 人机验证：呈现 = 通过 + 未通过 + 放弃；且**呈现量 ⊆ 挑战下达量**（仅已下达挑战的会话才呈现），
+     未通过 + 放弃 = 交互档挑战失败数（与 chaFailBy.interact 同源闭合）。
+     ⚠ 2026-10-09：原「确认误报率（下界）」KPI 已按用户裁定移除（不可自证 ⇒ 不呈现），
+     humFpN 字段随之删除；故人机验证三项比率（通过 / 放弃 / 未通过）全部分母为 humSess 且可闭合。 */
+  humSess: 1680, humPassN: 1601, humFailN: 56, humGiveUpN: 23,
+  /* 挑战失败分布（按档位）：fp 与 exec 同属**静默档**一并施加（fp 不单独构成挑战），故合并计；与 chaFail 相加闭合 */
+  chaFailBy: { silent: 279, interact: 79 },
+  /* 令牌失败原因分布：与 tokReplay/tokExpire/tokTamper 一致 */
+  /* ⚠ 键名必须与下方跳过规则表的 r[0] **逐字一致**，否则「今日命中」列恒渲染「—」（实测缺陷） */
+  injSkipBy: { "非 HTML 响应": 1820, "响应体 > 2 MiB": 96, "CSP 严格页（无授权通道）": 214, "API 路径": 9640 },
+  /* 场景化模板（今日 · 按模板规则计数）：逐模板与「对抗能力 · 场景化模板」表一一对应。
+     hit = 该模板判据命中（据此发起挑战）的会话数；pass = 其中完成并通过挑战的会话数。
+     两者均为**自产**（网关运行时计数，可核对）；通过率由二者**实算**，不另存一份比率。 */
+  tplHit: { Crack: 1286, Scan: 742, Wool: 318, Crawl: 486 },
+  tplPass: { Crack: 1218, Scan: 706, Wool: 291, Crawl: 79 },
+};
+
+function renderDpArms() {
+  dpLoad();
+  dpDeepLink("pg-dparms");
+  const host = document.getElementById("pg-dparms");
+  if (!host) return;
+  const _y = wsScrollTop();
+  /* ★ 2026-10-08：旧缓存可能停在已撤销的页签 id（原 dpA6）⇒ 归一化到存在的页签，避免全部面板都不 on。 */
+  const _savedTab = (DP.arms && DP.arms.tab) || "dpA1";
+  const tab = DP_ARMS_TABS.some(t => t[0] === _savedTab) ? _savedTab : "dpA1";
+  host.innerHTML = `
+  ${DP_CSS}
+  <div class="card" data-page-node-id="PgDpArmsTabsCard1">
+    <div class="tabs" id="dpArmsTabs" role="tablist" data-page-node-id="PgDpArmsTabs000001">
+      ${DP_ARMS_TABS.map(t => `<button type="button" role="tab" data-t="${t[0]}" id="dpArmsTabsTab_${t[0]}" aria-controls="${t[0]}" aria-selected="${tab === t[0] ? "true" : "false"}" class="${tab === t[0] ? "on" : ""}">${t[1]}</button>`).join("")}
+    </div>
+  </div>
+  <div class="tbp${tab === "dpA1" ? " on" : ""}" id="dpA1" role="tabpanel" aria-labelledby="dpArmsTabsTab_dpA1">${dpArmsTokHtml()}</div>
+  <div class="tbp${tab === "dpA2" ? " on" : ""}" id="dpA2" role="tabpanel" aria-labelledby="dpArmsTabsTab_dpA2">${dpArmsInjHtml()}</div>
+  <div class="tbp${tab === "dpA3" ? " on" : ""}" id="dpA3" role="tabpanel" aria-labelledby="dpArmsTabsTab_dpA3">${dpArmsVerHtml()}</div>
+  <div class="tbp${tab === "dpA4" ? " on" : ""}" id="dpA4" role="tabpanel" aria-labelledby="dpArmsTabsTab_dpA4">${dpArmsChaHtml()}</div>
+  <div class="tbp${tab === "dpA5" ? " on" : ""}" id="dpA5" role="tabpanel" aria-labelledby="dpArmsTabsTab_dpA5">${dpArmsTplHtml()}</div>`;
+  dpMount("pg-dparms");
+  wsScrollTo(_y);
+}
+
+/* 通用小工具：开关（data-dpaw="tok.ttl" 形式，落到 DP.arms）。
+   o = { dis: 是否禁用 / disTitle: 禁用原因 / label: 可访问名 / tag: 控件旁可见标识（如「固定」）}
+   ★ A4-U2：参数名此前只由相邻的 .k 文本承载（无 label/for、无 aria-label），23 个控件 0 个可访问名；
+     口径固定项的「锁标识」此前只有一个 hover title —— 触屏 / 截图交付 / 打印场景不可见，故补可见标识。 */
+function dpArmsSw(path, on, o) {
+  o = o || {};
+  const off = !!o.dis;
+  const dt = o.disTitle || "该项为口径固定值，不可关闭（使能状态不随配置下发）";
+  /* 标识块级换行呈现：定宽列（如 启用 90px）下与开关同排会顶破列宽 */
+  const tag = (off && o.tag) ? '<div style="margin-top:4px"><span class="tag t-gray" style="min-width:0;font-size:11px;height:18px;line-height:16px">' + esc(o.tag) + "</span></div>" : "";
+  return `<span class="switch"${off ? ' title="' + esc(dt) + '" style="opacity:.55;cursor:not-allowed"' : ""}><input type="checkbox" data-dpaw="${esc(path)}"${o.label ? ' aria-label="' + esc(o.label) + '"' : ""}${on ? " checked" : ""}${off ? " disabled" : ""}><span class="sl"></span></span>` + tag;
+}
+function dpArmsSel(path, xs, cur, o) {
+  o = o || {};
+  return `<select data-dpasel="${esc(path)}"${o.label ? ' aria-label="' + esc(o.label) + '"' : ""}${o.dis ? " disabled" : ""}${o.title ? ' title="' + esc(o.title) + '"' : ""}>${xs.map(x => `<option value="${esc(x[0])}"${String(cur) === String(x[0]) ? " selected" : ""}>${esc(x[1])}</option>`).join("")}</select>`;
+}
+/* ★ A4-I1：下发入口与下发状态**常驻一级页签底部**（渲染在二级面板之外）——
+   此前「可编辑控件」与「保存并下发 / 待下发徽标」分处不同二级页签（②控件在 s2、按钮在 s3；
+   ③控件在 s1、按钮在 s2），改完参数既看不到下发入口，也看不到下发状态。 */
+function dpArmsShipFoot(saveAct, resetAct, discardAct, path) {
+  const dd = DP.arms && DP.arms.dirty;
+  const dirty = (dd && typeof dd === "object")
+    ? (Array.isArray(path) ? path.some(p => !!dd[p]) : !!dd[path])
+    : !!dd;
+  return `<div class="card" data-page-node-id="PgDpArmsShipFoot0001"><div class="card-b" style="display:flex;justify-content:flex-end;align-items:center;gap:8px">
+      <span style="font-size:12.5px;color:var(--txt3);margin-right:auto">${dpShipHtml(DP.arms, path)}</span>
+      ${dirty ? `<button class="btn ghost" type="button" data-act="${discardAct}">放弃改动</button>` : ""}
+      <button class="btn ghost" type="button" data-act="${resetAct}">恢复默认</button>
+      <button class="btn primary" type="button" data-act="${saveAct}">保存并下发</button>
+    </div></div>`;
+}
+/* ★ A4-I4：「放弃改动」的基准 = **最近一次已下发值**（只存参数面六组，不含 tab / dirty 等会话态）。
+   与「恢复默认」（回出厂值）区分开：本动作不下发，网关侧自始未见该改动。 */
+function dpArmsSnap() {
+  const out = {};
+  ["tok", "inj", "ver", "cha", "hum", "tpl"].forEach(g => {
+    out[g] = {};
+    Object.keys(dpArmsDef()[g]).forEach(k => { out[g][k] = DP.arms[g][k]; });
+  });
+  return out;
+}
+/* 效果面指标的**数据来源类别**（技术可行性口径）：
+     自产       = 网关运行时计数 / 审计域聚合 —— 系统看得到自己做了什么；
+     客户端上报 = 只能由注入的 SDK / 前端探针测（网关侧不可知）；
+     外部标签   = 系统**不能自我证明**的指标，须外部标注回流才成立 —— 网关只知道「拦了谁」，
+                 无从知道「拦错了谁」；判据只能来自申诉工单、观察期白名单 / 豁免审批，
+                 以及放行后同主体完成合法业务的弱标注，沉默误报不计入 ⇒ 该值是**下界**。
+                 ★ 2026-10-09 用户裁定：**此类指标不在页面呈现** —— 原先的「确认误报率（下界）」
+                 KPI 已随之移除。本类定义保留登记，供后续若确需恢复时明确其取证路径与下界局限。
+     离线验收   = 需在带标注样本集上离线度量，不是线上实时指标。
+   ★ 只有非「自产」的指标在页面上显式标出来源 —— 自产是默认不必逐个声明；
+     不可自证且无法给出可信取证路径的指标，直接不呈现。 */
+const DP_METRIC_SRC = {
+  "白屏率": "客户端上报",
+  "首屏延迟增量": "客户端上报",
+  "挑战上报时延": "客户端上报",
+  "naive 自动化识别率": "离线验收",
+  "验证放弃率": "自产",
+};
+function dpMetricSrc(t) { return DP_METRIC_SRC[t] || "自产"; }
+
+function dpArmsKpi(label, val, sub) {
+  const src = dpMetricSrc(label);
+  /* ★ 结构约束：.info-grid .ig 是「标签：值」同行的 flex 行，.v 带 min-width:0 + ellipsis。
+     副文案若与值同排，会把值挤成「0.…」（2026-10-08 实测「被挑战率」等 16 处）。
+     故产出**两行式** ig：第一行「标签 + 值」，第二行副文案 —— 副文案不再参与抢宽。 */
+  return `<div class="ig" data-dpsrc="${esc(src)}" style="flex-direction:column;align-items:stretch;gap:2px">
+    <div style="display:flex;align-items:center;gap:3px;min-width:0"><div class="k">${esc(label)}</div><div class="v"><b>${esc(val)}</b></div></div>
+    <div style="font-size:11.5px;color:var(--txt3)">${esc(sub)}${src === "自产" ? "" :
+      ' <span class="tag t-warn" style="margin-left:4px" title="该指标不能由网关自证，须有对应取证通道">来源：' + esc(src) + "</span>"}</div></div>`;
+}
+function dpArmsBar(label, val, pct, color) {
+  return `<div style="flex:1;min-width:150px"><div style="font-size:12px;color:var(--txt3)">${esc(label)}</div>
+    <div class="bars" style="margin:3px 0"><i class="b1" data-armbar="${esc(label)}" data-pct="${pct}" style="width:${pct}%;background:${color}"></i></div>
+    <div style="font-size:12px">${esc(val)}</div></div>`;
+}
+
+/* 令牌参数的**组合**提示：校验范围与签发限流分开放都合理，合起来会互相拖垮 ——
+   范围越宽，单页首屏需要的令牌越多；额度不足 ⇒ 正常用户首屏即被 429。 */
+function dpTokQuotaNote(p) {
+  const rate = (p.issueRate === 0) ? "不限额度" : (p.issueRate + " 次 / 分钟 / 会话");
+  if (p.getCheck === "all") {
+    if (p.issueRate === 0) return "校验范围 = 全部资产开启，签发限流 = 不限额度：签发端点须由边缘限流兜底，否则单会话即可把额度打满。";
+    if (p.issueRate < 60) return "校验范围 = 全部资产开启，签发限流 = " + rate + "：单页首屏并发请求通常 20~80 个，额度会在首屏即被耗尽，正常用户反被 429 拦截。建议 ≥60 次 / 分钟并开启「SPA 首屏并发」。";
+    return "校验范围 = 全部资产开启，签发限流 = " + rate + "，与首屏并发量相称。";
+  }
+  if (p.getCheck === "off") return "校验范围 = 全部豁免：请求只记录不校验，防重放能力不生效 —— 仅供排障使用。";
+  return "校验范围 = 关键资产默认开启（低风险按资产豁免），签发限流 = " + rate + "，与关键资产首屏请求量相称。";
+}
+/* 故障策略（存储不可用）与「关键资产 fail-close」是**两级**、不是两项独立叠加开关：
+   全局已为「拒绝」时，关键资产项不再产生额外差异。 */
+function dpTokFailNote(p) {
+  if (p.failMode === "close") return "故障策略已为「拒绝 + 高优告警」（存储不可用即全量拒绝），「关键资产 fail-close」不再产生额外差异 —— 该开关仅在故障策略为「放行 + 告警」时，用于把关键资产单独收紧。";
+  return p.failClose
+    ? "存储不可用时：非关键资产放行并告警，关键资产拒绝并高优告警（关键资产单独收紧）。"
+    : "存储不可用时：全部资产放行并告警 —— 关键资产不单独收紧，仅记录。";
+}
+/* 签发限流档位的取值说明（不再写进 <option>，见 DP_ISSUE_OPTS 注释） */
+function dpTokIssueHint() { return "签发端点与登录 challenge 同一限流档位 · 超限返回 429（RATE_LIMITED）。"; }
+
+/* ---------- 页签① 动态令牌与防重放 ---------- */
+function dpArmsTokHtml() {
+  const p = DP.arms.tok, e = DP_ARMS_EFF;
+  const fail = [
+    ["nonce 重放（同一 nonce 跨请求复用）", e.tokReplay],
+    ["nonce 过期（超出 TTL）", e.tokExpire],
+    ["nonce 篡改（签名 / 指纹不一致）", e.tokTamper],
+    ["未知来源（无有效会话）", e.tokThirdParty],
+  ].map(r => `<tr><td>${esc(r[0])}</td><td style="width:120px;white-space:nowrap">${r[1]}</td></tr>`).join("");
+  return dpSubTabs("dpA1", [["dpA1s1", "令牌通道与防重放", `
+  <div class="card" data-page-node-id="PgDpArmsTokP1">
+    <div class="card-h"><h3>令牌通道</h3><span class="sub">两条通道的受理对象与 TTL 独立取值 —— 令牌由网关签发与校验，会话密钥不出网关、不进 Cookie，浏览器与 SDK 均不参与令牌生成</span></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst" style="min-width:0"><thead><tr><th style="width:210px">通道</th><th>受理对象</th><th style="width:176px">TTL</th><th style="width:136px">携带方式</th></tr></thead><tbody>
+      <tr><td><b>浏览器通道</b></td><td>经浏览器的合法页面请求</td><td><b>${p.ttl} 秒</b><div style="font-size:11.5px;color:var(--txt3);line-height:1.5">可选 ${DP_TTL_OPTS.map(o => o[0]).join(" / ")}</div></td><td>Cookie 自动携带</td></tr>
+      <tr><td><b>X-Baize-Proof 通道</b></td><td>非浏览器客户端（须 Header 携带的场景）</td><td style="white-space:nowrap">${p.ttlProof} 秒（独立取值）</td><td>请求头</td></tr>
+    </tbody></table></div>
+    <div class="hint-row warn" data-page-node-id="PgDpArmsTokNote1" style="margin:10px 0"><span>
+      X-Baize-Proof 通道 TTL 独立取 60 秒、<b>短于浏览器通道</b>，以压缩头部凭据的暴露面，并配快速轮换与告警联动。</span></div>
+    </div></div>
+  <div class="card" data-page-node-id="PgDpArmsTokP2">
+    <div class="card-h"><h3>令牌与防重放参数</h3><span class="sub">全局默认值 · 逐资产可在「防护策略 · 检测项与参数」覆盖（两处出口同源）</span></div>
+    <div class="card-b">
+    <div class="info-grid">
+      <div class="ig"><div class="k">nonce TTL（浏览器通道）</div><div class="v">${dpArmsSel("tok.ttl", DP_TTL_OPTS, p.ttl, { label: "nonce TTL（浏览器通道）" })}</div></div>
+      <div class="ig"><div class="k">${DP_ISSUE_LABEL}</div><div class="v">${dpArmsSel("tok.issueRate", DP_ISSUE_OPTS, p.issueRate, { label: DP_ISSUE_LABEL })}</div></div>
+      <div class="ig"><div class="k">GET 校验范围</div><div class="v">${dpArmsSel("tok.getCheck", DP_GETCHECK_OPTS, p.getCheck, { label: "GET 校验范围" })}</div></div>
+      <div class="ig"><div class="k">消费语义</div><div class="v">原子一次性（消费即失效 · 不可重复消费）</div></div>
+      <div class="ig"><div class="k">故障策略（存储不可用）</div><div class="v">${dpArmsSel("tok.failMode", DP_FAILMODE_OPTS, p.failMode, { label: "故障策略（存储不可用）" })}</div></div>
+      <div class="ig"><div class="k">关键资产 fail-close</div><div class="v">${dpArmsSw("tok.failClose", p.failClose, { label: "关键资产 fail-close", dis: p.failMode === "close", disTitle: "故障策略已为「拒绝 + 高优告警」：该组合下关键资产不再产生额外差异，本开关暂不生效" })}</div></div>
+      <div class="ig"><div class="k">SPA 首屏并发</div><div class="v">${dpArmsSw("tok.spaMerge", p.spaMerge, { label: "SPA 首屏并发" })}<span class="muted" style="margin-left:6px">并发合并 / 批量签发窗口</span></div></div>
+      <div class="ig"><div class="k">批量签发前置</div><div class="v">须先通过一次浏览器挑战或行为校验</div></div>
+    </div>
+    <div class="hint-row" data-page-node-id="PgDpArmsTokNote2" style="margin:10px 0"><span>${dpTokQuotaNote(p)} ${dpTokIssueHint()}</span></div>
+    <div class="hint-row" data-page-node-id="PgDpArmsTokNote3" style="margin:0 0 10px"><span>${dpTokFailNote(p)}</span></div>
+    </div></div>
+`], ["dpA1s2", "令牌效果", `
+  <div class="card" data-page-node-id="PgDpArmsTokP3">
+    <div class="card-h"><h3>效果 · 今日</h3><span class="sub">下钻完整事件在审计 Dashboard · 长期归档 ≥180 天</span></div>
+    <div class="card-b">
+    <div class="info-grid">
+      ${dpArmsKpi("令牌签发量", e.tokIssue.toLocaleString(), "浏览器通道 + X-Baize-Proof 通道合计")}
+      ${dpArmsKpi("重放拦截", e.tokReplay.toLocaleString(), "同令牌复用 100% 拦截（域级验收）")}
+      ${dpArmsKpi("nonce 拒绝率", ((e.tokReplay + e.tokExpire + e.tokTamper + e.tokThirdParty) / e.tokIssue * 100).toFixed(2) + "%", "含重放 / 过期 / 篡改 / 未知来源 · 与右侧分项和闭合")}
+      ${dpArmsKpi("签发端点限流命中", e.tokRateLimit.toLocaleString(), "429 RATE_LIMITED · 与登录 challenge 同一错误语义")}
+    </div>
+    <div class="tbl-wrap" style="margin-top:12px"><table class="lst" style="min-width:0">
+      <thead><tr><th>nonce 拒绝原因分布（今日）</th><th style="width:120px">次数</th></tr></thead><tbody>${fail}</tbody></table></div>
+    </div></div>`]], "dpA1s1", dpArmsShipFoot("dpArmsTokSave", "dpArmsTokReset", "dpArmsTokDiscard", "tok"));
+}
+
+/* ---------- 页签② JS 注入与动态封装 ---------- */
+function dpArmsInjHtml() {
+  const p = DP.arms.inj, e = DP_ARMS_EFF;
+  /* ★ 2026-10-08 用户裁定：跳过规则是**引擎固有行为**、不构成配置项 ⇒ 只读呈现，不给开关；
+     原先四个 inj.skip* 状态键同步删除。命中计数（请求次）保留，供核对。 */
+  const skips = [
+    ["非 HTML 响应", "仅对 HTML 文档注入；脚本、图片、JSON 等一律跳过"],
+    ["响应体 > " + DP_INJ_MAX_MB + " MiB", "超阈值不注入、原样透传（阈值为引擎侧参数 · 默认 " + DP_INJ_MAX_MB + " MiB · 本页只读呈现）"],
+    ["CSP 严格页（无授权通道）", "仅当无法获得 CSP 授权（无 nonce / 无 unsafe-inline 通道）时才跳过；平台自身注入的 CSP 不计入判据"],
+    ["API 路径", "接口类路径不注入，不影响程序化调用"],
+  ].map(r => `<tr><td style="white-space:nowrap"><b>${esc(r[0])}</b></td><td>${esc(r[1])}</td>
+    <td style="width:130px;white-space:nowrap">${e.injSkipBy[r[0]] != null ? e.injSkipBy[r[0]].toLocaleString() : "—"}</td></tr>`).join("");
+  /* ★ 2026-10-08 用户裁定：**不支持的范围不逐行列出** —— 表单字段名 / Cookie 名 / URL 混淆属传输层混淆，
+     依二期 PRD F1.2 规则 5 本就不做，改为下方一句脚注说明即可。 */
+  const variants = [
+    ["varName", "变量名随机化", "每次注入时对 SDK 变量标识随机化，浏览器端运行时还原"],
+    ["varStr", "字符串随机化", "常量字符串随机化，提高静态分析成本"],
+    ["varFlow", "控制流随机化", "代码路径随机重排，等价语义不变"],
+  ].map(r => `<tr><td style="white-space:nowrap"><b>${esc(r[1])}</b></td><td>${esc(r[2])}</td>
+    <td style="width:90px">${dpArmsSw("inj." + r[0], p[r[0]], { label: r[1] })}</td></tr>`).join("");
+  /* ★ 兼容矩阵（2026-10-08 口径修正）：客户端证据不可采**不等于**免除验证 ——
+     降级只降「客户端可采证据」，不降「服务端判定与处置」；证据缺失计为风险加分项。
+     ⚠ 语法层事实：ES5-only 引擎（IE11）在解析期遇到箭头函数 / const / 模板串 / Promise /
+       fetch / crypto.subtle 会抛 SyntaxError ⇒ 整块脚本不执行（非部分降级）⇒ 按能力分发脚本版本。 */
+  const compat = [
+    ["Chrome / Firefox / Safari / Edge", "全档（fp + exec + interact）", "t-ok"],
+    ["微信内置浏览器 / 银行 App WebView", "按内核能力探测取档（需单独验证）", "t-warn"],
+    ["IE11（ES5-only 引擎）", "下发 ES5 轻量档；无法执行时转服务端强校验（不降判定、不放行）", "t-warn"],
+    ["脚本被禁用 / 执行失败", "服务端强校验：证据缺失计为风险加分项，按档位照常处置", "t-warn"],
+  ].map(r => `<tr><td>${esc(r[0])}</td><td style="width:340px"><span class="tag ${r[2]}" style="white-space:normal;text-align:left;height:auto;padding:3px 10px;line-height:1.5">${esc(r[1])}</span></td></tr>`).join("");
+  return dpSubTabs("dpA2", [["dpA2s1", "注入与跳过规则", `
+  <div class="card" data-page-node-id="PgDpArmsInjP1">
+    <div class="card-h"><h3>注入总况</h3><span class="sub">SDK 在响应处理阶段注入 HTML 响应 · 登录页与授权页不跳过注入，但挑战降级为轻量 · 注入脚本按客户端能力分发版本（ES5 / ES2017+），能力不足不下发无法解析的语法</span></div>
+    <div class="card-b">
+    <div class="info-grid">
+      ${dpArmsKpi("已注入页面", e.injPages + " 个", "注入到已启用对象内的页面数（同一对象内多页面分别计数）")}
+      ${dpArmsKpi("跳过页面", e.injSkip + " 个", "按下方跳过规则命中 · 规则计数为请求次数（≠ 页面数）；" + e.injSkip + " = 上述 4 类规则命中的去重页面数（同一页面命中多类只计一次）")}
+      ${dpArmsKpi("注入覆盖率", (e.injPages / (e.injPages + e.injSkip) * 100).toFixed(1) + "%", "注入成功 ÷ 应注入")}
+      ${dpArmsKpi("白屏率", e.injWhite, "渲染失败 ÷ 注入成功页面 · 域级验收 ≤0.1% · 口径为域级累计，分母非本页「今日已注入」数")}
+      ${dpArmsKpi("首屏延迟增量", e.injDelay + " ms", "P95 增量 · 域级验收 ≤50ms")}
+      ${dpArmsKpi("挑战上报时延", e.injReportDelay + " ms", "异步上报 · 域级验收 ≤100ms")}
+    </div></div></div>
+  <div class="card" data-page-node-id="PgDpArmsInjP2">
+    <div class="card-h"><h3>注入跳过规则</h3><span class="sub">引擎固有行为 · 响应体阈值为引擎侧参数、本页只读呈现 · 命中计数为今日（请求次）</span></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst" style="min-width:0"><thead><tr><th style="width:200px">规则</th><th>说明</th><th style="width:130px">今日命中（请求次）</th></tr></thead>
+      <tbody>${skips}</tbody></table></div>
+    </div></div>
+`], ["dpA2s2", "动态封装范围", `
+  <div class="card" data-page-node-id="PgDpArmsInjP3">
+    <div class="card-h"><h3>动态封装范围</h3><span class="sub">仅代码级变体 · 浏览器端运行时还原，不改变对外形态</span></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst" style="min-width:0"><thead><tr><th style="width:200px">变体面</th><th>说明</th><th style="width:90px">启用</th></tr></thead>
+      <tbody>${variants}</tbody></table></div>
+    <div class="hint-row warn" data-page-node-id="PgDpArmsInjNote1" style="margin:10px 0"><span>
+      不做传输层混淆：表单字段名、Cookie 名与 URL 路径不改写。</span></div>
+    </div></div>
+`], ["dpA2s3", "兼容矩阵", `
+  <div class="card" data-page-node-id="PgDpArmsInjP4">
+    <div class="card-h"><h3>兼容矩阵</h3><span class="sub">脚本不可用或不可采时（不支持 · 被禁用 · 解析失败）：<b>保留全部服务端判定与处置</b>，客户端证据缺失计为风险加分项</span></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst" style="min-width:0"><thead><tr><th>浏览器 / 运行环境</th><th style="width:340px">处置</th></tr></thead>
+      <tbody>${compat}</tbody></table></div>
+    <div class="hint-row warn" data-page-node-id="PgDpArmsInjNote2" style="margin:10px 0"><span>
+      <b>UA 只决定下发哪份脚本，不决定是否校验。</b>是否校验由服务端不变量决定：nonce 一次性 + 独立 TTL · method / path / body 绑定指纹在<b>网关侧</b>计算 · 行为基线偏离 · 账号维度频率约束 · 语义检测与限流命中 —— 这些能力不依赖客户端脚本，客户端证据缺失只提高评分、不撤销判定。客户端自报信息与<b>注入脚本实测的运行环境</b>矛盾时（如自称 IE11 而脚本实测为现代浏览器内核），按「客户端声明不可信」提高评分。</span></div>
+    </div></div>`]], "dpA2s2", dpArmsShipFoot("dpArmsInjSave", "dpArmsInjReset", "dpArmsInjDiscard", "inj"));
+}
+
+/* ---------- 页签③ 真实浏览器验证 ---------- */
+function dpArmsVerHtml() {
+  const p = DP.arms.ver, e = DP_ARMS_EFF;
+  const rows = [
+    ["ver.execResult", "校验执行结果", "随机脚本在真实浏览器中执行后回传的结果须与预期一致"],
+    ["ver.execTime", "校验执行耗时", "同一脚本在不同环境的耗时分布用于区分仿真环境"],
+    ["ver.hashGuard", "脚本内容哈希校验", "哈希不符即不执行并告警 —— 防止脚本被拼接篡改"],
+    ["ver.autoFactor", "自动化迹象仅作风险因子", "webdriver 标记、调试协议残留等只进评分，不作判定依据"],
+  ].map(r => `<tr><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td style="width:90px">${dpArmsSw("ver." + r[0].slice(4), p[r[0].slice(4)], { label: r[1], dis: r[0] === "ver.autoFactor", tag: r[0] === "ver.autoFactor" ? "固定" : "" })}</td></tr>`).join("");
+  return dpSubTabs("dpA3", [["dpA3s1", "验证参数", `
+  <div class="card" data-page-node-id="PgDpArmsVerP1">
+    <div class="card-h"><h3>验证参数</h3><span class="sub">真实浏览器验证 = 随机脚本执行 + 环境一致性，验证「浏览器是否为真实环境」</span></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst" style="min-width:0"><thead><tr><th style="width:220px">校验项</th><th>说明</th><th style="width:90px">启用</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    </div></div>
+`], ["dpA3s2", "效果与能力边界", `
+  <div class="card" data-page-node-id="PgDpArmsVerP2">
+    <div class="card-h"><h3>效果 · 今日</h3><span class="sub">验证下达 / 通过 / 失败与一致性分布</span></div>
+    <div class="card-b">
+    <div class="info-grid">
+      ${dpArmsKpi("验证下达", e.verIssued.toLocaleString(), "随机脚本执行（exec）下达次数 · 同一会话内可多次下达，会话数见「动态挑战与人机验证」页签的「挑战下达」")}
+      ${dpArmsKpi("验证通过", e.verPass.toLocaleString(), "exec 校验通过（按次计，非会话数）· 通过后建立会话级标记")}
+      ${dpArmsKpi("验证失败", e.verFail.toLocaleString(), "记风险事件 · 连续失败转处置")}
+      ${dpArmsKpi("指纹一致率", e.verFpOk, "fp 模式 · 用于会话绑定")}
+      ${dpArmsKpi("naive 自动化识别率", e.verNaive, "域级验收：在带标注的 naive 自动化样本集上离线度量 · 阻断 ≥95%（非线上实时指标）")}
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px">
+      ${dpArmsBar("验证通过", e.verPass.toLocaleString(), Math.round(e.verPass / e.verIssued * 100), "#16a34a")}
+      ${dpArmsBar("验证失败", e.verFail.toLocaleString(), 100 - Math.round(e.verPass / e.verIssued * 100), "#dc2626")}
+    </div></div></div>
+  <div class="card" data-page-node-id="PgDpArmsVerP3">
+    <div class="card-h"><h3>能力边界</h3><span class="sub">域级验收口径按威胁集分级</span></div>
+    <div class="card-b">
+    <div style="font-size:12.5px;color:var(--txt3);line-height:1.8">
+      对 <b>stealth 级</b>高级自动化<b>明确不承诺识别</b> —— 验证与挑战的目标是提高自动化成本，不构成「真人与否」的绝对判定。</div>
+    </div></div>`]], "dpA3s1", dpArmsShipFoot("dpArmsVerSave", "dpArmsVerReset", "dpArmsVerDiscard", "ver"));
+}
+
+/* ---------- 页签④ 动态挑战 ---------- */
+function dpArmsChaHtml() {
+  const p = DP.arms.cha, e = DP_ARMS_EFF;
+  /* ★ 2026-10-08 合并：原页签⑤「人机验证」并入本页签 —— 两形态是 interact 触发后的**页面呈现**，
+     与模式层属同一能力，不再分置两页（同一映射不得两个出口）。 */
+  const ph = DP.arms.hum;
+  const humForms = [
+    ["行为验证", "采集交互过程的轨迹与节奏特征，判定是否具备真实交互", "hum.beh", ph.beh],
+    ["计算题 / 复杂验证", "需人工判读的题目或复杂验证，程序化应答难以稳定通过", "hum.quiz", ph.quiz],
+  ];
+  /* ★ A4-B1：启动门槛落在 P4 档（不注入客户端挑战，改由追加认证承接）时，
+     fp / exec / interact 与挑战页两形态**整体不生效** —— 原实现下开关仍显示「启用」，
+     管理员为「提高门槛」选 80 分即静默关掉整个挑战模块 ⇒ 此处推导失效态、置灰并说明。 */
+  const p4 = p.trigScore >= 80;
+  const p4Note = "启动门槛已设为 P4 档（≥ 80 分）：该档不注入客户端挑战（改由追加认证承接），本项不生效";
+  const humFormCtl = humForms.map(k =>
+    `<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap">${esc(k[0])}${dpArmsSw(k[2], k[3], { label: k[0], dis: p4, disTitle: p4Note })}</span>`).join("");
+  /* ★ A4-B3：interact 已启用而两形态全关 ⇒ 触发后无可呈现形态，此前无约束也无语义 */
+  const humNoForm = (!!p.interact && !ph.beh && !ph.quiz)
+    ? ' <span class="tag t-warn" style="min-width:0">两形态全关 ⇒ interact 触发后降级为静默档（fp + exec）</span>' : "";
+  const modes = [
+    ["fp", "指纹一致性", "会话绑定", true, "默认启用 · 不单独构成挑战", "P2 起（轻量挑战）"],
+    ["exec", "随机脚本执行", "自动化识别", true, "默认启用 · 校验执行结果与耗时", "P2 起（轻量挑战）"],
+    ["interact", "交互证明", "高风险会话", false, "P3 档触发 · P4 档不注入客户端挑战，改由追加认证承接", "P3 起"],
+  ].map(r => `<tr><td style="white-space:nowrap"><b>${esc(r[0])}</b>（${esc(r[1])}）</td><td>${esc(r[2])}</td>
+    <td>${esc(r[4])}</td>
+    <td style="text-align:center">${dpArmsSw("cha." + r[0], !!p[r[0]], { label: r[1], dis: p4, disTitle: p4Note })}</td>
+    <td><span style="color:var(--txt3)">${esc(r[5])}</span></td></tr>`).join("");
+  /* 最高档：不注入客户端挑战，改由本模块**主动发起**追加认证 —— 用户在合适方式下重新认证、
+     不通过不得继续执行。 */
+  const addAuthRow = `<tr><td style="white-space:nowrap"><b>ADD_AUTH</b>（追加认证）</td><td>P4 档 · 最高档</td>
+    <td>P4 档不注入客户端挑战：由动态防护<b>主动发起</b>追加认证 —— 按目标级别（即被访问目标资产的安全等级）请求认证服务再认证；<b>不通过则不得继续执行</b>，失败或仍异常才转拒绝 / 切断</td>
+    <td style="text-align:center"><span style="color:var(--txt3)">—</span></td>
+    <td><span style="color:var(--txt3)">P4 档</span></td></tr>`;
+  /* 风险档位与处置基准（原页签⑤ 的 P1~P4 表 · 本页唯一出口） */
+  const humRows = [
+    ["P1", "0 ~ 19", "不触发主动对抗 · 按既有 ALLOW 链路放行"],
+    ["P2", "20 ~ 49", "观察记录（不处置）· 可触发<b>轻量挑战</b>提升置信度"],
+    ["P3", "50 ~ 79", "<b>主动对抗默认启用档</b>（观察记录档起步）"],
+    ["P4", "80 ~ 100", "追加认证（前置）→ 失败或仍异常 → 切断 / 拒绝"],
+  ].map(r => `<tr><td><b>${r[0]}</b></td><td style="width:96px">${r[1]}</td><td>${r[2]}</td></tr>`).join("");
+  const failBy = [["silent", "静默挑战档（fp + exec）"], ["interact", "交互挑战档（interact）"]]
+    .map(r => `<tr><td>${esc(r[1])}</td><td style="width:120px">${DP_ARMS_EFF.chaFailBy[r[0]]}</td></tr>`).join("");
+  return dpSubTabs("dpA4", [["dpA4s1", "挑战模式分级", `
+  <div class="card" data-page-node-id="PgDpArmsChaP1">
+    <div class="card-h"><h3>挑战模式分级</h3><span class="sub">响应经 /_baize/* 保留端点返回 · 通过后建立会话级标记</span></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst" style="min-width:0"><thead><tr><th style="width:200px">模式</th><th style="width:130px">用途</th><th>说明</th><th style="width:88px">启用</th><th style="width:150px">触发档位</th></tr></thead>
+      <tbody>${modes}${addAuthRow}</tbody></table></div>
+    <div data-page-node-id="PgDpArmsChaHumForm" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--txt3);line-height:1.8;margin-top:8px">挑战页形态（interact 触发后呈现，仅对已下达挑战的会话）：${humFormCtl}${humNoForm}</div>
+    <div style="font-size:12.5px;color:var(--txt3);line-height:1.8;margin-top:8px"><b>触发档位</b>为<b>口径固定值</b>，不提供切换配置；均为<b>本模块全局默认</b>，逐资产可在「防护策略 · 检测项与参数 → 动态挑战」覆盖（只存差异）。</div>
+    </div>
+    <div class="card-b" style="border-top:1px solid var(--line)">
+    <div class="info-grid" style="grid-template-columns:repeat(2, minmax(0,1fr))">
+      <div class="ig"><div class="k">动态挑战启动门槛</div><div class="v">${dpArmsSel("cha.trigScore", DP_TRIGSCORE_OPTS, p.trigScore, { label: "动态挑战启动门槛" })}</div></div>
+      <div class="ig"><div class="k">连续失败升级阈值</div><div class="v">${dpArmsSel("cha.failLimit", DP_FAILLIMIT_OPTS, p.failLimit, { label: "连续失败升级阈值" })}</div></div>
+    </div>
+    ${p4 ? '<div class="hint-row warn" style="margin-top:8px"><span>启动门槛现设为 <b>P4 档</b>：该档不注入客户端挑战（改由追加认证承接）⇒ 模式表的 fp / exec / interact 与「挑战页形态」两开关<b>均不生效</b>，已置为停用态。</span></div>' : ""}
+    </div></div>
+`], ["dpA4s2", "处置基准", `
+  <div class="card" data-page-node-id="PgDpArmsChaP1b">
+    <div class="card-h"><h3>风险档位与处置基准</h3><span class="sub">档位取产品级风险分级 · 本页不自立分档 · 分档阈值不下发门户</span></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst" style="min-width:0">
+      <thead><tr><th style="width:96px">威胁分级</th><th style="width:96px">评分</th><th>处置基准</th></tr></thead>
+      <tbody>${humRows}</tbody></table></div>
+    </div></div>
+`], ["dpA4s3", "挑战效果", `
+  <div class="card" data-page-node-id="PgDpArmsChaP3">
+    <div class="card-h"><h3>效果 · 今日</h3><span class="sub">被挑战率为域级验收指标，常显</span></div>
+    <div class="card-b">
+    <div class="info-grid">
+      ${dpArmsKpi("挑战下达", e.chaIssued.toLocaleString(), "挑战下发会话（按会话计 · 含静默档 fp+exec 与交互档 interact）· 分母 = 近 24h 请求量（含机器人流量）· 与总览「处置档位计数」的 CHALLENGE 粒度不同（此处按会话，总览按请求、仅 P3 档）")}
+      ${dpArmsKpi("挑战通过", e.chaPass.toLocaleString(), "挑战通过后建立挑战标记（按会话计）")}
+      ${dpArmsKpi("挑战失败", e.chaFail.toLocaleString(), "记风险事件 · 达阈值转限流处置")}
+      ${dpArmsKpi("被挑战率", ((e.chaIssued / DP_STAT24.req) * 100).toFixed(2) + "%", "挑战下达 ÷ 近 24h 请求（" + e.chaIssued.toLocaleString() + " / " + DP_STAT24.req.toLocaleString() + "）· 域级验收 ≤0.5%（分母为请求总量，含机器人流量）· 与「正常用户被挑战率」不同名：后者分母为正常会话，以 PoC 实测为准")}
+      ${dpArmsKpi("人机验证呈现量", e.humSess.toLocaleString(), "已呈现挑战页的会话数 · 呈现 = 通过 + 未通过 + 放弃")}
+      ${dpArmsKpi("验证通过率", ((e.humPassN / e.humSess) * 100).toFixed(1) + "%", "通过 ÷ 呈现（" + e.humPassN.toLocaleString() + " / " + e.humSess.toLocaleString() + "）")}
+      ${dpArmsKpi("验证放弃率", ((e.humGiveUpN / e.humSess) * 100).toFixed(2) + "%", "呈现后未完成即离开 ÷ 呈现")}
+    </div>
+    <div class="tbl-wrap" style="margin-top:12px"><table class="lst" style="min-width:0">
+      <thead><tr><th>挑战失败分布（按档位 · 与上方挑战失败合计闭合）</th><th style="width:120px">次数</th></tr></thead><tbody>${failBy}</tbody></table></div>
+    </div></div>`]], "dpA4s1", dpArmsShipFoot("dpArmsChaSave", "dpArmsChaReset", "dpArmsChaDiscard", ["cha", "hum"]));
+}
+
+/* ---------- 判据维度清单（内审视图 · 「判据维度」二级页签）----------
+   把「引擎」本身画出来：逐维列 观测层 / 承载能力（呈现名 `srcUi` —— 追溯号 `src` 不进 UI）/
+   可自证性 / 被哪些预设引用 / 维度内子项。
+   ★ 2026-10-09 用户裁定（产品呈现面收窄）：**未在本期 / 本方案实现的维度不进产品** ——
+     本卡原按「归属分组」列暴露「前向依赖 / 无归属」两类缺口（连接层 / 诱捕 / 情报），
+     现将**诱捕 / 情报**两者连引擎登记一并撤除；**连接层按「JA4 单点提回本期」保留**
+     （只承载 JA4、仅作交叉输入 —— 见 DP_DIMS 的 `conn` 条）⇒ 本卡只呈现**本方案真正交付的维度**，
+     缺口不再进产品；
+     归属分组列随之整列删除（撤除后只剩「本期交付 / 平台现有」两档，区分度不足）。
+   ★ 内审视图：本卡仍标注「可自证性」—— 它是处置授权边界（可自证才允许驱动处置），
+     属实现面口径，对外材料应关闭本卡。
+   ★ 2026-10-09：本卡自页签⑤ 正文移入**二级页签**「判据维度」。 */
+function dpDimListHtml() {
+  const rows = DP_DIMS.map(d => {
+    const users = dpCDimUsers(d.k);
+    return '<tr><td style="white-space:nowrap"><b>' + esc(d.n) + '</b></td>' +
+      '<td style="white-space:nowrap">' + esc(d.layer) + '</td>' +
+      /* ⚠ 本列**不得加 nowrap** —— 值超列宽后会溢进邻列并被裁（宁可换行、不得压字）。 */
+      '<td>' + esc(d.srcUi || d.src) + '</td>' +
+      '<td style="width:96px;white-space:nowrap">' + (d.sc ? '<span class="tag t-ok">可自证</span>' : '<span class="tag t-warn">不可自证</span>') + '</td>' +
+      /* 紧凑标签：`.tag` 有 min-width:56px 地板，4 个标签在 208px 列内必然折行（行高 45 → 67）；
+       解地板 + 11px 字号后 4 标签单行容纳（实测行高回落 45）。 */
+      '<td>' + (users.length ? users.map(n => '<span class="tag t-gray" style="min-width:0;font-size:11px;height:18px;line-height:16px;padding:0 6px">' + esc(n) + '</span>').join(" ") : '<span style="color:var(--txt3)">无场景引用</span>') + '</td>' +
+      /* ★ 有效性边界（`note`）紧随子项呈现 —— 内审视图是承载「这条判据能用在哪、能不能单独定案」的地方；
+         场景表侧只在标签 title 里带（同源，见 dpTplQTags）。 */
+      '<td style="color:var(--txt3)">' + esc(d.sub.join(" / ")) + (dpDimNoteText(d) ? '<div style="margin-top:2px;font-size:11px;line-height:1.45">' + esc(dpDimNoteText(d)) + '</div>' : "") + '</td></tr>';
+  }).join("");
+  return '<div class="card" data-page-node-id="PgDpArmsTplP1">' +
+    '<div class="card-h"><h3>判据维度清单 <span class="tag t-warn">内审视图</span></h3><span class="sub">四类场景由<b>判据维度的组合</b>得到 · 逐维列承载能力与可自证性</span></div>' +
+    '<div class="card-b">' +
+    '<div class="tbl-wrap"><table class="lst" style="min-width:0" id="dpDimTbl"><thead><tr>' +
+    '<th style="width:110px">判据维度</th><th style="width:106px">观测层</th><th style="width:176px">承载能力</th><th style="width:102px">可自证性</th><th style="width:220px">被哪些场景引用</th><th>维度内子项</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '</div></div>';
+}
+
+/* ---------- 页签：场景化模板 ----------
+   独立成页（2026-10-08 裁定）：模板产出的是**动态挑战**的参数组合，不属人机验证。
+   本页 = 全局开关 + 判据 / 动作口径 + 命中 / 通过对照；逐资产覆盖在「防护策略 · 场景化防护模板」。 */
+function dpArmsTplHtml() {
+  const p = DP.arms.tpl, e = DP_ARMS_EFF;
+  /* ★ 单源：判据 / 动作 / 默认继承一律取自 DP_TPLS（与「防护策略 · 场景化防护模板」同一份定义）——
+     原先两个出口各抄一份同样的三条文案，同一事实两处硬编码，必然改一处漏一处。 */
+  const tpls = DP_TPLS.map(t => {
+    const hit = e.tplHit[t.k] || 0, pass = e.tplPass[t.k] || 0;
+    return `<tr><td style="white-space:nowrap"><b>${esc(t.n)}</b></td>
+      <td>${dpTplQTags(t)}</td>
+      <td style="width:148px">${t.needRange ? '<span class="tag t-warn">逐资产配置</span><div style="font-size:11.5px;color:var(--txt3)">在「防护策略 · 场景化防护模板」维护</div>' : '<span class="tag t-gray">系统识别</span>'}</td>
+      <td>${esc(dpTplAText(t))}</td>
+      <td style="width:130px;white-space:nowrap">${esc(t.inh)}</td>
+      <td style="width:152px"><b>${hit.toLocaleString()}</b> / ${pass.toLocaleString()}
+        <span style="color:var(--txt3)">（${hit ? (pass / hit * 100).toFixed(1) : "0.0"}%）</span></td>
+      <td style="width:88px">${dpArmsSw("tpl." + t.k, p[t.k], { label: t.n })}<div data-dptplg="${esc(t.k)}" style="font-size:11.5px;color:var(--txt3);margin-top:3px">${p[t.k] ? "已启用" : "已停用"}</div></td></tr>`;
+  }).join("");
+  const sceneCard = `
+  <div class="card" data-page-node-id="PgDpArmsTplP0">
+    <div class="card-h"><h3>场景化模板</h3><span class="sub">四类场景由控制台开关启用 · 判据阈值不在本页配置 · 判据范围在「防护策略 · 场景化防护模板」逐资产配置</span></div>
+    <div class="card-b">
+    <div class="tbl-wrap"><table class="lst" style="min-width:0" id="dpArmsTplTbl"><thead><tr>
+      <th style="width:88px">模板</th><th style="width:348px">判据维度</th><th style="width:120px">判据范围</th><th>场景固有约束</th>
+      <th style="width:158px">默认继承</th><th style="width:152px">今日命中 / 通过</th><th style="width:88px">启用</th></tr></thead>
+      <tbody>${tpls}</tbody></table></div>
+    </div>
+    </div>`;
+  /* ★ 二级页签拆分（2026-10-09 用户裁定「将场景与判据分成两个 tab」）：
+     场景（四预设表）与判据（维度清单）是**同一关系的两个方向** —— 场景→维度 / 维度→场景；
+     拆前两卡叠加 1517px、远超 726px 视口（实测：场景表卡 746 + 清单卡 771）；
+     拆后各自独立成屏（2026-10-09 实测：场景表卡 **615px**、判据清单卡 **543px** —— 后者自 722px
+     回落，因未实现三维撤除 + 「归属分组」列删除，见同日「未实现维度撤出产品」批），不再互相挤占。
+     二级页签命名空间（.subtabs / data-st / .tbp2）与一级页签完全隔离 ——
+     一级结构**不变**（A49 锁定「五页签 + 人机验证已并入页签④」），此处不新增一级页签。
+     两个二级面板**常驻 DOM**（.tbp2 仅 display:none）⇒ 隐藏态下 A45 / A49 / A74 取数不受影响。 */
+  return dpSubTabs("dpA5", [
+    ["dpA5s1", "场景模板", sceneCard],
+    ["dpA5s2", "判据维度", dpDimListHtml()],
+  ], "dpA5s1", dpArmsShipFoot("dpArmsTplSave", "dpArmsTplReset", "dpArmsTplDiscard", "tpl"));
+}
+
+/* ---- 对抗能力页 · 参数提交与恢复默认（五页签共用；下发口径与防护策略页一致） ---- */
+const DP_ARMS_PATH = {
+  tok: "动态令牌与防重放", inj: "JS 注入与动态封装", ver: "真实浏览器验证",
+  cha: "动态挑战", hum: "人机验证", tpl: "场景化模板",
+};
+/* 挑战与人机验证在页面上是**同一个一级页签**（「动态挑战与人机验证」）：联合提交 / 恢复默认时
+   用页签实名，不拼成「动态挑战 / 人机验证」（B6-15）。 */
+function dpArmsLabel(paths) {
+  if (paths.length === 2 && paths.indexOf("cha") >= 0 && paths.indexOf("hum") >= 0) return "动态挑战与人机验证";
+  return paths.map(p => DP_ARMS_PATH[p] || p).join(" / ");
+}
+function dpArmsCommit(path) {
+  const paths = Array.isArray(path) ? path : [path];
+  const label = dpArmsLabel(paths);
+  const nParam = paths.reduce((n, p) => n + Object.keys(DP.arms[p] || {}).length, 0);
+  /* ★ A4-U3：页面自己判定为「有害」的组合（GET 校验范围 = 全部资产 × 签发限流 < 60 次 / 分钟）
+     原先仅出一行页内提示，下发弹窗与其它页签完全相同 —— 一键即可把该组合下发出去。
+     此处把风险回显进下发弹窗，使「页面自评有害」的组合不再静默下发。 */
+  let risk = "";
+  if (paths.indexOf("tok") >= 0) {
+    const _tk = DP.arms.tok || {};
+    if (_tk.getCheck === "all" && _tk.issueRate !== 0 && _tk.issueRate < 60) {
+      risk = '<br><b style="color:#b45309">风险组合</b>：校验范围 = 全部资产开启 × 签发限流 = ' + _tk.issueRate +
+        " 次 / 分钟 / 会话 —— 页面已判定「额度会在首屏即被耗尽，正常用户反被 429 拦截」。请确认是否仍要下发。";
+    }
+  }
+  confirmDlg("保存并下发 · " + label,
+    "将把<b>" + esc(label) + "</b>的 <b>" + nParam + " 项参数</b>作为全局默认值下发：<b>热生效 ≤2s</b>、不触发 reload；" +
+    "影响面 = 全部未单独覆盖该组参数的防护对象；已按资产单独覆盖的检测项参数不受影响。<b>本次变更入审计</b>。" +
+    "<br><b>「取消」仅不下发</b>：改动保留为草稿（徽标保持「待下发」），可用「放弃改动」回退到最近一次已下发值。" + risk, () => {
+    paths.forEach(p => { if (DP.arms.dirty && typeof DP.arms.dirty === "object") DP.arms.dirty[p] = false; });
+    DP.arms.applied = dpArmsSnap();
+    dpLog("全局", "更新对抗能力参数「" + label + "」并下发");
+    dpSave();
+    closeDlg();
+    renderDpArms();
+    dpShip();
+    toast("对抗能力参数已下发：" + label);
+  }, "保存并下发");
+}
+function dpArmsRestore(path) {
+  const paths = Array.isArray(path) ? path : [path];
+  const label = dpArmsLabel(paths);
+  /* ★ A4-I5：与「保存并下发」弹窗同口径 —— 补「N 项参数」与「影响面」两句（原仅有恢复动作说明） */
+  const nParam = paths.reduce((n, p) => n + Object.keys(dpArmsDef()[p] || {}).length, 0);
+  confirmDlg("恢复默认 · " + label,
+    "将把<b>" + esc(label) + "</b>的 <b>" + nParam + " 项参数</b>恢复为出厂默认值并下发：<b>热生效 ≤2s</b>、不触发 reload；" +
+    "影响面 = 全部未单独覆盖该组参数的防护对象；已按资产单独覆盖的参数不受影响。<b>本次变更入审计</b>。", () => {
+    paths.forEach(p => { if (DP.arms[p]) DP.arms[p] = JSON.parse(JSON.stringify(dpArmsDef()[p])); });
+    paths.forEach(p => { if (DP.arms.dirty && typeof DP.arms.dirty === "object") DP.arms.dirty[p] = false; });
+    DP.arms.applied = dpArmsSnap();
+    dpLog("全局", "恢复对抗能力参数默认值「" + label + "」并下发");
+    dpSave();
+    closeDlg();
+    renderDpArms();
+    dpShip();
+    toast("已恢复默认并下发：" + label);
+  }, "恢复默认");
+}
+/* ★ A4-I4：「放弃改动」= 回退到**最近一次已下发值**（与「恢复默认」回出厂值区分开）。
+   只丢弃草稿、不触发下发 —— 网关侧自始未见该改动，故不写审计的「已下发」类留痕。 */
+function dpArmsDiscard(path) {
+  const paths = Array.isArray(path) ? path : [path];
+  const label = dpArmsLabel(paths);
+  confirmDlg("放弃改动 · " + label,
+    "将丢弃<b>" + esc(label) + "</b>尚未下发的改动，回退到<b>最近一次已下发值</b>；" +
+    "本动作<b>不下发</b>，网关侧自始未见该改动，故不影响线上防护。", () => {
+    const ap = DP.arms.applied || dpArmsDef();
+    paths.forEach(p => { if (ap[p] && DP.arms[p]) DP.arms[p] = JSON.parse(JSON.stringify(ap[p])); });
+    paths.forEach(p => { if (DP.arms.dirty && typeof DP.arms.dirty === "object") DP.arms.dirty[p] = false; });
+    dpLog("全局", "放弃对抗能力参数「" + label + "」未下发的改动");
+    dpSave();
+    closeDlg();
+    renderDpArms();
+    toast("已放弃未下发的改动：" + label);
+  }, "放弃改动");
+}
+/* 页签外部入口（与 window.dpAlertPg 同范式）：供深链 / 跨页定位使用 */
+window.dpArmsTab = function (t) {
+  dpLoad();
+  DP.arms.tab = t || "dpA1";
+  dpSave();
+  renderDpArms();
+};
+
+/* ==========================================================================
+   事件委派（click + change）· 本模块动作一律 dp 前缀，不与既有模块冲突
+   ========================================================================== */
+/* 一级页签内的二级页签（内容板块细分）。
+   ⚠ 只读 DP.sub、不写状态 —— 同一批 .tbp 会在**同一次渲染**里先后求值（与 dpBaseBHtml 同一条纪律），
+     任何一方写状态都会把另一方刚渲染的结果复位。
+   items = [[面板 id, 标签, HTML], ...]；owner = 一级面板 id（如 dpA2）；def = 默认二级面板 id。 */
+function dpSubTabs(owner, items, def, foot) {
+  const want = DP.sub && DP.sub[owner];
+  const cur = items.some(x => x[0] === want) ? want : (def || (items[0] && items[0][0]));
+  /* ★ A4-U1：ARIA Tabs 模式 —— 按钮 role="tab" + aria-selected + aria-controls，面板 role="tabpanel" + aria-labelledby。
+     （容器此前只有 role="tablist"，列表内没有可识别的 tab 项，也没有「当前选中」信息。）
+     ★ A4-I1：foot 渲染在**二级面板之外**（一级面板底部）⇒ 任一二级页签下都能看到下发入口与下发状态。 */
+  return `<div class="subtabs" id="` + owner + `Sub" role="tablist">`
+    + items.map(x => `<button type="button" role="tab" data-st="` + x[0] + `" id="` + owner + `Sub_` + x[0] + `" aria-controls="` + x[0] + `" aria-selected="` + (cur === x[0] ? "true" : "false") + `" class="` + (cur === x[0] ? "on" : "") + `">` + x[1] + `</button>`).join("")
+    + `</div>`
+    + items.map(x => `<div class="tbp2` + (cur === x[0] ? " on" : "") + `" id="` + x[0] + `" role="tabpanel" aria-labelledby="` + owner + `Sub_` + x[0] + `">` + x[2] + `</div>`).join("")
+    + (foot || "");
+}
+/* 二级页签切换：只作用于本二级容器所在的父节点，不触碰一级 .tbp */
+function showSubTab(navId, which) {
+  const nav = document.getElementById(navId);
+  if (!nav) return;
+  const box = nav.parentNode;
+  box.querySelectorAll(".tbp2").forEach(p => p.classList.remove("on"));
+  const panel = document.getElementById(which);
+  if (panel) panel.classList.add("on");
+  nav.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.st === which));
+}
+
+function dpMount(pg) {
+  /* 页签切换不在此绑定：改为全局 click 委派（见下方 DP 页签分支）。
+     原因：本模块每次交互都会重建页面 DOM，容器级绑定会随重建失效，而 _dpMounted 守卫
+     又阻止重新绑定 —— 表现为「配置操作一次之后页签点不动」。委派不受重渲染影响。 */
+  return pg;
+}
+
+/* 配置下发状态（单一来源 = 数据）：
+   待下发 = 有改动未提交（cfg.dirty）· 下发中 = 已提交、全节点收敛中（页面级瞬态）· 已生效 */
+let dpShipping = false;
+function dpShipHtml(cfg, path) {
+  if (dpShipping) return '配置下发：<span class="tag t-warn">下发中</span>（全节点收敛中 · ≤2s · 不触发 reload）';
+  /* dirty 可为布尔（对象级配置）或按路径映射（对抗能力五页签各自独立下发状态） */
+  const d = cfg && cfg.dirty;
+  const dirty = (d && typeof d === "object")
+    ? (Array.isArray(path) ? path.some(p => !!d[p]) : (path ? !!d[path] : Object.keys(d).some(k => !!d[k])))
+    : !!d;
+  return dirty
+    ? '配置下发：<span class="tag t-warn">待下发</span>（改动已入队 · 点「保存并下发」后热生效 ≤2s）'
+    : '配置下发：<span class="tag t-ok">已生效</span>（全节点收敛 · 不触发 reload）';
+}
+/* 提交下发：进入收敛态 → 收敛完成回到数据态（状态只由数据与瞬态标记决定，不再各自改写 DOM） */
+function dpShip() {
+  /* getElementById 判「存在」是恒真的（两页常驻 DOM）⇒ 原先每次都把两页全量重建各 2 次。
+     「下发中 / 已生效」徽标由 dpShipHtml 读 dpShipping + cfg.dirty 派生，隐藏页进入时会重渲染，
+     故只重建**当前激活页**即可（收敛态切换不再付两次整页重建）。 */
+  const shipPage = () => {
+    const cur = document.querySelector(".pg.on");
+    const id = cur ? cur.id : "";
+    if (id === "pg-dppol") renderDpPolicy();
+    else if (id === "pg-dparms") renderDpArms();
+  };
+  dpShipping = true;
+  shipPage();
+  setTimeout(() => { dpShipping = false; shipPage(); }, 1200);
+}
+
+/* 读取档位编辑区 → 校验：连续、不重叠、闭合 0~100（断言 ③）；返回 {bands, err, errIdx} */
+function dpReadBands() {
+  const bands = [];
+  const n = document.querySelectorAll('input[data-band][data-f="lo"]').length;
+  for (let i = 0; i < n; i++) {
+    const lo = document.querySelector(`input[data-band="${i}"][data-f="lo"]`);
+    const hi = document.querySelector(`input[data-band="${i}"][data-f="hi"]`);
+    const act = document.querySelector(`select[data-band="${i}"][data-f="act"]`);
+    if (!lo || !hi || !act) return null;
+    bands.push({ lo: parseInt(lo.value, 10), hi: parseInt(hi.value, 10), act: act.value });
+  }
+  return bands;
+}
+function dpBandsOk(bands) {
+  if (!bands || bands.length < 2) return { err: "档位段数异常（至少 2 段）", idx: -1 };
+  /* ★ 先查空值/型：清空输入框时 lo 为 NaN，旧序会把「清空」误报成「首个区间必须从 0 分起」 */
+  for (let i = 0; i < bands.length; i++) {
+    const b = bands[i];
+    if (!(Number.isFinite(b.lo) && Number.isFinite(b.hi))) return { err: `第 ${i + 1} 段区间存在空值或非数字`, idx: i };
+    if (b.lo > b.hi) return { err: `第 ${i + 1} 段下限大于上限`, idx: i };
+    /* 评分段只承载观察 / 挑战 / 拒绝：限流熔断由连续失败联动触发，按评分段直接选它是错配
+       （兜底校验，同时防旧缓存带进来 —— 下拉本身已不提供该选项） */
+    if (DP_BAND_ACTS.map(a => a.k).indexOf(b.act) < 0) {
+      return { err: `第 ${i + 1} 段的处置档位须为观察记录 / 动态挑战 / 拒绝访问 —— 限流熔断由连续失败联动触发，不是评分档位`, idx: i };
+    }
+  }
+  if (bands[0].lo !== 0) return { err: "首个区间必须从 0 分起", idx: 0 };
+  if (bands[bands.length - 1].hi !== 100) return { err: "末个区间必须闭合到 100 分", idx: bands.length - 1 };
+  for (let i = 1; i < bands.length; i++) {
+    const prevHi = bands[i - 1].hi, lo = bands[i].lo;
+    if (lo !== prevHi + 1) {
+      return lo <= prevHi
+        ? { err: `第 ${i + 1} 段与第 ${i} 段区间重叠（前段上限 ${prevHi} · 本段下限 ${lo}）`, idx: i }
+        : { err: `第 ${i} 段与第 ${i + 1} 段不连续（${prevHi} ~ ${lo}）`, idx: i };
+    }
+  }
+  return { err: null, idx: -1 };
+}
+
+/* 保存当前防护对象（资产）配置的统一入口：克隆生效配置 → 变更 → 写回 → 留痕
+   opt：不传 = 对象级整体「待下发」；{path:"det|grade|ex|main"} = 只置该模块待下发；
+        true 或 {ship:true, path} = 保存并下发，清「该模块」待下发位（位清空则整体归 false）。
+   —— 为什么要按模块分流：检测项参数 / 档位 / 豁免 / 对象主开关 原先共用**同一个**
+     对象级布尔位，任一处改动都会点亮别处的下发徽标（跨模块串味）；而 ④ 自身没有下发入口，
+     其改动产生的「待下发」永不消解。dpShipHtml 本就支持按路径取值，此处把对象级也升级为映射。 */
+function dpMutateCurCfg(mut, logAct, opt) {
+  const cur = dpCurObj();
+  if (!cur) return null;
+  const cfg = JSON.parse(JSON.stringify(cur.cfg));
+  mut(cfg);
+  const o = (opt === true) ? { ship: true } : (opt || {});
+  const d = (cfg.dirty && typeof cfg.dirty === "object") ? cfg.dirty : {};
+  if (o.ship) {
+    if (o.path) delete d[o.path]; else Object.keys(d).forEach(k => delete d[k]);
+    cfg.dirty = Object.keys(d).length ? d : false;
+  } else if (o.path) { d[o.path] = true; cfg.dirty = d; }
+  else cfg.dirty = true;
+  DP.objs[cur.id] = cfg;
+  if (logAct) dpLog(cur.name, logAct);
+  dpSave();
+  return cfg;
+}
+
+/* ---- 深链层：URL 意图参数在 dpLoad 复位之后重新施加 --------------------------------
+   为什么必须有这一层：dpLoad() 的 restored 分支把「下钻位置」整体复位
+   （M1 守卫 —— 上次停在下钻视图，下次打开不该直接落进去）。跨页下钻的意图因此**不能**
+   靠会话态传递：会话态一定会被复位吞掉。改由 URL 参数承载，在复位**之后**重新施加。
+   参数：?sub=<主体 id>（行为基线 · 主体详情）· ?obj=<资产 id>（防护策略 · 对象配置）
+        · ?tab=<页签 id>（dpBaseB / dpBaseP / dpBaseW，或 dpA1~dpA5）
+   只对「本页职责范围内且目标真实存在」的参数生效；目标不存在则静默忽略（不伪造入口）。 */
+function dpDeepLink(page) {
+  if (window.__dpDeepLink) return;   /* 一次装载只施加一次：页内重渲染不再覆盖用户后续操作 */
+  window.__dpDeepLink = true;
+  let q = null;
+  try { q = new URLSearchParams(location.search); } catch (e) { return; }
+  const tab = q.get("tab") || "";
+  if (page === "pg-dpbase") {
+    const sid = q.get("sub") || "";
+    if (sid && DP.base.subs.some(s => s.id === sid)) {
+      DP.base.cur = sid; DP.base.view = "detail";
+      DP.base.dimFilter = ""; DP.base.stFilter = ""; DP.base.kw = ""; DP.base.page = 1;
+    }
+    if (tab === "dpBaseB" || tab === "dpBaseO" || tab === "dpBaseP" || tab === "dpBaseW") DP.base.tab = tab;
+  } else if (page === "pg-dppol") {
+    const oid = q.get("obj") || "";
+    if (oid && DP.objs[oid]) { DP.cur = oid; DP.polView = "cfg"; }
+    if (DP_POL_CFG_TABS.some(x => x[0] === tab)) DP.polCfgTab = tab;
+  } else if (page === "pg-dparms") {
+    if (DP_ARMS_TABS.some(t => t[0] === tab)) DP.arms.tab = tab;
+  }
+}
+
+/* ★ A3-06 / A2-08：可点行已加 tabindex，须补键盘触发 —— 否则纯键盘与读屏用户
+   只能绕行行内按钮，行本身仍是「可点不可达」。对全部 `tr[data-act]` 生效
+   （行为基线主体 / 客体清单 + 防护对象清单，同一交互口径）。 */
+document.addEventListener("keydown", function (e) {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const row = e.target && e.target.closest ? e.target.closest("tr[data-act]") : null;
+  if (!row) return;
+  e.preventDefault();
+  row.click();
+});
+document.addEventListener("click", function (e) {
+  /* 防护策略 · 对象配置视图三页签（条件渲染 ⇒ 切页签即重渲染，不走 showTab 的显隐） */
+  const ctb = e.target && e.target.closest ? e.target.closest("#dpPolCfgTabs button[data-ct]") : null;
+  if (ctb) {
+    dpLoad();
+    if (DP_POL_CFG_TABS.some(x => x[0] === ctb.dataset.ct)) { DP.polCfgTab = ctb.dataset.ct; dpSave(); renderDpPolicy(); }
+    return;
+  }
+  /* 二级页签（.subtabs + data-st）：命名空间与一级页签完全分离，互不干扰 */
+  const stb = e.target && e.target.closest ? e.target.closest(".subtabs button[data-st]") : null;
+  if (stb) {
+    const nav2 = stb.closest(".subtabs");
+    if (nav2 && nav2.id && stb.closest("#pg-dpbase, #pg-dparms")) {
+      dpLoad();
+      DP.sub = DP.sub || {};
+      DP.sub[nav2.id.replace(/Sub$/, "")] = stb.dataset.st;
+      dpSave();
+      showSubTab(nav2.id, stb.dataset.st);
+      /* ★ A4-U1：aria-selected 随 .on 同步 —— 静态属性会在切页签后陈旧，反而误导读屏 */
+      nav2.querySelectorAll("button[data-st]").forEach(b => b.setAttribute("aria-selected", b.dataset.st === stb.dataset.st ? "true" : "false"));
+      return;
+    }
+  }
+  /* 动态防护四页的页签（委派式）：只在 DP 页容器内接管，不影响既有页面的页签绑定 */
+  const tb = e.target && e.target.closest ? e.target.closest(".tabs button[data-t]") : null;
+  if (tb) {
+    const nav = tb.closest(".tabs");
+    if (nav && nav.id && tb.closest("#pg-dpov, #pg-dppol, #pg-dpbase, #pg-dparms, #pg-alert")) {
+      dpLoad();
+      /* 基线页四页签 / 对抗能力页五页签记忆当前位置：交互重渲染后仍停在原页签 */
+      if (nav.id === "dpBaseTabs") { DP.base.tab = tb.dataset.t; dpSave(); }
+      if (nav.id === "dpArmsTabs") { DP.arms.tab = tb.dataset.t; dpSave(); }
+      if (nav.id === "dpOvTabs") { DP.ovTab = tb.dataset.t; dpSave(); if (DP.ovTab === "dpOvFlow") dpOvRenderRows(); }
+      if (nav.id === "dpAlertTabs") { DP.alTab = tb.dataset.t; dpSave(); }
+      showTab(nav.id, tb.dataset.t);
+      /* ★ A4-U1：aria-selected 随 .on 同步（showTab 只切类，不动 ARIA） */
+      nav.querySelectorAll("button[data-t]").forEach(b => b.setAttribute("aria-selected", b.dataset.t === tb.dataset.t ? "true" : "false"));
+      return;
+    }
+  }
+  const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
+  if (!el) return;
+  const act = el.dataset.act;
+  if (!act || act.slice(0, 2) !== "dp") return;
+  dpLoad();
+
+  switch (act) {
+    /* ---- 总览 ---- */
+    case "dpNav": goPage(el.dataset.v, el.dataset.tab ? { tab: el.dataset.tab } : null); break;
+    case "dpOvBar": {
+      const band = el.dataset.band;
+      DP.ovFilter = (DP.ovFilter === band) ? null : band;
+      DP.ovPage = 1; DP.ovTab = "dpOvFlow";
+      dpSave(); renderDpOverview();
+      break;
+    }
+    case "dpOvClearF": DP.ovFilter = null; DP.ovAct = null; DP.ovAsset = null; DP.ovPage = 1; dpSave(); renderDpOverview(); break;
+    case "dpModuleToggle": {
+      const to = !(DP.dpOn !== false);
+      ask2FA(
+        to ? "启用动态防护" : "停用动态防护",
+        () => {
+          DP.dpOn = to; dpSave(); renderDpOverview();
+          toast(to ? "动态防护已启用：网关第八步恢复执行（演示）" : "动态防护已停用：网关第八步整步短路（演示）");
+        },
+        null,
+        to ? "启用后，网关第八步恢复执行判据、动态令牌校验与行为处置。"
+           : "停用后，网关第八步整步短路 —— 不执行判据、不校验与消费动态令牌、不注入防护 JS；第 1~7 环与第 9 环不受影响。"
+      );
+      break;
+    }
+    case "dpOvRange": DP.ovRange = el.dataset.v; dpSave(); renderDpOverview(); break;
+    case "dpOvActF": {
+      DP.ovAct = el.dataset.v || null;
+      DP.ovPage = 1; DP.ovTab = "dpOvFlow";
+      dpSave();
+      renderDpOverview();
+      break;
+    }
+    case "dpOvPause": DP.paused = !DP.paused; dpSave(); renderDpOverview(); break;
+    case "dpOvRow": {
+      const x = DP.events.find(v => v.id === el.dataset.id);
+      if (x) { x.open = !x.open; dpOvRenderRows(); }
+      break;
+    }
+    case "dpOvFull": {
+      const x = DP.events.find(v => v.id === el.dataset.id);
+      if (x) dpOvFullDlg(x);
+      break;
+    }
+    case "dpOvGoSub": {
+      /* 事件行 / 完整事件弹窗 → 关联基线主体：落到行为基线页并直接下钻该主体（页签①）。
+         ⚠ 意图必须由 URL 参数承载（?sub=），**不能只改会话态** —— 目标页 dpLoad() 的复位分支
+           会把 base.view / base.cur 整体归位（会话态 UI 不跨会话），只改会话态等于
+           「跳过去又被弹回主体清单」（2026-10-08 CDP 实测：view=list、cur=默认主体）。 */
+      const sid = el.dataset.id;
+      if (DP.base.subs.some(s => s.id === sid)) { closeDlg(); goPage("pg-dpbase", { sub: sid }); }
+      break;
+    }
+    case "dpOvGoObj": {
+      /* 事件行「防护对象」→ 该对象的策略配置（防护策略 · 对象配置视图） */
+      const oid = el.dataset.id;
+      if (DP.objs[oid]) goPage("pg-dppol", { obj: oid });
+      break;
+    }
+
+    /* ---- 防护策略 · 列表 ⇄ 对象配置视图 ---- */
+    case "dpPolCfg": {
+      DP.cur = el.dataset.id;
+      DP.polView = "cfg";
+      dpSave(); renderDpPolicy();
+      break;
+    }
+    case "dpPolBack": {
+      DP.polView = "list";
+      dpSave(); renderDpPolicy();
+      break;
+    }
+    case "dpPolAddObj": {
+      /* 候选 = 资产目录中适用（网页应用）且尚未纳入的资产；非 HTTP 资产显式列为不适用 */
+      const pool = dpUnIncluded();
+      const bad = dpCatalog().filter(x => !dpApplicable(x) && !DP.objs[x.id]);
+      if (!pool.length) {
+        openDlg("无可纳入的资产", "资产目录中适用动态防护的资产（网页应用）均已纳入防护对象清单。");
+        break;
+      }
+      const grps = Array.from(new Set(pool.map(x => x.grp)));
+      const opts = grps.map(g => '<optgroup label="' + esc(g) + '">' +
+        pool.filter(x => x.grp === g).map(x => '<option value="' + esc(x.id) + '">' + esc(x.name) +
+          "（" + esc(x.type) + " · L" + x.lv + " · " + esc(x.open) + "）</option>").join("") + "</optgroup>").join("");
+      openDlg("新增防护对象",
+        "对象清单直接引用「资产列表」的已登记资产；纳入后<b>动态防护默认关闭</b>，须在对象视图内单独开启。",
+        '<div class="fld"><label>选择资产（按资产分组归集）</label><select id="dpNewObj">' + opts + "</select></div>" +
+        (bad.length ? '<div class="fld" style="margin-top:10px"><label>不适用对象</label><div style="font-size:12px;color:#64748b;line-height:1.7">' +
+          bad.map(x => esc(x.name) + "（" + esc(x.type) + "）").join("、") +
+          " —— 非 HTTP 协议，动态防护工作在 7 层解析，不适用。</div></div>" : ""), "lg");
+      document.getElementById("dlg1Ok").onclick = () => {
+        const id = document.getElementById("dpNewObj").value;
+        const x = dpAsset(id);
+        if (!x || !dpApplicable(x)) { closeDlg(); toast("所选资产不适用动态防护（非网页应用），未纳入"); return; }
+        DP.objs[id] = dpDefaultCfg();
+        DP.cur = id;
+        DP.polView = "cfg";
+        dpLog(x.name, "纳入防护对象清单（取自资产目录 · 动态防护默认关闭）");
+        dpSave(); closeDlg(); renderDpPolicy();
+        toast("已纳入防护对象「" + x.name + "」（默认关闭）");
+      };
+      break;
+    }
+    case "dpPolRemove": {
+      const x = dpAsset(el.dataset.id);
+      if (!x || !DP.objs[x.id]) break;
+      /* ★ 2026-10-09 用户裁定：移出 = 移除生效面且清空配置、不可逆 ⇒ 提为二次认证
+         （与「删除准入策略」同档；原为普通确认）。 */
+      ask2FA("移出防护对象清单「" + x.name + "」", () => {
+        delete DP.objs[x.id];
+        DP.polView = "list";
+        dpLog(x.name, "移出防护对象清单（配置一并清除）");
+        dpSave(); renderDpPolicy();
+        toast("已移出防护对象清单：" + x.name);
+      }, null,
+        "将把「<b>" + esc(x.name) + "</b>」移出防护对象清单：其<b>检测策略、评分档位与豁免条目一并清除</b>，" +
+        "该资产流量不再进入动态防护评分。<b>资产登记信息不受影响</b>（资产本身仍在「资产列表」）。");
+      break;
+    }
+    case "dpPolGotoRulelib": goPage("pg-rulelib"); break;
+
+    /* ---- 检测策略 ---- */
+    case "dpPolDetSave": {
+      const cur = dpCurObj(); if (!cur || cur.deny) break;
+      confirmDlg("保存并下发", "将把「<b>" + esc(cur.name) + "</b>」（资产）的检测策略推送至全部网关节点：<b>热生效 ≤2s</b>、不触发 reload；" +
+        "本页只维护该资产的动态防护配置，资产属性以「资产列表」为准。<b>本次变更入审计</b>。", () => {
+        dpMutateCurCfg(() => {}, "保存检测策略并下发", { ship: true, path: "det" });
+        dpSave(); renderDpPolicy();
+        dpShip();
+        toast("检测策略已保存并下发");
+      }, "保存并下发");
+      break;
+    }
+
+    /* A2-06：列表空态「清除全部筛选」（与其它列表同范式） */
+    case "dpPolClearF": {
+      DP.polKw = ""; DP.polGrp = ""; DP.polSt = ""; DP.polPage = 1;
+      dpSave(); renderDpPolicy();
+      break;
+    }
+    /* A2-02：单参数恢复继承（只清该参数覆盖，不影响其它覆盖） */
+    case "dpDetReset1": {
+      const cur0 = dpCurObj();
+      if (!cur0 || cur0.deny) break;
+      const seg0 = String(el.dataset.p || "").split(".");
+      const def0 = dpDetParamDef(seg0[0]);
+      const p0 = def0 && def0.ks.find(x => x.k === seg0[1]);
+      if (!p0) break;
+      const detN0 = (DP_DETS.find(x => x.k === seg0[0]) || {}).n || seg0[0];
+      dpMutateCurCfg(cfg => {
+        if (cfg.dpar && cfg.dpar[seg0[0]]) {
+          delete cfg.dpar[seg0[0]][seg0[1]];
+          if (!Object.keys(cfg.dpar[seg0[0]]).length) delete cfg.dpar[seg0[0]];
+        }
+      }, "恢复检测项「" + detN0 + "」的单参数为全局默认", { path: "det" });
+      renderDpPolicy();
+      toast("「" + p0.n + "」已恢复为全局默认（" + detN0 + "）· 已入待下发队列");
+      break;
+    }
+
+    /* 场景化模板的判据范围（逐资产配置；入口在「防护策略 · 场景化防护模板」） */
+    case "dpTplRange": {
+      const cur = dpCurObj();
+      const t = DP_TPLS.find(x => x.k === el.dataset.tpl);
+      if (cur && t && !cur.deny) dpTplRangeDlg(cur.a, t);
+      break;
+    }
+
+    /* ---- 评分与处置档位 ---- */
+    /* A2-10：档位段增删（段数上界 = 可用处置档位数；下界 2 段）—— 原先 UI 只能平移 3 个边界，
+       「连续 · 不重叠 · 闭合 0~100」的多段能力在页面上不可达（校验函数本就支持 ≥2 段）。 */
+    case "dpBandAdd": {
+      const curB = dpCurObj(); if (!curB || curB.deny) break;
+      const bsA = dpReadBands();
+      if (!bsA || bsA.length >= DP_BAND_ACTS.length) break;
+      const lastB = bsA[bsA.length - 1];
+      const midB = Math.floor((lastB.lo + lastB.hi) / 2);
+      lastB.hi = midB;
+      bsA.push({ lo: midB + 1, hi: 100, act: lastB.act });
+      dpMutateCurCfg(cfg => { cfg.bands = bsA; }, "添加评分档位段（共 " + bsA.length + " 段）", { path: "grade" });
+      renderDpPolicy();
+      toast("已添加档位段（共 " + bsA.length + " 段）· 已入待下发队列");
+      break;
+    }
+    case "dpBandDel": {
+      const curB2 = dpCurObj(); if (!curB2 || curB2.deny) break;
+      const bsB = dpReadBands();
+      const iB = parseInt(el.dataset.band, 10);
+      if (!bsB || !(bsB.length > 2) || !(iB >= 0 && iB < bsB.length)) break;
+      const cutB = bsB.splice(iB, 1)[0];
+      if (iB === 0) bsB[0].lo = 0; else bsB[iB - 1].hi = cutB.hi;
+      bsB[bsB.length - 1].hi = 100;
+      dpMutateCurCfg(cfg => { cfg.bands = bsB; }, "删除评分档位段（共 " + bsB.length + " 段）", { path: "grade" });
+      renderDpPolicy();
+      toast("已删除档位段（共 " + bsB.length + " 段）· 已入待下发队列");
+      break;
+    }
+    case "dpPolBandSave": {
+      const bands = dpReadBands();
+      const chk = dpBandsOk(bands);
+      const errEl = document.getElementById("dpPolBandErr");
+      if (chk.err) {
+        if (errEl) errEl.textContent = "校验未通过：" + chk.err + "（区间须连续、不重叠、闭合 0~100）";
+        const pv = document.getElementById("dpBandPreview");
+        if (pv && bands) pv.innerHTML = dpBandPreview(bands, chk.idx);
+        toast("校验未通过：" + chk.err);
+        break;
+      }
+      if (errEl) errEl.textContent = "";
+      const cur2 = dpCurObj(); if (!cur2) break;
+      confirmDlg("保存并下发", "将把「<b>" + esc(cur2.name) + "</b>」的评分与处置档位推送至全部网关节点：<b>热生效 ≤2s</b>、不触发 reload；区间校验已通过（连续 · 不重叠 · 闭合 0~100）。<b>本次变更入审计</b>。", () => {
+        dpMutateCurCfg(cfg => { cfg.bands = bands; }, "调整评分与处置档位并下发", { ship: true, path: "grade" });
+        dpSave(); renderDpPolicy();
+        dpShip();
+        toast("评分与处置档位已保存并下发");
+      }, "保存并下发");
+      break;
+    }
+    case "dpPolBandReset": {
+      confirmDlg("恢复默认档位", "将丢弃当前评分区间编辑，恢复为出厂默认（全段 <b>观察记录起步</b>）。<b>本次变更入审计</b>。", () => {
+        dpMutateCurCfg(cfg => { cfg.bands = dpDefaultCfg().bands; }, "恢复默认评分档位（观察记录起步）", { ship: true, path: "grade" });
+        dpSave(); renderDpPolicy(); dpShip();
+        toast("已恢复默认档位（观察记录起步）");
+      }, "恢复默认");
+      break;
+    }
+
+    /* ---- 豁免（二次确认 + 必填校验 + 审批演示） ---- */
+    case "dpPolExAdd": {
+      const cur = dpCurObj(); if (!cur || cur.deny) break;
+      openDlg("新增豁免", "豁免本资产某类风险源的既有处置（防护对象直接引用资产目录，无组织级继承）；<b>豁免不覆盖准入拒绝语义</b>；提交后进入「待审批」，审批人 ≠ 创建人。", `
+        <div class="fld"><label>风险源类型</label><select id="dpExSrc">${DP_EXSRC.map(s => `<option>${esc(s)}</option>`).join("")}</select></div>
+        <div class="fld"><label>生效开始时间（留空 = 立即生效）</label><input id="dpExFrom" type="datetime-local"></div>
+        <div class="fld"><label>生效结束时间（必填 · 不设永久豁免）</label><input id="dpExTo" type="datetime-local"></div>
+        <div class="fld"><label>原因（必填）</label><input id="dpExReason" maxlength="160" placeholder="例：低风险的查询类页面豁免动态挑战，兼容浏览器刷新"></div>`, "lg");
+      document.getElementById("dlg1Ok").onclick = () => {
+        const src = document.getElementById("dpExSrc").value;
+        const from = document.getElementById("dpExFrom").value;
+        const to = document.getElementById("dpExTo").value;
+        const reason = document.getElementById("dpExReason").value.trim();
+        if (!to) { toast("结束时间必填：不设永久豁免"); return; }
+        if (!reason) { toast("原因必填"); return; }
+        if (from && to && from >= to) { toast("结束时间必须晚于开始时间"); return; }
+        closeDlg();
+        ask2FA(`新增豁免（${src}）`, () => {
+          dpMutateCurCfg(cfg => {
+            cfg.exempts.push({
+              id: "ex" + (DP.exSeq++), src: src,
+              from: (from || "").replace("T", " "), to: to.replace("T", " "),
+              reason: reason, by: DP.actor, approver: "—", status: "待审批",
+            });
+          }, "新增豁免「" + src + "」（待审批）", { ship: true, path: "ex" });
+          renderDpPolicy();
+          toast("豁免已提交（二次确认完成 · 已落操作审计 · 待李莉审批）");
+        });
+      };
+      break;
+    }
+    case "dpPolExApprove":
+    case "dpPolExReject": {
+      const approve = act === "dpPolExApprove";
+      const cur = dpCurObj(); if (!cur) break;
+      const eff = dpEffCfg(DP.cur);
+      const x = eff.cfg.exempts.find(v => v.id === el.dataset.id);
+      if (!x) break;
+      /* ★ A2-05：三权互斥拦截 —— 创建人不得审批本人提交的豁免 */
+      if (x.by === DP.actor) {
+        toast("审批人 ≠ 创建人：本条由「" + x.by + "」提交，请切换操作身份后由他人审批（演示）");
+        break;
+      }
+      const approver = DP.actor;
+      ask2FA((approve ? "审批通过" : "驳回") + `豁免（${x.src}）· 审批人：${approver}`, () => {
+        dpMutateCurCfg(cfg => {
+          const t = cfg.exempts.find(v => v.id === x.id);
+          if (t) { t.status = approve ? "生效中" : "已驳回"; t.approver = approver; }
+        }, (approve ? "审批通过" : "驳回") + "豁免「" + x.src + "」", { ship: true, path: "ex" });
+        renderDpPolicy();
+        toast("豁免已" + (approve ? "审批通过并生效" : "驳回") + "（审批人：" + approver + " · 已落操作审计）");
+      });
+      break;
+    }
+    case "dpPolExExtend": {
+      const cur = dpCurObj(); if (!cur) break;
+      const eff = dpEffCfg(DP.cur);
+      const x = eff.cfg.exempts.find(v => v.id === el.dataset.id);
+      if (!x) break;
+      /* ★ A2-04：已驳回（从未生效）无「延长」可言 —— 该动作实为重新提交，标题随状态切换 */
+      const redone = x.status === "已驳回";
+      openDlg(redone ? "重新申请豁免" : "延长豁免",
+        redone ? `本条曾<b>被驳回</b>（未生效）；提交后重新进入「待审批」。` : `当前结束时间：<b>${esc(x.to)}</b>；延长后重新进入「待审批」。`, `
+        <div class="fld"><label>新的结束时间（必填 · 不设永久豁免）</label><input id="dpExNewTo" type="datetime-local"></div>
+        <div class="fld"><label>延长原因（必填）</label><input id="dpExNewReason" maxlength="160"></div>`, "lg");
+      document.getElementById("dlg1Ok").onclick = () => {
+        const nt = document.getElementById("dpExNewTo").value;
+        const nr = document.getElementById("dpExNewReason").value.trim();
+        if (!nt) { toast("结束时间必填：不设永久豁免"); return; }
+        if (!nr) { toast("原因必填"); return; }
+        if (String(nt).replace("T", " ") <= String(x.to || "")) { toast("新的结束时间必须晚于当前结束时间（" + x.to + "）"); return; }
+        closeDlg();
+        ask2FA(`延长豁免（${x.src}）`, () => {
+          dpMutateCurCfg(cfg => {
+            const t = cfg.exempts.find(v => v.id === x.id);
+            if (t) { t.to = nt.replace("T", " "); t.reason = nr; t.status = "待审批"; t.approver = "—"; }
+          }, "延长豁免「" + x.src + "」（待审批）", { ship: true, path: "ex" });
+          renderDpPolicy();
+          toast("豁免延长已提交（二次确认完成 · 重新进入待审批）");
+        });
+      };
+      break;
+    }
+    case "dpPolExDel": {
+      const cur = dpCurObj(); if (!cur) break;
+      const eff = dpEffCfg(DP.cur);
+      const x = eff.cfg.exempts.find(v => v.id === el.dataset.id);
+      if (!x) break;
+      ask2FA(`删除豁免（${x.src}）`, () => {
+        dpMutateCurCfg(cfg => { cfg.exempts = cfg.exempts.filter(v => v.id !== x.id); }, "删除豁免「" + x.src + "」", { ship: true, path: "ex" });
+        renderDpPolicy();
+        toast("豁免已删除（已落操作审计）");
+      }, null, "删除后该风险源在本资产的既有处置立即恢复、不再豁免；本条豁免记录不可恢复。");
+      break;
+    }
+
+    /* ---- 基线 ---- */
+    case "dpBasePick": {
+      /* 首页清单 → 下钻该主体基线（与防护策略「列表 → 对象配置视图」同构） */
+      DP.base.cur = el.dataset.id;
+      DP.base.view = "detail";
+      dpSave(); renderDpBaseline();
+      break;
+    }
+    case "dpBaseBack": {
+      DP.base.view = "list";
+      dpSave(); renderDpBaseline();
+      break;
+    }
+    case "dpBaseReset": {
+      DP.base.kw = ""; DP.base.dimFilter = ""; DP.base.stFilter = "";
+      DP.base.sort = "dev"; DP.base.page = 1;
+      dpSave(); renderDpBaseline();
+      break;
+    }
+    case "dpBaseParamSave": {
+      /* ★ 取值先落局部变量、确认后才写状态 —— 否则点「取消」时阈值已在内存生效，
+         「写盘才生效」的承诺被绕过（实测：取消后切页签即按新阈值重判）。 */
+      const nDims = {};
+      DP_BASEDIMS.forEach(d => {
+        const inp = document.querySelector(`input[data-dimbase="${d.k}"]`);
+        if (inp) { const v = parseFloat(inp.value); if (Number.isFinite(v) && v > 0) nDims[d.k] = v; }
+      });
+      const coldEl = document.getElementById("dpBaseCold");
+      let nCold = null;
+      if (coldEl) { const v = parseInt(coldEl.value, 10); if (Number.isFinite(v) && v >= 1) nCold = v; }
+      /* 校验失败必须**出声**：原先全部输入非法时 nDims 为空，弹窗照常弹出并可点确定，
+         但没有任何字段被改、页面无任何提示 —— 用户以为保存成功（典型静默失败）。 */
+      const _badDim = DP_BASEDIMS.filter(d => {
+        const inp = document.querySelector('input[data-dimbase="' + d.k + '"]');
+        return inp && !(parseFloat(inp.value) > 0);
+      }).map(d => d.n);
+      if (_badDim.length) { toast("判定阈值须为正数（σ）：" + _badDim.join(" / ")); break; }
+      if (coldEl && !(nCold >= 1)) { toast("冷启动观察期须为 ≥1 的整数天"); break; }
+      confirmDlg("保存并下发", "将把行为基线学习与判定参数（四类默认阈值 σ / 冷启动观察期）推送至全部网关节点：<b>热生效 ≤2s</b>。" +
+        "收紧阈值可能在下一窗口产生新的偏离判定；调整观察期会同步改变冷启动对象范围。<b>本次变更入审计</b>。", () => {
+        DP_BASEDIMS.forEach(d => { if (nDims[d.k] != null) DP.base.dims[d.k] = nDims[d.k]; });
+        if (nCold != null) DP.base.cold = nCold;
+        dpLog("全局", "调整基线学习与判定参数并下发");
+        dpApplyCold();   /* ★ A3-01：观察期变更会改冷启动对象范围，须同会话重算 */
+        dpSave(); renderDpBaseline();
+        toast("基线参数已保存并下发");
+      }, "保存并下发");
+      break;
+    }
+    case "dpBaseSubReset": {
+      const s = DP.base.subs.find(v => v.id === el.dataset.id);
+      if (!s) break;
+      const _su = s.dim === "asset" ? "客体" : "主体";
+      /* ★ 2026-10-09 用户裁定：重置基线 = 重算该主体的判定基准（改变生效面判定）
+         ⇒ 提为二次认证（与「手动触发基线重建」同档；原为普通确认）。 */
+      ask2FA("重置该" + _su + "基线「" + s.key + "」", () => {
+        s.series = dpSubSeries(s.mu, s.sd, [], 0);
+        s.hist = [];
+        /* 当前值一并回到基线：否则「状态＝正常 / 偏离记录＝未产生偏离 / 指标判定列＝偏离」三处互斥
+           （E-03：原实现只清 series/hist/samples/last，主指标当前值仍停在偏离峰值）。 */
+        (s.metrics || []).forEach(m => { m.cur = m.mu; m.hit = true; if (m.st) m.st = 0; });
+        s.samples = Math.round(s.samples * 1.06);
+        s.last = "刚刚重建";
+        s.touched = true; s.rs = 1;   /* 用户态：重播种时须回灌（见 dpSubsCarry） */
+        dpLog(s.label, "重置该" + _su + "基线（以学习窗口 " + DP.base.win + " 重新学习）");
+        dpSave(); renderDpBaseline();
+        toast(_su + "基线已重置（重新学习完成 · 样本 " + s.samples + "）");
+      }, null, "将以最近学习窗口（" + DP.base.win + "）重新学习「<b>" + esc(s.key) + "</b>（" + esc(s.name) +
+        "，" + (s.dim === "asset" ? "来源账号 " + (s.sources || []).length + " 个" : "访问防护对象 " + (s.assets || []).length + " 个") +
+        "）的" + (s.dim === "asset" ? "访问图案" : "行为") + "基线：样本重算、判定带重建、该" + _su +
+        "历史偏离记录归档。<b>本次操作入审计</b>。");
+      break;
+    }
+    case "dpBaseSubWl": {
+      const s = DP.base.subs.find(v => v.id === el.dataset.id);
+      if (!s) break;
+      openDlg("加入观察期白名单", "命中白名单的偏离只记录、不处置；仅观察记录起步期生效，转入「动态挑战」/「拒绝访问」后失效。", `
+        <div class="fld"><label>基线维度</label><input value="${esc(dpDim(s.dim).n)}" readonly></div>
+        <div class="fld"><label>主体</label><input value="${esc(s.key)} · ${esc(s.name)}" readonly></div>
+        <div class="fld"><label>指标</label><input id="dpWlMetric" maxlength="64" value="${esc(s.main)}"></div>
+        <div class="fld"><label>审批人</label><input id="dpWlApprover" maxlength="32" placeholder="例：李娜"></div>
+        <div class="fld"><label>到期时间</label><input id="dpWlExpire" type="date" value="${dpWlDefaultExpire()}"></div>
+        <div class="fld"><label>原因（必填）</label><input id="dpWlReason" maxlength="160" placeholder="例：夜间批处理固定模式，偏离为预期"></div>`, "lg");
+      document.getElementById("dlg1Ok").onclick = () => {
+        const metric = document.getElementById("dpWlMetric").value.trim();
+        const reason = document.getElementById("dpWlReason").value.trim();
+        const approver = document.getElementById("dpWlApprover").value.trim();
+        const expire = document.getElementById("dpWlExpire").value.trim();
+        if (!metric) { toast("指标必填"); return; }
+        if (!reason) { toast("原因必填"); return; }
+        closeDlg();
+        /* ★ 2026-10-09 用户裁定：加入白名单 = 该主体偏离不再处置（改变生效面）⇒ 与「移除白名单」
+           对称，提为二次认证。沿用「新增豁免」的范式：表单校验 → 关表单 → 二次认证 → 落库。 */
+        ask2FA("加入观察期白名单「" + dpSubKey(s) + "」", () => {
+          DP.base.wl.push({ id: "wl" + Date.now(), dim: s.dim, sub: dpSubKey(s), metric: metric, reason: reason, by: DP.actor, approver: approver, at: dpNowTs(), expire: expire });
+          dpLog(s.label, "加入观察期白名单");
+          dpSave(); renderDpBaseline();
+          toast("白名单条目已新增（该主体命中的偏离只记录、不处置）");
+        }, null, "命中白名单的偏离只记录、不处置；仅观察记录起步期生效，转入「动态挑战」/「拒绝访问」后失效。");
+      };
+      break;
+    }
+    case "dpBaseSubTh": {
+      const s = DP.base.subs.find(v => v.id === el.dataset.id);
+      if (!s) break;
+      const dimDef = DP.base.dims[s.dim];
+      const _su2 = s.dim === "asset" ? "客体" : "主体";
+      openDlg("调整本" + _su2 + "判定阈值", "仅对「<b>" + esc(s.label) + "</b>」生效；留空则恢复为维度默认 " + dimDef.toFixed(1) + "σ。", `
+        <div class="fld"><label>${_su2}</label><input value="${esc(s.label)}" readonly></div>
+        <div class="fld"><label>判定阈值（σ）</label><input id="dpSubTh" value="${esc(s.th != null ? s.th : "")}" placeholder="留空 = 维度默认 ${dimDef.toFixed(1)}σ"></div>`, "lg");
+      document.getElementById("dlg1Ok").onclick = () => {
+        const v = document.getElementById("dpSubTh").value.trim();
+        if (v === "") { s.th = null; }
+        else {
+          const f = parseFloat(v);
+          if (!Number.isFinite(f) || f <= 0) { toast("阈值须为正数（留空恢复维度默认）"); return; }
+          s.th = f;
+        }
+        s.touched = true;   /* 用户态：重播种时须回灌（见 dpSubsCarry） */
+        dpLog(s.label, "调整本" + _su2 + "判定阈值" + (s.th != null ? "（" + s.th.toFixed(1) + "σ）" : "（恢复维度默认）"));
+        dpSave(); closeDlg(); renderDpBaseline();
+        toast("本" + _su2 + "判定阈值已更新");
+      };
+      break;
+    }
+    case "dpBaseWlAdd": {
+      openDlg("新增白名单条目", "命中白名单的偏离只记录、不处置；仅观察记录起步期生效。", `
+        <div class="fld"><label>基线维度</label><select id="dpWlDim">${DP_BASEDIMS.map(d => `<option value="${d.k}">${esc(d.n)}</option>`).join("")}</select></div>
+        <div class="fld"><label>主体标识（须与身份管理台账一致）</label><input id="dpWlSub" maxlength="64" placeholder="例：BZPC-0007-3A2C / wangfang / t_pc_0007"></div>
+        <div class="fld"><label>指标</label><input id="dpWlMetric" maxlength="64" value="${esc(dpDim("app").metric)}"></div>
+        <div class="fld"><label>审批人</label><input id="dpWlApprover" maxlength="32" placeholder="例：李娜"></div>
+        <div class="fld"><label>到期时间</label><input id="dpWlExpire" type="date" value="${dpWlDefaultExpire()}"></div>
+        <div class="fld"><label>原因（必填）</label><input id="dpWlReason" maxlength="160" placeholder="例：夜间批处理固定模式，偏离为预期"></div>`, "lg");
+      /* 指标默认值随所选「基线维度」联动 —— 原为写死的「登录频次」，切到设备 / 客体维度即文不对题。 */
+      {
+        const dimSel = document.getElementById("dpWlDim");
+        if (dimSel) dimSel.onchange = () => {
+          const mi = document.getElementById("dpWlMetric");
+          if (mi) mi.value = dpDim(dimSel.value).metric;
+        };
+      }
+      document.getElementById("dlg1Ok").onclick = () => {
+        const dim = document.getElementById("dpWlDim").value;
+        const sub = document.getElementById("dpWlSub").value.trim();
+        const metric = document.getElementById("dpWlMetric").value.trim();
+        const reason = document.getElementById("dpWlReason").value.trim();
+        const approver = document.getElementById("dpWlApprover").value.trim();
+        const expire = document.getElementById("dpWlExpire").value.trim();
+        if (!sub) { toast("主体标识必填"); return; }
+        if (!/^[A-Za-z0-9_.\-]{3,64}$/.test(sub)) { toast("主体标识格式不符：须为 3~64 位字母 / 数字 / _ . -（与身份管理台账标识一致）"); return; }
+        /* ★ A3-02：本表单自称「须与身份管理台账一致」，原实现只校格式 ⇒ 可落进**永不命中的死条目**；
+           同 dim+sub 重复条目还会互相遮蔽。两条一并补齐。 */
+        if (!DP.base.subs.some(s => s.dim === dim && dpSubKey(s) === sub)) { toast("主体标识不在身份台账：" + sub + "（请从已建模主体中选择）"); return; }
+        if (DP.base.wl.some(w => w.dim === dim && w.sub === sub)) { toast("该主体已在观察期白名单中，无需重复新增"); return; }
+        if (!metric) { toast("指标必填"); return; }
+        if (!reason) { toast("原因必填"); return; }
+        closeDlg();
+        /* ★ 2026-10-09 用户裁定：与「加入观察期白名单」（行内入口）同一口径 ⇒ 二次认证。 */
+        ask2FA("新增观察期白名单「" + sub + "」", () => {
+          DP.base.wl.push({ id: "wl" + Date.now(), dim: dim, sub: sub, metric: metric, reason: reason, by: DP.actor, approver: approver, at: dpNowTs(), expire: expire });
+          dpLog("全局", "新增观察期白名单「" + sub + "」");
+          dpSave(); renderDpBaseline();
+          toast("白名单条目已新增");
+        }, null, "命中白名单的偏离只记录、不处置；仅观察记录起步期生效。");
+      };
+      break;
+    }
+    case "dpBaseWlDel": {
+      const i0 = DP.base.wl.findIndex(w => w.id === el.dataset.id);
+      if (i0 < 0) break;
+      const w0 = DP.base.wl[i0];
+      /* ★ 2026-10-09 用户裁定：移除白名单 = 恢复对该主体的处置（改变生效面）⇒ 提为二次认证。 */
+      ask2FA("移除白名单条目「" + w0.sub + "（" + w0.metric + "）」", () => {
+        const i = DP.base.wl.findIndex(w => w.id === w0.id);
+        if (i >= 0) DP.base.wl.splice(i, 1);
+        dpLog("全局", "移除观察期白名单「" + w0.sub + "」");
+        dpSave(); renderDpBaseline();
+        toast("白名单条目已移除");
+      }, null, "将移除「<b>" + esc(w0.sub) + "</b>（" + esc(w0.metric) + "）」的观察期白名单：" +
+        "其后该主体的同类偏离<b>恢复按评分档位处置</b>，可能产生误报。<b>本次操作入审计</b>。");
+      break;
+    }
+    case "dpBaseColdEnd": {
+      const a = dpAsset(el.dataset.id), c0 = DP.objs[el.dataset.id];
+      if (!a || !c0) break;
+      const d0 = Math.max(1, dpDaysSince(c0.onAt));
+      /* ★ 2026-10-09 用户裁定：提前结束观察期 = 由「只观察」转为按档位正常处置
+         （等于开始真实拦截 / 阻断流量）⇒ 属启用类，提为二次认证。 */
+      ask2FA("提前结束观察期「" + a.name + "」", () => {
+        DP.base.coldEnd.push(a.id);
+        dpLog(a.name, "提前结束冷启动观察期（转入正常基线）");
+        dpApplyCold();   /* ★ A3-01：同会话重算客体主体样本，否则残留旧态 */
+        dpSave(); renderDpBaseline();
+        toast("「" + a.name + "」已转入正常基线（偏离恢复按档位处置）");
+      }, null, "将把「<b>" + esc(a.name) + "</b>」（已启用 " + d0 + " 天）提前转入正常基线：其后偏离按评分档位<b>正常处置</b>，不再只观察。" +
+        "样本不足时可能产生误报。<b>本次操作入审计</b>。");
+      break;
+    }
+    case "dpBaseRebuild": {
+      const p = { app: dpPopStat("app"), acct: dpPopStat("acct"), dev: dpPopStat("dev"), asset: dpPopStat("asset") };
+      ask2FA("手动触发基线重建（全部已建模主体重算）", () => {
+        DP.base.rebuilds.unshift({ at: dpNowTs(), by: DP.actor + "（手动）",
+          result: "重建中 · 已受理（应用 " + p.app.n + " · 账号 " + p.acct.n + " · 设备 " + p.dev.n + " · 客体 " + p.asset.n + "）" });
+        dpLog("全局", "手动触发基线重建");
+        dpSave(); renderDpBaseline();
+        toast("基线重建已受理（已落操作审计）");
+        /* 句柄留存：连续触发两次否则会「后发先至」——先进队列反而后完成 */
+        if (window._dpRebuildTimer) clearTimeout(window._dpRebuildTimer);
+        window._dpRebuildTimer = setTimeout(() => {
+          const r0 = DP.base.rebuilds[0];
+          if (r0 && r0.result.indexOf("重建中") === 0) {
+            /* ★ A3-03：原先结尾写死，与同页仍在「学习训练中」（样本不足）的主体互斥 ——
+               改为按实算派生，与页面自己的周期重建记录同一口径。 */
+            const lvlTxt = dpRebuildLvl();
+            r0.result = "完成 · 应用 " + p.app.n + " · 账号 " + p.acct.n + " · 设备 " + p.dev.n + " · 客体 " + p.asset.n + " · " + lvlTxt;
+            dpSave();
+            if (document.getElementById("pg-dpbase")) { renderDpBaseline(); toast("基线重建完成 · " + lvlTxt); }
+          }
+        }, 4000);
+      }, null, "执行期间该主体<b>只观察</b>、不参与判定与处置（指南 §8.4）；完成后已建模主体的中位数与稳健尺度按最近学习窗口重算，历史偏离记录保留。");
+      break;
+    }
+
+    /* ---- 风险事件告警（公共页） ---- */
+    case "dpAlertSrcF": {
+      DP.alSrc = el.dataset.v || "";
+      DP.alPage = 1;
+      dpSave(); renderDpAlert();
+      break;
+    }
+    case "dpAlertTest": {
+      const a = DP.alerts.find(v => v.id === el.dataset.id);
+      if (!a) break;
+      const lastBefore = dpAlertLast(a.id);
+      /* 测试发送**不改变规则与记录状态**（不写触发时间）⇒ 触发器读值不变；
+         但「对外发送（含 Webhook）」属数据外发，须留一条审计 ⇒ 需要落盘，非空转。 */
+      dpLog("全局", "测试发送告警规则「" + a.name + "」（渠道：" + a.ch.join("、") + "）· 不写入触发时间");
+      dpSave();
+      renderDpAlert();
+      toast((a.on ? "测试告警已下发（渠道：" + a.ch.join("、") + "）"
+                   : "规则「" + a.name + "」当前已停用 —— 测试发送仅验证通道配置，不恢复规则触发（渠道：" + a.ch.join("、") + "）")
+            + " · 送达结果见「告警记录」的「通知送达」列 · 不写入触发时间（仍为 " + (lastBefore || "未触发") + "）");
+      break;
+    }
+    case "dpAlertAdd":
+    case "dpAlertEdit": {
+      const a = act === "dpAlertEdit" ? DP.alerts.find(v => v.id === el.dataset.id) : null;
+      openDlg(a ? "编辑告警规则" : "新增告警规则", "告警规则挂在防护域上：来源域产生符合条件的风险事件时触发；条件支持「事件类型 + 频率窗口」表达。", `
+        <div class="fld"><label>名称（必填）</label><input id="dpAlName" maxlength="30" value="${a ? esc(a.name) : ""}" ${a && a.preset ? 'readonly title="预置模板名称不可修改"' : ""}>${a && a.preset ? '<div class="help">预置模板：名称与防护域随模板给定；条件 / 级别 / 模板 / 渠道可按本行调整。</div>' : ""}</div>
+        <div class="fld"><label>防护域</label><select id="dpAlSrc" ${a && a.preset ? 'disabled title="预置模板防护域不可修改"' : ""}>${DP_ALERT_SRCS.map(s => `<option ${a && a.src === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>${a && a.preset ? '<div class="help">由预置模板固定，不可修改。</div>' : ""}</div>
+        <div class="fld"><label>触发条件（必填）</label><input id="dpAlCond" maxlength="160" list="dpAlCondEvt" value="${a ? esc(a.cond) : ""}" placeholder="例：risk_action_taken（风险处置已执行）5 分钟内 > 100 次"><datalist id="dpAlCondEvt">${DP_ALERT_EVTS.map(e => `<option value="${esc(e[1])}（${esc(e[0])}）">${esc(e[1])}</option>`).join("")}</datalist><div class="help">须含引擎事件类型（可从候选选择）+ 频率窗口（例：5 分钟内 > 50 次）；针对某事件本身的规则写「…发生时触发」。</div></div>
+        <div class="fld"><label>告警级别</label><select id="dpAlLv">${DP_ALERT_LVS.map(v => `<option ${(a ? (a.lv || "一般") : "一般") === v ? "selected" : ""}>${esc(v)}</option>`).join("")}</select><div class="help">级别随规则携带，供记录分诊与检索使用。</div></div>
+        <div class="fld"><label>通知模板</label><select id="dpAlTpl">${["简洁通知", "详细报告（含事件样本）"].map(t => `<option ${a && a.tpl === t ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+        <div class="fld"><label>通知渠道（必填）</label><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          ${["站内信", "邮件", "Webhook"].map(c => `<label style="font-weight:400"><input type="checkbox" class="dpAlCh" value="${c}" ${(a ? a.ch.indexOf(c) >= 0 : c === "站内信") ? "checked" : ""}> ${c}</label>`).join("")}
+          <label style="font-weight:400;margin-left:auto"><input type="checkbox" id="dpAlOn" ${(a ? a.on : true) ? "checked" : ""}> 启用</label>
+        </div></div>`, "lg");
+      document.getElementById("dlg1Ok").onclick = () => {
+        const name = document.getElementById("dpAlName").value.trim();
+        const src = document.getElementById("dpAlSrc").value;
+        const cond = document.getElementById("dpAlCond").value.trim();
+        const tpl = document.getElementById("dpAlTpl").value;
+        const lv = document.getElementById("dpAlLv").value;
+        const onEl = document.getElementById("dpAlOn");
+        const on = onEl ? onEl.checked : true;
+        const chs = Array.from(document.querySelectorAll(".dpAlCh:checked")).map(c => c.value);
+        if (!name) { toast("名称必填"); return; }
+        if (!cond) { toast("触发条件必填"); return; }
+        const condBad = dpAlertCondCheck(cond);
+        if (condBad) { toast(condBad); return; }
+        if (!chs.length) { toast("至少选择一个通知渠道"); return; }
+        const dup = DP.alerts.filter(v => v.name === name && (!a || v.id !== a.id))[0];
+        if (dup) { toast("已存在同名规则「" + name + "」：同名规则在记录里无法区分，请改用其他名称"); return; }
+        if (a) { a.name = name; a.cond = cond; a.tpl = tpl; a.ch = chs; a.lv = lv; a.on = on; if (!a.preset) a.src = src; }
+        else DP.alerts.push({ id: "al" + (DP._alSeq++), name: name, src: src, cond: cond, tpl: tpl, ch: chs, lv: lv, on: on, preset: false });
+        /* 新增 / 改域后，命中的规则可能落在当前「来源域」筛选之外（列表看不到结果）⇒ 复位筛选 */
+        const landedSrc = a ? (a.preset ? a.src : src) : src;
+        const filterCleared = !!DP.alSrc && DP.alSrc !== landedSrc;
+        if (filterCleared) DP.alSrc = "";
+        dpLog("全局", (a ? "更新" : "新增") + "告警规则「" + name + "」（级别 " + lv + " · " + (on ? "启用" : "停用") + "）");
+        dpSave(); closeDlg(); renderDpAlert();
+        toast((a ? "告警规则已更新" : "告警规则已新增") + (filterCleared ? "（已清除来源域筛选以便查看）" : ""));
+      };
+      break;
+    }
+    case "dpAlertDel": {
+      const a = DP.alerts.find(v => v.id === el.dataset.id);
+      if (!a || a.preset) break;
+      ask2FA(`删除告警规则（${a.name}）`, () => {
+        DP.alerts = DP.alerts.filter(v => v.id !== a.id);
+        dpLog("全局", "删除告警规则「" + a.name + "」");
+        dpSave(); renderDpAlert();
+        toast("告警规则「" + a.name + "」已删除（已落操作审计）");
+      }, null, "删除后该防护域不再按此规则触发通知；规则不可恢复（预置模板不可删除）。");
+      break;
+    }
+
+    /* ---- 告警记录（页签③）：筛选 / 勾选 / 状态流转 ---- */
+    case "dpAlertRecGo": {
+      /* 统计卡下钻：切到记录页，并落一个够用的初筛（data-v="open" = 未处理全部时间窗） */
+      DP.alTab = "dpAlertRec";
+      DP.alRecSrc = ""; DP.alRecSel = {}; DP.alRecPage = 1;
+      if (el.dataset.v === "open") { DP.alRecRange = "all"; DP.alRecSt = "open"; }
+      dpSave(); renderDpAlert();
+      break;
+    }
+    case "dpAlertRecRange": DP.alRecRange = el.dataset.v; DP.alRecPage = 1; DP.alRecSel = {}; dpSave(); renderDpAlert(); break;
+    case "dpAlertRecStF": DP.alRecSt = el.dataset.v; DP.alRecPage = 1; DP.alRecSel = {}; dpSave(); renderDpAlert(); break;
+    case "dpAlertRecSrcF": DP.alRecSrc = el.dataset.v; DP.alRecPage = 1; DP.alRecSel = {}; dpSave(); renderDpAlert(); break;
+    /* 勾选是纯视图态（不落盘）：每次重渲染按 DP.alRecSel 回填，避免 40KB 状态对象空转序列化 */
+    case "dpAlertRecSel": {
+      DP.alRecSel = DP.alRecSel || {};
+      if (el.checked) DP.alRecSel[el.dataset.id] = true; else delete DP.alRecSel[el.dataset.id];
+      renderDpAlert();
+      break;
+    }
+    case "dpAlertRecAck":
+    case "dpAlertRecIgn": {
+      const r = DP.alRecs.find(v => v.id === el.dataset.id);
+      if (!r || r.st !== "open") break;
+      dpAlertRecMark([r], act === "dpAlertRecAck" ? "ack" : "ignore", false);
+      break;
+    }
+    case "dpAlertRecRs": {
+      const r = DP.alRecs.find(v => v.id === el.dataset.id);
+      if (!r || r.st === "open") break;
+      r.st = "open"; r.by = ""; r.ackAt = "";
+      dpLog("全局", "告警记录「" + dpAlertRecName(r) + " · " + r.at + "」转回未处理");
+      dpSave(); closeDlg(); renderDpAlert();
+      toast("已转回未处理：" + dpAlertRecName(r) + " · " + r.at);
+      break;
+    }
+    case "dpAlertRecBatch": {
+      const ids = Object.keys(DP.alRecSel || {});
+      const hit = DP.alRecs.filter(r => r.st === "open" && ids.indexOf(r.id) >= 0);
+      if (!hit.length) { toast("请先勾选「未处理」的记录（勾选只作用于当前页）"); break; }
+      dpAlertRecMark(hit, "ack", true);
+      break;
+    }
+    case "dpAlertRecPick": {
+      const r = DP.alRecs.find(v => v.id === el.dataset.id);
+      if (r) dpAlertRecDlg(r);
+      break;
+    }
+
+    /* ---- 检测项参数：清除本资产的覆盖，回到跟随全局 ---- */
+    case "dpDetInherit": {
+      const cur = dpCurObj();
+      if (!cur || cur.deny) break;
+      const d = el.dataset.det;
+      const det = DP_DETS.find(x => x.k === d) || { n: d };
+      confirmDlg("恢复继承全局默认", "将清除检测项「<b>" + esc(det.n) + "</b>」在本资产的参数覆盖，回到跟随<b>全局默认</b>；" +
+        "<b>本次变更入审计</b>。", () => {
+        dpMutateCurCfg(cfg => { if (cfg.dpar && cfg.dpar[d]) delete cfg.dpar[d]; },
+          "清除检测项「" + det.n + "」的逐资产参数覆盖（恢复继承）", { path: "det" });
+        renderDpPolicy();
+        toast("已恢复继承全局默认：「" + det.n + "」");
+      }, "确认恢复");
+      break;
+    }
+
+    /* ---- 对抗能力（五页签的保存并下发 / 恢复默认） ---- */
+    case "dpArmsTokSave": dpArmsCommit("tok"); break;
+    case "dpArmsTokReset": dpArmsRestore("tok"); break;
+    case "dpArmsInjSave": dpArmsCommit("inj"); break;
+    case "dpArmsInjReset": dpArmsRestore("inj"); break;
+    case "dpArmsVerSave": dpArmsCommit("ver"); break;
+    case "dpArmsVerReset": dpArmsRestore("ver"); break;
+    case "dpArmsChaSave": dpArmsCommit(["cha", "hum"]); break;
+    case "dpArmsChaReset": dpArmsRestore(["cha", "hum"]); break;
+    case "dpArmsTplSave": dpArmsCommit("tpl"); break;
+    case "dpArmsTplReset": dpArmsRestore("tpl"); break;
+    case "dpArmsTokDiscard": dpArmsDiscard("tok"); break;
+    case "dpArmsInjDiscard": dpArmsDiscard("inj"); break;
+    case "dpArmsVerDiscard": dpArmsDiscard("ver"); break;
+    case "dpArmsChaDiscard": dpArmsDiscard(["cha", "hum"]); break;
+    case "dpArmsTplDiscard": dpArmsDiscard("tpl"); break;
+    default: break;
+  }
+}, false);
+
+/* 开关 / 下拉类控件（change 委派）：主开关 / 检测项 / 告警启停 / 列表筛选 / 档位编辑联动 */
+document.addEventListener("change", function (e) {
+  const el = e.target && e.target.closest ? e.target.closest("[data-dpsw],[data-dpsel],[data-band],[data-dpaw],[data-dpasel],[data-dparam],[data-dptpl]") : null;
+  if (!el) return;
+  dpLoad();
+
+  /* 事件流 · 防护对象过滤 */
+  if (el.dataset.dpsel === "ovAsset") {
+    DP.ovAsset = el.value || null;
+    DP.ovPage = 1; DP.ovTab = "dpOvFlow";
+    dpSave(); renderDpOverview();
+    return;
+  }
+  /* 防护策略 · 列表筛选（关键词回车 / 组织 / 状态） */
+  if (el.dataset.dpsel === "polKw") {
+    DP.polKw = el.value;
+    DP.polPage = 1;
+    dpSave(); renderDpPolicy();
+    return;
+  }
+  if (el.dataset.dpsel === "polGrp") {
+    DP.polGrp = el.value;
+    DP.polPage = 1;
+    dpSave(); renderDpPolicy();
+    return;
+  }
+  if (el.dataset.dpsel === "polSt") {
+    DP.polSt = el.value;
+    DP.polPage = 1;
+    dpSave(); renderDpPolicy();
+    return;
+  }
+  /* A2-05：操作身份切换（演示）—— 只改记录的操作人与审批权限判据 */
+  if (el.dataset.dpsel === "exRole") {
+    DP.actor = el.value || "张伟";
+    dpSave(); renderDpPolicy();
+    toast("操作身份已切换为「" + DP.actor + "」（演示）");
+    return;
+  }
+  /* 行为基线 · 主体清单的检索与筛选（change 委派：回车 / 失焦触发，与策略列表同范式） */
+  if (el.dataset.dpsel === "baseKw") { DP.base.kw = el.value; DP.base.page = 1; dpSave(); renderDpBaseline(); return; }
+  if (el.dataset.dpsel === "baseDim") { DP.base.dimFilter = el.value || ""; DP.base.page = 1; dpSave(); renderDpBaseline(); return; }
+  if (el.dataset.dpsel === "baseSt") { DP.base.stFilter = el.value || ""; DP.base.page = 1; dpSave(); renderDpBaseline(); return; }
+  if (el.dataset.dpsel === "baseSort") { DP.base.sort = el.value || "dev"; DP.base.page = 1; dpSave(); renderDpBaseline(); return; }
+  /* 档位编辑 → 预览条联动（不落库，仅预览与即时校验提示） */
+  if (el.dataset.band != null) {
+    const bands = dpReadBands();
+    const chk = dpBandsOk(bands);
+    const pv = document.getElementById("dpBandPreview");
+    if (pv && bands) pv.innerHTML = dpBandPreview(bands, chk.err ? chk.idx : -1);
+    const errEl = document.getElementById("dpPolBandErr");
+    if (errEl) errEl.textContent = chk.err ? ("当前编辑：" + chk.err) : "";
+    return;
+  }
+
+  /* 防护策略 · 检测项与参数逐资产覆盖：只写差异；与全局同值即不落覆盖 */
+  if (el.dataset.dparam != null) {
+    const cur = dpCurObj();
+    if (!cur || cur.deny) return;
+    const seg = String(el.dataset.dparam).split(".");
+    const def = dpDetParamDef(seg[0]);
+    const p = def && def.ks.find(x => x.k === seg[1]);
+    if (!p || dpDetFixed(p)) return;   /* 口径固定值参数无控件、不可覆盖（防伪造 DOM 注入写入） */
+    const raw = p.t === "sw" ? !!el.checked : el.value;
+    const detN = (DP_DETS.find(x => x.k === seg[0]) || {}).n || seg[0];
+    dpMutateCurCfg(cfg => {
+      if (!cfg.dpar) cfg.dpar = {};
+      if (!cfg.dpar[seg[0]]) cfg.dpar[seg[0]] = {};
+      if (String(dpDetGlobal(p)) === String(raw)) delete cfg.dpar[seg[0]][seg[1]];
+      else cfg.dpar[seg[0]][seg[1]] = /^-?\d+$/.test(String(raw)) ? parseInt(raw, 10) : raw;
+      if (!Object.keys(cfg.dpar[seg[0]]).length) delete cfg.dpar[seg[0]];
+    }, "调整检测项「" + detN + "」的逐资产参数覆盖", { path: "det" });
+    renderDpPolicy();
+    toast("检测项参数已更新（" + detN + "）· 已入待下发队列");
+    return;
+  }
+  /* 防护策略 · 场景化模板启停（显式覆盖；启用同时写入该模板的参数组合） */
+  if (el.dataset.dptpl != null) {
+    const cur = dpCurObj();
+    if (!cur || cur.deny) return;
+    const k = el.dataset.dptpl;
+    const on = !!el.checked;
+    const t = DP_TPLS.find(x => x.k === k) || { n: k };
+    dpMutateCurCfg(cfg => {
+      if (!cfg.tpl) cfg.tpl = {};
+      cfg.tpl[k] = on;
+      if (!cfg.dpar) cfg.dpar = {};
+      const pre = DP_TPL_PRESET[k] || {};
+      Object.keys(pre).forEach(d => {
+        const pd = dpDetParamDef(d);
+        if (!cfg.dpar[d]) cfg.dpar[d] = {};
+        Object.keys(pre[d]).forEach(x => {
+          const q = pd && pd.ks.find(y => y.k === x);
+          /* 与全局默认同值即不落覆盖（与检测项参数控件同一去重纪律）——
+             否则会落下「看起来覆盖了其实一样」的假覆盖，虚增「参数覆盖」计数。 */
+          /* 停用只回滚「本模板落的那个值」—— 原先无条件 delete 会连带抹掉用户手动覆盖的同名参数。
+             启用路径不变：仍按「与全局默认同值不落覆盖」去重，杜绝假覆盖。 */
+          if (on) {
+            if (q && String(dpDetGlobal(q)) !== String(pre[d][x])) cfg.dpar[d][x] = pre[d][x];
+          } else if (q && cfg.dpar[d][x] != null && String(cfg.dpar[d][x]) === String(pre[d][x])) {
+            delete cfg.dpar[d][x];
+          }
+        });
+        if (!Object.keys(cfg.dpar[d]).length) delete cfg.dpar[d];
+      });
+    }, (on ? "启用" : "停用") + "场景化防护模板「" + t.n + "」", { path: "det" });
+    renderDpPolicy();
+    /* 空 preset 模板不得谎称「参数组合已写入本资产」—— 扫号 / 薅羊毛的动作沿用全局默认，
+       差异由**判据范围**承载；如实分档陈述。 */
+    const hadPre = !!Object.keys(DP_TPL_PRESET[k] || {}).length;
+    toast("模板「" + t.n + "」已" + (on
+      ? (hadPre ? "启用（参数组合已写入本资产）" : "启用（参数沿用全局默认 · 差异由判据范围承载）")
+      : "停用") + " · 已入待下发队列");
+    return;
+  }
+  /* 对抗能力页 · 五页签的开关与下拉（路径形式 tok.ttl / cha.interact → 直接写 DP.arms） */
+  if (el.dataset.dpaw != null) {
+    const seg = String(el.dataset.dpaw).split(".");
+    if (seg.length === 2 && DP.arms[seg[0]] && Object.prototype.hasOwnProperty.call(DP.arms[seg[0]], seg[1])) {
+      DP.arms[seg[0]][seg[1]] = !!el.checked;
+      if (DP.arms.dirty && typeof DP.arms.dirty === "object") DP.arms.dirty[seg[0]] = true;
+      /* 留痕口径与「防护策略 · 检测项与参数」一致：参数一改即留痕 ——
+         草稿态跨会话保留，不留痕会让「最近配置变更」与真实改动脱节。 */
+      dpLog("全局", "调整对抗能力参数「" + seg[0] + "." + seg[1] + "」");
+      dpSave(); renderDpArms();
+      /* ★ A4-I2：本页任一参数变更即整页重建，DOM 节点被替换 ⇒ 焦点必丢。按路径在新 DOM 上归位，
+         使键盘用户连续调参无需重新 Tab 定位。 */
+      const _againW = document.querySelector('[data-dpaw="' + el.dataset.dpaw + '"]');
+      if (_againW && _againW.focus) _againW.focus();
+      toast("对抗能力参数已更新 · 已入待下发队列");
+    }
+    return;
+  }
+  if (el.dataset.dpasel != null) {
+    const seg = String(el.dataset.dpasel).split(".");
+    if (seg.length === 2 && DP.arms[seg[0]] && Object.prototype.hasOwnProperty.call(DP.arms[seg[0]], seg[1])) {
+      const raw = el.value;
+      DP.arms[seg[0]][seg[1]] = /^-?\d+$/.test(raw) ? parseInt(raw, 10) : raw;
+      if (DP.arms.dirty && typeof DP.arms.dirty === "object") DP.arms.dirty[seg[0]] = true;
+      dpLog("全局", "调整对抗能力参数「" + seg[0] + "." + seg[1] + "」");
+      dpSave(); renderDpArms();
+      /* ★ A4-I2：同上 —— 下拉变更后按路径归位焦点 */
+      const _againS = document.querySelector('[data-dpasel="' + el.dataset.dpasel + '"]');
+      if (_againS && _againS.focus) _againS.focus();
+      toast("对抗能力参数已更新 · 已入待下发队列");
+    }
+    return;
+  }
+
+  const key = el.dataset.dpsw;
+  if (!key) return;
+  if (key === "main") {
+    const cur = dpCurObj();
+    if (!cur || cur.deny) { el.checked = !el.checked; return; }
+    /* ★ 2026-10-09 用户裁定（二次认证范围）：主开关是**启停类**动作 —— 决定该对象是否受动态
+       防护，与「资产启用 / 停用」完全同型（后者全站一律 ask2FA），故由普通确认**提为二次认证**。
+       主开关同时是全站唯一「即时下发」路径（一拨即推送全部网关、无待下发队列可撤）。
+       ⚠ 先回滚开关再弹窗：认证弹窗期间界面不得呈现「未认证却已生效」的错觉；`cancel`
+         回调再兜一次（幂等），认证通过后由 renderDpPolicy 重渲染为已变。 */
+    const on = el.checked;
+    el.checked = !on;
+    ask2FA(on ? "启用动态防护「" + cur.name + "」" : "关闭动态防护「" + cur.name + "」",
+      () => {
+        dpMutateCurCfg(cfg => { cfg.on = on; }, (on ? "启用" : "关闭") + "动态防护", { ship: true, path: "main" });
+        /* 启用即记启用日期：冷启动观察期由「启用日期 + 观察期」推导（新纳入对象此前无 onAt） */
+        if (on && !DP.objs[cur.id].onAt) { DP.objs[cur.id].onAt = DP_TODAY; dpSave(); }
+        /* ★ 2026-10-10（R27 · C-3）：同步「客体主体集合」—— 否则新启用的对象不入客体基线、
+           「客体 N / 冷启动卡」与「已启用对象」两处漂移（判据 ④）。 */
+        dpSyncAssetSubs();
+        /* 对象主开关是**即时生效**语义：启用 / 停用本身就是一次下发动作，不留「待下发」队列
+           （原实现只入队不推送，徽标永远停在待下发，且开关状态与页面显示相互矛盾）。 */
+        renderDpPolicy();
+        dpShip();
+        toast(on ? "动态防护已启用并下发" : "动态防护已关闭并下发");
+      },
+      () => { el.checked = !on; },
+      on
+        ? "将把「<b>" + esc(cur.name) + "</b>」纳入动态防护：此后其流量按本资产的检测项与评分档位评分处置。" +
+          "<b>即时推送全部网关节点 · 热生效 ≤2s · 不触发 reload</b>。<b>本次变更入审计</b>。"
+        : "将关闭「<b>" + esc(cur.name) + "</b>」的动态防护：<b>即时推送全部网关节点 · 热生效 ≤2s</b>。" +
+          "此后该对象不再评分、不再处置（已建立的行为基线保留）。<b>本次变更入审计</b>。");
+    return;
+  } else if (key.slice(0, 4) === "det.") {
+    const k = key.slice(4);
+    const cur = dpCurObj();
+    if (!cur || cur.deny) { el.checked = !el.checked; return; }
+    /* 检测项名取单源表（不硬编码字面量）；启停属对象配置改动，与参数覆盖同一留痕口径 */
+    const detNm = (DP_DETS.find(x => x.k === k) || { n: k }).n;
+    dpMutateCurCfg(cfg => { cfg.det[k] = el.checked; },
+      (el.checked ? "启用" : "停用") + "检测项「" + detNm + "」", { path: "det" });
+    toast("检测项已" + (el.checked ? "启用" : "停用") + " · 已入待下发队列");
+    renderDpPolicy();
+  } else if (key.slice(0, 6) === "alert.") {
+    const a = DP.alerts.find(v => v.id === key.slice(6));
+    if (a) {
+      a.on = el.checked;
+      dpLog("全局", (el.checked ? "启用" : "停用") + "告警规则「" + a.name + "」");
+      dpSave(); renderDpAlert();
+      toast("告警规则「" + a.name + "」已" + (el.checked ? "启用" : "停用"));
+    }
+  }
+}, false);
+
 (function bootstrap(){
   /* ① 入口门禁最先跑：未登录访问业务页 → 去登录页（带 ?back= 记住原目标）。
         必须在任何渲染之前，否则会先闪出内容再跳走。 */
@@ -8848,6 +21405,9 @@ function rlOnChange(e) {
   if (PG_CUR === "pg-login") return;
 
   const q = new URLSearchParams(location.search);
+  /* 2026-09-30：旧深链 ?pg=pg-adapt（身份适配曾是独立页）→ 重定向到「资产列表」，
+     由用户选资产后进「身份适配」页签（该页已并入资产详情，不再是独立页）。 */
+  if (q.get("pg") === "pg-adapt") { location.replace("index.html"); return; }
   /* 兼容单文件时代深链：index.html?pg=pg-cred&tab=c2 直接落到目标页 */
   const want = q.get("pg");
   if (want && PG_FILE[want] && want !== PG_CUR) {
@@ -8862,7 +21422,16 @@ function rlOnChange(e) {
   if (PG_CUR === "pg-list") { assetListRender(); }
   else if (PG_CUR === "pg-detail") {
     const aid = q.get("aid") || window._detailAid || CUR_ACL || "";
-    if (aid && byId(aid)) openDetail(aid); else goPage("pg-list");
+    if (aid && byId(aid)) {
+      openDetail(aid);
+      /* 2026-09-30：支持落到指定页签（如 ?tab=t6 身份适配）—— openDetail 内部固定回 t1，
+         故此处在其后再切一次。适配页签须重渲染（内容按资产 _adapt 现算）。 */
+      const wantTab = q.get("tab");
+      if (wantTab && document.getElementById(wantTab)) {
+        showTab("detTabs", wantTab);
+        if (wantTab === "t6" && typeof renderAdaptPage === "function") renderAdaptPage();
+      }
+    } else goPage("pg-list");
   }
   else if (PG_CUR === "pg-edit") {
     const mode = q.get("mode") || "register", aid = q.get("aid") || "", from = q.get("from") || "pg-list";
@@ -8878,5 +21447,438 @@ function rlOnChange(e) {
   else if (PG_CUR === "pg-rate") { setPage("pg-rate"); renderRate(); }
   else if (PG_CUR === "pg-reqcon") { setPage("pg-reqcon"); renderReqCon(); }
   else if (PG_CUR === "pg-rulelib") { setPage("pg-rulelib"); renderRuleLib(); }
+  /* 2026-09-29：原「认证族」7 页（场景工作台 / 认证源 / 能力字典 / 策略与场景 /
+     生物识别绑定 / 机器与智能体身份 / 免认证访问）已从本原型撤除，改由「身份」「认证」两模块承接。
+     2026-09-30：身份适配不再是独立页 —— 已并入资产详情页签（t6），故此处无分支。 */
+  /* 2026-09-29：新增「身份」6 页 +「认证」6 页（两模块）。
+     ⚠ 每组内部为并列页面，setPage 传 PG_CUR 本身（跨页守卫要求），高亮各自菜单项。 */
+  else if (PG_CUR === "pg-iduser") { setPage("pg-iduser"); renderIdUser(); }
+  else if (PG_CUR === "pg-idterm") { setPage("pg-idterm"); renderIdTerm(); }
+  else if (PG_CUR === "pg-idcsw") { setPage("pg-idcsw"); renderIdCSW(); }
+  else if (PG_CUR === "pg-idcin") { setPage("pg-idcin"); renderIdCIN(); }
+  else if (PG_CUR === "pg-idagsw") { setPage("pg-idagsw"); renderIdAGSW(); }
+  else if (PG_CUR === "pg-idagin") { setPage("pg-idagin"); renderIdAGIN(); }
+  else if (PG_CUR === "pg-audict") { setPage("pg-audict"); renderAuDict(); }
+  else if (PG_CUR === "pg-ausrc") { setPage("pg-ausrc"); renderAuSrc(); }
+  else if (PG_CUR === "pg-auusercred") { setPage("pg-auusercred"); renderAuUserCred(); }
+  else if (PG_CUR === "pg-auissue") { setPage("pg-auissue"); renderAuIssue(); }
+  else if (PG_CUR === "pg-auauthr") { setPage("pg-auauthr"); renderAuAuthr(); }
+  /* 2026-09-30：动态防护 3 页（与既有页同口径：setPage 传 PG_CUR 本身，否则跨页守卫弹回）
+     2026-10-08：增第 4 页「对抗能力」 */
+  else if (PG_CUR === "pg-dpov") { setPage("pg-dpov"); renderDpOverview(); }
+  else if (PG_CUR === "pg-dppol") { setPage("pg-dppol"); renderDpPolicy(); }
+  else if (PG_CUR === "pg-dpbase") { setPage("pg-dpbase"); renderDpBaseline(); }
+  else if (PG_CUR === "pg-dparms") { setPage("pg-dparms"); renderDpArms(); }
+  /* 公共页「风险事件告警」（覆盖各防护域 · 渲染函数复用 DP 模块的告警数据与组件） */
+  else if (PG_CUR === "pg-alert") { setPage("pg-alert"); renderDpAlert(); }
   else { setPage(PG_CUR); }
+
+  /* 2026-09-29：身份 / 认证两模块的事件委托统一挂载（挂在各页容器上，
+     与本文件既有约定一致 —— 委托在容器，元素不在本页时自然不触发）。 */
+  if (typeof idMountEvents === "function") idMountEvents();
+  if (typeof auMountEvents === "function") auMountEvents();
+  /* ★ 2026-10-10（R15-d）：页签 roving（`tabindex` 0 / -1）此前只挂在 `auRerender()` 与
+     `credTab()` 之后 —— 而**启动链并不经 `auRerender()`**（`else if (PG_CUR === "pg-audict")`
+     分支是 `setPage(…) + renderAuDict()`），页③ 的 `renderCred()` 也**不调** `credTab()` ⇒
+     首次进入时 `#audTabs` / `#credTabs` / `#auucTabs` 的 `tabindex` 全为 null，非活动页签仍
+     逐个停留在 Tab 序里。此处补一次（三宿主由 id 直取，与页族无关）。 */
+  try { auTabsRoveAll(); } catch (_eboot) { /* 忽略 */ }
+  /* 2026-09-30：身份适配页签（资产详情 t6）的交互委托 —— 挂在详情页容器上。
+     此前 adaptSave / adaptReset / authGotoCred / authCopy2 / authExportInfo
+     全是**死按钮**（无任何 handler），页签即使渲染出来也点不动。 */
+  if (typeof adaptMountEvents === "function") adaptMountEvents();
+  /* ★ 2026-10-10（交付前）：公共页「风险事件告警」标记为暂缓实施 —— 页面设计尚未定稿，
+     本期不纳入开发实现。侧栏项尾注角标，运行期注入 ⇒ 一处改、全站生效
+     （不触碰 27 个壳页的 data-page-node-id 基线）。 */
+  markDeferredNav();
+  function markDeferredNav() {
+    var dep = [["pg-alert", "暂缓"]];
+    for (var i = 0; i < dep.length; i++) {
+      var mi = document.querySelector('.side .mi[data-pg="' + dep[i][0] + '"]');
+      if (!mi || mi.querySelector(".defer-tag")) continue;
+      var tg = document.createElement("span");
+      tg.className = "defer-tag";
+      tg.textContent = dep[i][1];
+      tg.title = "本页暂缓实施：页面设计尚未定稿，本期不纳入开发实现范围";
+      mi.appendChild(tg);
+    }
+  }
 })();
+
+/* ==========================================================================
+   身份适配页签（资产详情 t6）· 交互委托
+   --------------------------------------------------------------------------
+   挂载点：详情页容器（#pg-detail）。委托在容器上，故与详情页其余交互同命。
+   ========================================================================== */
+function adaptMountEvents() {
+  var host = document.getElementById("pg-detail");
+  if (!host || host._adaptMounted) return;
+  host._adaptMounted = true;
+  host.addEventListener("click", adaptOnClick);
+  host.addEventListener("change", adaptOnChange);
+}
+function adaptOnChange(e) {
+  var t = e.target; if (!t || !t.getAttribute) return;
+  /* ★ 2026-09-30（第七轮）：以下三个「change 即落盘」旧分支已撤除
+     （data-auth-adapt-machine / data-auth-adapt-inject INPUT / 通用 data-auth）——
+     对应控件均已不存在，且均为「改动即持久化」旧语义；保留会在未来任何
+     带 data-auth 的表单控件上复活的 change 劫持（改档位 + 整页重渲染）。 */
+  /* 用户身份：第一步「是否传导」—— ★ 2026-09-30 由 radio+change 改为
+     `.seg.wrap button` + click（与全站分段选择一致）。此处仅保留 radio 兼容分支，
+     button 分支在 adaptOnClick 内处理（值取自 data-auth-adapt-inject 属性）。 */
+  /* ⚠ adaptCredSel 分支已撤除（2026-09-30）：旧机器身份卡的控件。
+     现机器身份块的托管凭据下拉 id = adCredSel，其 onchange 在 upInjBind() 内直接绑定。 */
+  /* 信任声明：勾选后本档参数解锁（重渲染整页，因总览卡的信任标签也变）。
+     ★ 2026-09-30（第六轮）：重渲染前先收草稿 —— 否则勾选动作本身会冲掉 A 档已输入未保存的参数。 */
+  /* ★ 2026-09-30（第八轮）：bdPath 切换后完整调用地址随之更新（直连 / 网关代理两条完整路径）。 */
+  if (t.id === "bdPath") {
+    adaptStashF(false);
+    renderDetAdapt();
+    return;
+  }
+  /* ★ 2026-09-30（第十五轮 · 用户裁定）：C 档**协议驱动** —— 协议决定配什么、交付什么
+     （§5.2 / FR-3.1：CAS 服务地址、SAML 元数据、OIDC client 凭据）。
+     此前切换协议不触发任何重渲染 —— 「协议一选、其余照旧」，且选 CAS 时
+     交付卡仍输出 OIDC 发现文档。
+     ★ 触发面＝**三个改变交付内容的控件**：协议（决定字段集与全部交付物）、
+     CAS 协议版本（决定票据校验端点与是否回属性）、SAML NameID 格式（交付卡须列出）。
+     切换时：① 收旧值入草稿；② 协议变化时归一主标识（理由同 adaptFormC）；
+     ③ 重渲染本档表单 **与** 交付卡（交付卡在折叠区内，不在 renderDetAdapt 的作用域）。 */
+  if (t.id === "cdProto" || t.id === "cdCasVer" || t.id === "cdNameFmt") {
+    adaptStashF(false);
+    var cpk = adaptKey();
+    ADAPT_F_TMP[cpk] = ADAPT_F_TMP[cpk] || {};
+    var cct = ADAPT_F_TMP[cpk].C = ADAPT_F_TMP[cpk].C || {};
+    if (t.id === "cdProto") {
+      /* ★ 2026-09-30（用户裁定）：本档已无映射类字段（主标识按协议规范封装），
+         切协议只需记住协议名本身。 */
+      cct.proto = t.value;
+    } else {
+      cct[t.id === "cdCasVer" ? "casVer" : "nameFmt"] = t.value;
+    }
+    renderDetAdapt();
+    var cib = document.getElementById("adaptInfoBody");
+    if (cib) cib.innerHTML = adaptDeliverCard() + adaptVaultCard();
+    return;
+  }
+  if (t.getAttribute("data-auth-adapt-trust")) {
+    /* ★ 2026-09-30（第七轮）：信任声明同样只写草稿（ADAPT_TRUST_TMP）——
+       adaptTrust() 读链已改草稿优先，「已保存 trust=true 后取消勾选」方能生效；
+       落库随 adaptSave（保存 A 档时随信任拦截一并校验）。 */
+    ADAPT_TRUST_TMP[adaptKey()] = !!t.checked;
+    adaptStashF(false);
+    renderAdaptPage();
+    return;
+  }
+  /* D 档「登录形态」变化 → 第二步选择器组随之展开 / 折叠。
+     ★ 2026-09-30（第六轮）：契约弹窗开着时**重开弹窗**展开 / 收起第二步组 ——
+       此前只刷新页面表单、弹窗内纹丝不动（切「多步」看不到跳转后页面组，实测坐实）。 */
+  if (t.id === "ddKind") {
+    adaptStashD(true);
+    var dg = document.getElementById("dlg1");
+    if (dg && dg.classList.contains("show") && typeof adaptContractDlg === "function") { adaptContractDlg(); return; }
+    renderDetAdapt(); return;
+  }
+  /* ★ 2026-09-30（第十六轮 · 全量评审修复）：**兜底草稿化** ——
+     以上分支返回后，用户身份卡内其余参数控件（令牌字段名 / key 字段名 / 换取入口 URL /
+     来源限制 / 票据有效期 / 各下拉与勾选组…）的 change 此前**没有任何处理**，值只活在 DOM 里：
+     点其它页签再点回 t6 即整页重渲染、未保存输入静默回默认（实测坐实）。
+     放在函数末尾 = 已 return 的分支不受影响；只认 #detAdaptForm 内，弹窗（body 级）不误收。 */
+  if (t.closest && t.closest("#detAdaptForm")) adaptStashF(false);
+}
+/* 把 D 档表单当前值暂存到资产 _adapt.d（未点保存也先记住，避免切形态后输入丢失）。 */
+/* ★ 2026-09-30（第六轮）：adaptStashD 补新字段 —— 表单识别规则（recogn）/
+   启用范围（scope）/ 凭据托管方式（trustee），对齐权威源 §6.6 配置项清单。 */
+/* D 档契约读取：**草稿优先**（键级合并到已存值之上）。
+   与 adaptF 的优先级链同构：草稿（未提交的编辑）遮住已存值，但不抹掉已存值的其余字段。 */
+function adaptDRead() {
+  var base = (adaptSt() && adaptSt().d) || {};
+  var t = ADAPT_D_TMP[adaptKey()] || {};
+  var out = {}, k;
+  for (k in base) { if (Object.prototype.hasOwnProperty.call(base, k)) out[k] = base[k]; }
+  for (k in t) { if (Object.prototype.hasOwnProperty.call(t, k)) out[k] = t[k]; }
+  return out;
+}
+function adaptStashD(asDraft) {
+  var a = adaptAsset(); if (!a) return;
+  /* asDraft=true：只写草稿仓（弹窗内改动的路径）；
+     缺省 / false：就地写资产对象（保存路径 + 既有调用方，语义不变）。 */
+  var d;
+  if (asDraft) {
+    ADAPT_D_TMP[adaptKey()] = ADAPT_D_TMP[adaptKey()] || {};
+    d = ADAPT_D_TMP[adaptKey()];
+  } else {
+    a._adapt = a._adapt || {};
+    a._adapt.d = a._adapt.d || {};
+    d = a._adapt.d;
+  }
+  var g = function (id) { var el = document.getElementById(id); return el ? String(el.value || "").trim() : ""; };
+  ["ddUrl:url","ddUrlAlt:urlAlt","ddKind:kind","ddRecogn:recogn","ddScope:scope","ddTrustee:trustee",
+   "ddUserSel:userSel","ddPwdSel:pwdSel",
+   "ddSubmitSel:submitSel","ddSubmit:submit","ddCaptcha:captcha","ddVerify:verify",
+   "ddS2Url:S2Url","ddS2User:S2User","ddS2Pwd:S2Pwd","ddS2Submit:S2Submit"].forEach(function (p) {
+    var kv = p.split(":"), v = g(kv[0]);
+    if (v) d[kv[1]] = v;
+  });
+  /* 第二步四项归入 step2 结构（与代填页共用同一契约形状）
+     ★ 2026-09-30（第十六轮 · 全量评审修复）：**多步才收、单步即清** ——
+     切回单步后第二步字段不再渲染，g() 读不到值、`if (v)` 不写，于是 d.S2Url 保留旧值，
+     上面的 if 依旧成立，把**陈旧的第二步**当成有效契约同步给「用户代填账号托管」
+     （形态已改单步，托管里却还留着跳转后页面的密码选择器）。 */
+  var dKind2 = String(d.kind || "");
+  if (dKind2.indexOf("多步") === 0 && (d.S2Url || d.S2Pwd)) {
+    d.step2 = { url: d.S2Url || "", userSel: d.S2User || "", pwdSel: d.S2Pwd || "", submitSel: d.S2Submit || "" };
+  } else {
+    delete d.step2; delete d.S2Url; delete d.S2User; delete d.S2Pwd; delete d.S2Submit;
+  }
+}
+
+/* D 档契约**变更** → 页④「用户代填账号托管」同资产记录的留痕。
+   ★ 抽为独立函数：此前该逻辑内联在 adaptSave 的 D 分支里，契约弹窗也要用
+     （弹窗保存走自己的入口），若各写一份必然分叉 —— 单点实现、两处调用。
+   ★★ 2026-10-10（R27 · C-4）：**契约不再回写副本** —— 唯一真源是资产侧 `_adapt.d`，
+      页④由 ucLoginOf 现读（资产侧优先）。原先此处把契约逐字段复制进 `x.login`，
+      与读取侧构成「双写 + 双读」：同一份契约两处存，任一侧被单独改动即成漂移源。
+      现只更新「更新时间」留痕，并**清除历史快照里残留的契约副本**（保留 tested / fail）。 */
+function adaptSyncAuContract() {
+  var a = adaptAsset(); if (!a) return;
+  var d = (a._adapt && a._adapt.d) || {};
+  if (!d.url) return;
+  try {
+    if (typeof AU !== "undefined" && AU && AU.uc && Array.isArray(AU.uc.items)) {
+      var hit = false;
+      AU.uc.items.forEach(function (x) {
+        if (x.asset !== a.name) return;
+        if (x.login && typeof x.login === "object") {
+          delete x.login.url; delete x.login.urlAlt; delete x.login.kind; delete x.login.recogn;
+          delete x.login.scope; delete x.login.trustee;
+          delete x.login.userSel; delete x.login.pwdSel; delete x.login.submitSel;
+          delete x.login.submit; delete x.login.captcha; delete x.login.verify; delete x.login.step2;
+        }
+        x.upd = AU_TS_STAMP.slice(0, 10);
+        hit = true;
+      });
+      if (hit && typeof auSave === "function") auSave();
+    }
+  } catch (err) { /* 忽略：认证模块状态不可用时不影响资产侧落库 */ }
+}
+/* A/B/C 档表单值的暂存与落库。★ 2026-09-30（第六轮）新增 —— 此前只有读取方 adaptF()、
+   **没有任何写入方**，实测两处缺陷：①「保存并下发」后参数全部回默认（_adapt.f 从未写入）；
+   ②切档后未保存输入丢失（ADAPT_F_TMP 从未写入）。
+   save=false → 草稿 ADAPT_F_TMP（切档 / 重渲染前调用，输入不丢）；
+   save=true  → 资产 _adapt.f（保存时调用，落库并随 DEMO_KEY 持久化）。 */
+function adaptStashF(save){
+  var a = adaptAsset(); if (!a) return;
+  var m = adaptMode(); if (m === "N" || m === "D") return;
+  var ids = {
+    A: { scope:"adScope", pos:"adPos", field:"adField", content:"adContent", pass:"adPass", redirect:"adRedirect" },
+    B: { scope:"bdScope", pos:"bdPos", field:"bdField", ttl:"bdTtl", path:"bdPath", url:"bdUrl", fields:"bdFields", src:"bdSrc" },
+    /* C 档字段集**随协议**（见 CD_PROTO_DEF）：CAS 无签名证书 / 元数据发布。 */
+    C: null
+  }[m];
+  if (m === "C") ids = adaptCIds();
+  if (!ids) return;
+  var out = {}, had = false;
+  Object.keys(ids).forEach(function (k) {
+    var el = document.getElementById(ids[k]);
+    if (!el) return;
+    /* 勾选组（data-chkgrp）：收集勾中的 value 以「、」连接；普通控件读 value */
+    var v;
+    if (el.getAttribute && el.getAttribute("data-chkgrp")) {
+      v = [].slice.call(el.querySelectorAll("input[type=checkbox]"))
+        .filter(function (x) { return x.checked; })
+        .map(function (x) { return x.value; }).join("、");
+    } else {
+      v = String(el.value || "").trim();
+    }
+    /* ★ 2026-09-30（第十七轮 · 全量评审修复）：**空值也要写入** ——
+       原实现 `if (v)` 跳过空值，于是已保存的字段**清不掉**：管理员删掉「令牌字段名」再保存，
+       旧值仍留在 _adapt.f（save 分支以旧值为底合并），刷新即回旧；与「保存并下发」语义矛盾。
+       只要控件已渲染就按当前值（含空串）覆盖；未渲染的字段因 getElementById 返回 null 自然跳过。 */
+    out[k] = v; had = true;
+  });
+  if (!had) return;
+  if (save) {
+    a._adapt = a._adapt || {};
+    a._adapt.f = a._adapt.f || {};
+    /* ★ 2026-09-30（第十五轮）：**合并**而非整体替换 —— C 档字段集随协议，
+       从 SAML 切到 OIDC 保存时，SAML 专有的「指定证书」不该被抹掉（切回即还原）；
+       A / B 档字段集恒定，合并与替换等价。 */
+    var _pf = a._adapt.f[m] || {}, _mf = {}, _k2;
+    for (_k2 in _pf) { if (Object.prototype.hasOwnProperty.call(_pf, _k2)) _mf[_k2] = _pf[_k2]; }
+    for (_k2 in out) { if (Object.prototype.hasOwnProperty.call(out, _k2)) _mf[_k2] = out[_k2]; }
+    /* ★ 2026-09-30（用户裁定）：C 档已无映射类字段（主标识由协议规范封装），
+       清掉历史存档里残留的 mapSrc / mapDst@<协议> 键，不留无读取方的垃圾键。 */
+    if (m === "C") {
+      if ("mapSrc" in _mf) delete _mf.mapSrc;
+      for (var _k4 in _mf) { if (_k4.indexOf("mapDst@") === 0) delete _mf[_k4]; }
+    }
+    a._adapt.f[m] = _mf;
+    /* ★ 保存后清掉本档草稿 —— adaptF 草稿优先，旧草稿会盖住刚保存的值 */
+    var key2 = adaptKey();
+    if (ADAPT_F_TMP[key2] && ADAPT_F_TMP[key2][m]) delete ADAPT_F_TMP[key2][m];
+  } else {
+    var key = adaptKey();
+    ADAPT_F_TMP[key] = ADAPT_F_TMP[key] || {};
+    /* ★ 2026-09-30（第十六轮 · 全量评审修复）：草稿分支同样**合并**（原为整体替换）——
+       C 档字段集随协议：选 SAML 改「NameID 格式 / 签名证书」未保存 → 切 OIDC → 切回 SAML，
+       整块草稿被 OIDC 那次替换掉，SAML 专有草稿静默蒸发（已保存值因回落 _adapt.f 尚在，
+       未保存的输入则丢）。与上方 save 分支的键级合并语义对齐。 */
+    var _bf = ADAPT_F_TMP[key][m] || {}, _bm = {}, _k3;
+    for (_k3 in _bf) { if (Object.prototype.hasOwnProperty.call(_bf, _k3)) _bm[_k3] = _bf[_k3]; }
+    for (_k3 in out) { if (Object.prototype.hasOwnProperty.call(out, _k3)) _bm[_k3] = out[_k3]; }
+    ADAPT_F_TMP[key][m] = _bm;
+  }
+}
+
+function adaptOnClick(e) {
+  /* 模式总览卡：点击即为当前资产选定该档（2026-09-30 补 —— 卡此前 cursor:pointer 却无处理）。 */
+  var mk = e.target && e.target.closest ? e.target.closest("[data-adapt-mode]") : null;
+  if (mk) {
+    var am = adaptAsset(); if (!am) return;
+    /* ★ 2026-09-30（第六轮）：切档前先把当前档未保存的输入收进草稿 ——
+       此前直接重渲染，A→B→A 后输入实测丢失（ADAPT_F_TMP 从无写入方）。 */
+    adaptStashF(false);
+    /* ★ 2026-09-30（第七轮）：档位选择只写草稿（ADAPT_MODE_TMP），不写资产对象 ——
+       此前直写 a._adapt.mode，机器身份卡任何一次保存（saveDemoState）
+       都会把未保存的档位一并持久化。 */
+    ADAPT_MODE_TMP[adaptKey()] = mk.getAttribute("data-adapt-mode");
+    renderAdaptPage();
+    toast("已切换到 " + mk.getAttribute("data-adapt-mode") + " 档（未保存）");
+    return;
+  }
+  var t = e.target && e.target.closest ? e.target.closest("[data-auth]") : null;
+  if (!t) return;
+  var act = t.getAttribute("data-auth");
+  if (act === "authGotoCred") { goPage("pg-auusercred"); return; }
+  /* 用户身份卡右上角「凭据在用户代填账号托管」跳转 */
+  if (act === "adaptGotoCred") { goPage("pg-auusercred"); return; }
+  /* 机器身份卡右上角「凭据在网关凭据托管」跳转 */
+  if (act === "adaptGotoCredHost") { goPage("pg-cred"); return; }
+  /* D 档「表单契约」弹窗（2026-09-30：长表单由页内移入弹窗） */
+  if (act === "adaptOpenContract") { window.__dlgStep = 1; adaptContractDlg(); return; }
+  if (act === "authCopy2") {
+    /* ★ 2026-09-30（用户裁定）：复制文本**随档位** —— 各档交付物不同，
+       复制 / 导出统一取当前档位的交付内容（adaptDeliverInfo），避免卡片与复制两处口径漂移。 */
+    var txt = adaptDeliverInfo().text;
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(txt).then(function(){ toast("接入信息已复制（演示）"); }, function(){ toast("复制失败，请手动选择文本"); }); }
+    else { toast("接入信息已复制（演示）"); }
+    return;
+  }
+  if (act === "authExportInfo") { toast("接入信息已导出（演示）"); return; }
+  /* 机器身份卡的两个提交按钮（★ 2026-09-30 新增）。
+     与「用户身份」卡分开提交：两者写不同的状态键（a._inj / a._injCred vs a._adapt.mode / .d），
+     互不覆盖 —— 用一张卡的两个按钮去「顺手保存另一张卡」会让「保存」的语义变得不可预期。 */
+  if (act === "adaptInjSave") {
+    var ai = adaptAsset(); if (!ai) return;
+    upCfgEnsure(ai);
+    /* ★ 2026-09-30（第七轮）：从草稿读值（草稿优先、回落已存值）——
+       此前读 upCfgDft（即 a._inj），单选点击已污染该值，「保存」只是旧值再落一遍。 */
+    var ki = adaptKey();
+    var dri = UP_INJ_DRAFT[ki] || {};
+    var si = upCfgDft(ai);
+    var vInj = (dri.inj != null) ? dri.inj : si.inj;
+    var vCred = (dri.cred != null && dri.cred !== "") ? dri.cred : (si.cred || "");
+    /* 业务校验：选「注入网关托管凭据」必须已选凭据（空凭据＝注入无效配置） */
+    if (vInj === "cred" && !vCred) { toast("已选「注入网关托管凭据」，须先选择托管凭据"); return; }
+    ai._inj = (vInj === "cred") ? "cred" : "none";
+    ai._injCred = (vInj === "cred") ? vCred : "";
+    delete UP_INJ_DRAFT[ki];
+    if (typeof saveDemoState === "function") saveDemoState();
+    renderAdaptPage();
+    toast("机器身份已保存并下发（演示）· " + (ai._inj === "cred" ? "注入网关托管凭据" : "不注入"));
+    return;
+  }
+  if (act === "adaptInjReset") {
+    var ar = adaptAsset(); if (!ar) return;
+    idAsk("恢复默认", "将把本资产的<b>机器身份注入</b>恢复为出厂默认（<b>不注入</b>），用户身份配置不受影响。<b>此操作入审计</b>。", function () {
+      delete ar._inj; delete ar._injCred; delete UP_INJ_DRAFT[adaptKey()];
+      /* ★ 2026-09-30（第十六轮）：同上 —— 恢复默认须落盘，否则刷新回滚。 */
+      if (typeof saveDemoState === "function") saveDemoState();
+      renderAdaptPage(); toast("机器身份已恢复默认（演示）");
+    }, "恢复默认");
+    return;
+  }
+  if (act === "adaptReset") {
+    var a = adaptAsset(); if (!a) return;
+    idAsk("恢复默认", "将把当前资产的适配配置<b>恢复为出厂默认（不注入）</b>，含 D 档表单契约。<b>此操作入审计</b>。", function () {
+      delete a._adapt;
+      var kr = adaptKey();
+      delete ADAPT_MODE_TMP[kr]; delete ADAPT_TRUST_TMP[kr]; delete ADAPT_F_TMP[kr];
+      delete ADAPT_D_TMP[kr];
+      /* ★ 2026-09-30（第十六轮 · 全量评审修复）：恢复默认须**落盘** ——
+         原实现只删内存字段、不写 localStorage，直接刷新即回滚，「恢复默认」形同虚设。 */
+      if (typeof saveDemoState === "function") saveDemoState();
+      renderAdaptPage(); toast("已恢复默认（演示）");
+    }, "恢复默认");
+    return;
+  }
+  if (act === "adaptSave") {
+    var a2 = adaptAsset(); if (!a2) return;
+    var m = adaptMode();
+    /* ★ A 档前置（FR-1.4 / 验收 5）：未声明信任不得保存注入配置 ——
+       页内说明早已写「保存并下发将被拒绝」，第六轮补上实际拦截。 */
+    if (m === "A" && !adaptTrust()) { toast("未声明信任的资产不能保存 token 注入配置（FR-1.4）"); return; }
+    /* ★ B 档必填校验（第七轮 · §4.7 / FR-2.4）：
+       换取入口 URL 是 key 的唯一注入点（空＝key 无处注入、模式空转）；
+       来源限制是受信调用方闸门（未配置＝userinfo 暴露给任意来源）；
+       key 有效期须为正整数（秒）。A 档信任拦截 / D 档 URL 校验见各自分支。 */
+    if (m === "B") {
+      var bUrl = (document.getElementById("bdUrl") || {}).value || "";
+      var bSrc = (document.getElementById("bdSrc") || {}).value || "";
+      var bTtl = (document.getElementById("bdTtl") || {}).value || "";
+      if (!String(bUrl).trim()) { toast("B 档须先填写「换取入口 URL」—— key 仅注入该 URL 的请求（§4.7）"); return; }
+      if (!String(bSrc).trim()) { toast("B 档须配置「来源限制」（IP 网段 / 域名）—— FR-2.4 受信调用方限定"); return; }
+      if (!/^\d+$/.test(String(bTtl).trim()) || parseInt(bTtl, 10) <= 0) { toast("「key 有效期」须为正整数（秒）"); return; }
+    }
+    /* ★ 2026-09-30（第十七轮 · 全量评审修复）：C 档「票据有效期」**零校验** ——
+       help 写「留空＝按协议惯例」，实际是自由文本框：abc / -5 / 0 / 999999999999
+       一律被当合法值落库下发。此处只接受「按协议默认」或正整数（≤365 天）。 */
+    if (m === "C") {
+      var cTtl = String((document.getElementById("cdTtl") || {}).value || "").trim();
+      if (cTtl && cTtl !== "按协议默认"
+          && (!/^\d+$/.test(cTtl) || parseInt(cTtl, 10) <= 0 || parseInt(cTtl, 10) > 31536000)) {
+        toast("「票据有效期」须为「按协议默认」或正整数秒数（≤365 天）");
+        return;
+      }
+    }
+    var ks = adaptKey();
+    /* ★ 2026-09-30（第十七轮 · 全量评审修复）：D 档契约校验**前置到写内存之前** ——
+       原实现先写 a2._adapt.mode / trust 并清档位草稿，再在 D 分支校验失败时 return：
+       内存里档位已变 D、卡头状态显示「已保存」，而契约并未配置；此后任意一次
+       saveDemoState（如点机器身份「保存并下发」、切页跳转）就把「D 档 + 空契约」持久化。
+       校验先行：先收值（草稿）→ 校验 → 通过才提交到资产。
+       ★ 同轮：登录页地址补 scheme 校验 —— help 早已写明「须为 https://」，代码只判非空。 */
+    if (m === "D") {
+      adaptStashD(true);
+      var d0 = adaptDRead();
+      var rec0 = String(d0.recogn || "").indexOf("自定义") === 0;
+      if (!d0.url) { toast("D 档须先填写资产登录页地址"); return; }
+      if (!/^https?:\/\//i.test(String(d0.url).trim())) { toast("「资产登录页地址」须为 https:// 开头（存量 http 按例外登记）"); return; }
+      /* 自定义识别模式才强制选择器；自动模式由字段特征库识别（§6.6 默认值＝自动） */
+      if (rec0 && (!d0.userSel || !d0.pwdSel)) { toast("自定义识别模式须填写账号 / 密码字段选择器"); return; }
+      adaptStashD();
+      delete ADAPT_D_TMP[ks];
+    }
+    a2._adapt = a2._adapt || {};
+    /* 草稿落库：档位（ADAPT_MODE_TMP）与信任声明（ADAPT_TRUST_TMP）随保存一并生效。
+       ★ trust 无条件固化当前生效值（adaptTrust()）—— 若只在「有草稿时」写入，
+       首次保存时 seed 默认值（true）不落库，出现「UI 勾选着、库里 undefined」的
+       显示与持久化不一致（第七轮旅程 J2/J3 实测坐实）。 */
+    a2._adapt.mode = m;
+    delete ADAPT_MODE_TMP[ks];
+    a2._adapt.trust = adaptTrust();
+    delete ADAPT_TRUST_TMP[ks];
+    /* ★ A/B/C 档：表单值随保存落库 _adapt.f —— 此前只存档位，保存后参数全部回默认
+       （第六轮实测坐实：改字段名 → 保存 → 页面弹回 Authorization）。 */
+    if (m === "A" || m === "B" || m === "C") adaptStashF(true);
+    /* D 档契约已在上方校验并提交，这里只做「用户代填账号托管」同步 */
+    if (m === "D") { adaptSyncAuContract(); }
+    /* 资产对象落盘（DEMO_KEY） */
+    if (typeof saveDemoState === "function") saveDemoState();
+    renderAdaptPage();
+    var nm2 = ((ADAPT_MODES.filter(function (x) { return x.k === m; })[0]) || {}).name || m;
+    toast("已保存并下发（演示）· " + nm2 + (m === "D" ? "；契约已同步至用户代填账号托管" : ""));
+    return;
+  }
+}

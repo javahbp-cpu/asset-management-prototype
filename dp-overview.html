@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="jZzFDYvrQnKJnCgzPGFH9F">
+<head data-page-node-id="ZjPO2c6J1zrT1HFgpW7znd">
+<meta charset="UTF-8" data-page-node-id="Ui80ztktmy3WHm80CVrICS">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="RtRN2UrsPQjgti3i4CHBQH">
+<title>防护总览 · 动态防护</title>
+<link rel="stylesheet" href="assets/proto.css" data-page-node-id="ProtoCssLink00001">
+<script data-page-node-id="PreGate00000000001">
+(function(){try{
+  if(localStorage.getItem("baize.assetmgmt.session.v1"))return;
+  var b=(location.pathname.split("/").pop()||"index.html")+location.search+location.hash;
+  location.replace("login.html?back="+encodeURIComponent(b));
+}catch(e){}})();
+</script>
+</head>
+<body data-page-node-id="sVU6yFYEAn2BNpRlHG1qQN" data-page="pg-dpov">
+
+<div class="topbar" data-page-node-id="FFfoGZbBRSrId0ls5ljU7j">
+  <div class="logo" data-page-node-id="LiriLxAujCxv0rUAsgsgZV"><span class="logo-mark" data-page-node-id="BaizeLogoMark00001">白泽</span><strong data-page-node-id="OgoCyLCaYORNWKLRMthZnf">白泽</strong><span class="logo-div" data-page-node-id="BaizeLogoDiv000001"></span><span class="logo-sub" data-page-node-id="BaizeLogoSub000001">零信任 · 运维管理平台</span></div>
+  <div class="who" data-page-node-id="vtGA7YVoOdWhlJU7lESfmJ"><span id="topbarUser" data-page-node-id="TopbarWhoLabel0001">安全管理员 张伟</span><button class="btn ghost sm" type="button" id="btnLogout" data-page-node-id="TopbarLogoutBtn01" title="退出登录并返回登录页">退出登录</button></div>
+</div>
+
+<div class="layout" data-page-node-id="5tGrLN6PdF2dJGy76tPblX">
+  <aside class="side" id="side" data-page-node-id="u2m7BK8ZZnuNR1lB2p9Gdb">
+    <div class="g" data-page-node-id="D1wdBTSSmLiuaUhKsXuF0C">资产管理</div>
+    <div class="mi" data-pg="pg-list" data-page-node-id="TqADHy8PcLqyG8x5mzEsvb"><span class="ic" data-page-node-id="a89pK9drBDGp2F9l3Smam5">▤</span>资产列表</div>
+    <div class="g" data-page-node-id="ET60aEH8unu5I95PyYhKCO">安全策略</div>
+    <div class="mi" data-pg="pg-asp" data-page-node-id="7swUQJ93EfDByVCwsFoJJ7"><span class="ic" data-page-node-id="WbWsKOZZMsKA09wrFX7uOl">◈</span>资产访问控制策略</div>
+    <div class="mi" data-pg="pg-websec" data-page-node-id="PgWebSecNavItem000A1"><span class="ic" data-page-node-id="PgWebSecNavItem000A2">◉</span>Web 安全防护策略</div>
+    <div class="mi" data-pg="pg-rulelib" data-page-node-id="PgRuleLibNavItem00A1"><span class="ic" data-page-node-id="PgRuleLibNavItem00A2">☰</span>WAF 规则库管理</div>
+    <div class="g" data-page-node-id="BaizeNavGrpDynPro001">动态防护</div>
+    <div class="mi on" data-pg="pg-dpov" data-page-node-id="PgDpOvNavItemA"><span class="ic" data-page-node-id="PgDpOvNavItemB">▨</span>防护总览</div>
+    <div class="mi" data-pg="pg-dppol" data-page-node-id="PgDpPolNavItemA"><span class="ic" data-page-node-id="PgDpPolNavItemB">◪</span>防护策略</div>
+    <div class="mi" data-pg="pg-dpbase" data-page-node-id="PgDpBaseNavItemA"><span class="ic" data-page-node-id="PgDpBaseNavItemB">◐</span>行为基线</div>
+    <div class="mi" data-pg="pg-dparms" data-page-node-id="PgDpArmsNavItemA"><span class="ic" data-page-node-id="PgDpArmsNavItemB">◭</span>对抗能力</div>
+    <div class="g" data-page-node-id="BaizeNavGrpAlert0001">告警</div>
+    <div class="mi" data-pg="pg-alert" data-page-node-id="PgAlertNavItemA1"><span class="ic" data-page-node-id="PgAlertNavItemB1">◍</span>风险事件告警</div>
+    <div class="g" data-page-node-id="BaizeNavGrpIdentity001">身份</div>
+    <div class="mi" data-pg="pg-iduser" data-page-node-id="用户管理 · 身份模块NavItemA"><span class="ic" data-page-node-id="用户管理 · 身份模块NavItemB">☺</span>用户管理</div>
+    <div class="mi" data-pg="pg-idterm" data-page-node-id="终端管理 · 身份模块NavItemA"><span class="ic" data-page-node-id="终端管理 · 身份模块NavItemB">▭</span>终端管理</div>
+    <div class="mi" data-pg="pg-idcsw" data-page-node-id="客户端软件管理 · 身份模块NavItemA"><span class="ic" data-page-node-id="客户端软件管理 · 身份模块NavItemB">◫</span>客户端软件管理</div>
+    <div class="mi" data-pg="pg-idcin" data-page-node-id="客户端实例管理 · 身份模块NavItemA"><span class="ic" data-page-node-id="客户端实例管理 · 身份模块NavItemB">▦</span>客户端实例管理</div>
+    <div class="mi" data-pg="pg-idagsw" data-page-node-id="智能体软件管理 · 身份模块NavItemA"><span class="ic" data-page-node-id="智能体软件管理 · 身份模块NavItemB">◱</span>智能体软件管理</div>
+    <div class="mi" data-pg="pg-idagin" data-page-node-id="智能体实例管理 · 身份模块NavItemA"><span class="ic" data-page-node-id="智能体实例管理 · 身份模块NavItemB">◲</span>智能体实例管理</div>
+    <div class="g" data-page-node-id="BaizeNavGrpAuth001">认证</div>
+    <div class="mi" data-pg="pg-audict" data-page-node-id="认证方式字典 · 认证模块NavItemA"><span class="ic" data-page-node-id="认证方式字典 · 认证模块NavItemB">◆</span>认证方式字典</div>
+    <div class="mi" data-pg="pg-ausrc" data-page-node-id="认证源 · 认证模块NavItemA"><span class="ic" data-page-node-id="认证源 · 认证模块NavItemB">◈</span>认证源</div>
+    <div class="mi" data-pg="pg-cred" data-page-node-id="PgCredNavItem0000A1"><span class="ic" data-page-node-id="PgCredNavItem0000A2">▣</span>网关凭据托管</div>
+    <div class="mi" data-pg="pg-auusercred" data-page-node-id="用户代填账号托管 · 认证模块NavItemA"><span class="ic" data-page-node-id="用户代填账号托管 · 认证模块NavItemB">▤</span>用户代填账号托管</div>
+    <div class="mi" data-pg="pg-auissue" data-page-node-id="签发凭据管理 · 认证模块NavItemA"><span class="ic" data-page-node-id="签发凭据管理 · 认证模块NavItemB">▥</span>签发凭据管理</div>
+    <div class="mi" data-pg="pg-auauthr" data-page-node-id="强认证器绑定管理 · 认证模块NavItemA"><span class="ic" data-page-node-id="强认证器绑定管理 · 认证模块NavItemB">▧</span>强认证器绑定管理</div>
+  </aside>
+
+  <div class="main" data-page-node-id="F3BHXnrKSVMffSdAYEeBsw">
+    <div class="crumbs" data-page-node-id="kgTJrYB9yQBWF12r4CAotr">
+      <div id="crumbs" data-page-node-id="IQXCg7hCxqTOGBfs9xzow2"><span class="p">动态防护</span><span class="sep">/</span><span>防护总览</span></div>
+    </div>
+
+    <div class="wrap" id="wrap" data-page-node-id="FLUo0gdwcQmZPAoUX0qU0B">
+
+      <!-- ============ 动态防护 · 防护总览（指标卡 / 评分分布 / 实时事件流值守视图，由 JS 渲染） ============ -->
+      <div class="pg on" id="pg-dpov" data-page-node-id="PgDpOvRoot00000001"></div>
+
+    </div><!-- /wrap -->
+    <div class="foot" data-page-node-id="Ummxs6gmfUVrebPZlp0Oic">
+      <span data-page-node-id="CRR6GT39LjCxUc1deprNk9">资产管理原型（演示数据 · 交互示意）</span>
+      <span style="display:flex;align-items:center;gap:14px">      <span class="hint" id="footHint" data-page-node-id="1tl2DDBVliGV5HiQeFShkB"></span><button class="btn link" type="button" onclick="resetDemo()" title="清除浏览器本地保存的演示改动，恢复初始演示数据" style="font-size:12.5px">重置演示数据</button></span>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 弹窗区 ================= -->
+<div class="dlg-bg" id="dlg1" role="dialog" aria-modal="true" aria-labelledby="dlg1Title" data-page-node-id="2sfHbfSXMtDaZYa6JThbCI">
+  <div class="dlg" data-page-node-id="95Feska6HmuAv1YbBbuP99">
+    <h4 id="dlg1Title" data-page-node-id="Zb9nrbG3yOZffKOyBXyvvO">标题</h4>
+    <div class="msg" id="dlg1Msg" data-page-node-id="fut4Px6U0KfCUbhHzYTPsH"></div>
+    <div id="dlg1Body" data-page-node-id="D4kRbAEXmnjoO5jp6giuHO"></div>
+    <div class="ops" data-page-node-id="ZwiAhnIlXIhFMdIb5ZKXME">
+      <button class="btn" id="dlg1No" data-page-node-id="wzSHznH29RGEkLVUQe7uTz">取消</button>
+      <button class="btn primary" id="dlg1Ok" data-page-node-id="GlMhdT85nhpOs2ziQP5jUo">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" data-page-node-id="L6dfBqdzJsZRzMPy9iSoeN"></div>
+
+<!-- 通用确认弹窗（二次确认 / 危险操作） -->
+<div class="dlg-bg" id="dlgCfm" data-page-node-id="6adJ0CvQ4tiWvmWJFu5XyS">
+  <div class="dlg lg" style="width:720px" data-page-node-id="mk1Z3QfcPYWSvctOS9EGaO">
+    <h4 id="cfmTitle" data-page-node-id="C2oB0pUuNVyTE1PVzw8TA9">确认</h4>
+    <div class="msg" id="cfmMsg" data-page-node-id="d3tiUFpH7q23YxVCfYzFgF"></div>
+    <div id="cfmBody" data-page-node-id="JTEfRtdmcspj3zQg6dv69S"></div>
+    <div class="ops" style="margin-top:16px" data-page-node-id="hLIrUwQRr7maqlZzzb3apM">
+      <button class="btn" data-act="cfmNo" data-page-node-id="cmCuIuCWBtL5A54DmBQinV">取消</button>
+      <button class="btn primary" id="cfmYes" data-act="cfmYes" data-page-node-id="X1owFvtMPjB672V9dtbby2">确认</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head data-page-node-id="ZjPO2c6J1zrT1HFgpW7znd">
 <meta charset="UTF-8" data-page-node-id="Ui80ztktmy3WHm80CVrICS">
 <meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="RtRN2UrsPQjgti3i4CHBQH">
-<title>凭据托管 · 安全设置原型</title>
+<title>网关凭据托管 · 认证模块原型</title>
 <link rel="stylesheet" href="assets/proto.css" data-page-node-id="ProtoCssLink00001">
 <script data-page-node-id="PreGate00000000001">
 (function(){try{
@@ -27,19 +27,38 @@
     <div class="g" data-page-node-id="ET60aEH8unu5I95PyYhKCO">安全策略</div>
     <div class="mi" data-pg="pg-asp" data-page-node-id="7swUQJ93EfDByVCwsFoJJ7"><span class="ic" data-page-node-id="WbWsKOZZMsKA09wrFX7uOl">◈</span>资产访问控制策略</div>
     <div class="mi" data-pg="pg-websec" data-page-node-id="PgWebSecNavItem000A1"><span class="ic" data-page-node-id="PgWebSecNavItem000A2">◉</span>Web 安全防护策略</div>
-    <div class="mi" data-pg="pg-rulelib" data-page-node-id="PgRuleLibNavItem00A1"><span class="ic" data-page-node-id="PgRuleLibNavItem00A2">☰</span>规则库管理</div>
-    <div class="g" data-page-node-id="BaizeNavGrpSecSet001">安全设置</div>
-    <div class="mi on" data-pg="pg-cred" data-page-node-id="PgCredNavItem0000A1"><span class="ic" data-page-node-id="PgCredNavItem0000A2">▣</span>凭据托管</div>
+    <div class="mi" data-pg="pg-rulelib" data-page-node-id="PgRuleLibNavItem00A1"><span class="ic" data-page-node-id="PgRuleLibNavItem00A2">☰</span>WAF 规则库管理</div>
+        <div class="g" data-page-node-id="BaizeNavGrpDynPro001">动态防护</div>
+    <div class="mi" data-pg="pg-dpov" data-page-node-id="PgDpOvNavItemA"><span class="ic" data-page-node-id="PgDpOvNavItemB">▨</span>防护总览</div>
+    <div class="mi" data-pg="pg-dppol" data-page-node-id="PgDpPolNavItemA"><span class="ic" data-page-node-id="PgDpPolNavItemB">◪</span>防护策略</div>
+    <div class="mi" data-pg="pg-dpbase" data-page-node-id="PgDpBaseNavItemA"><span class="ic" data-page-node-id="PgDpBaseNavItemB">◐</span>行为基线</div>
+    <div class="mi" data-pg="pg-dparms" data-page-node-id="PgDpArmsNavItemA"><span class="ic" data-page-node-id="PgDpArmsNavItemB">◭</span>对抗能力</div>
+    <div class="g" data-page-node-id="BaizeNavGrpAlert0001">告警</div>
+    <div class="mi" data-pg="pg-alert" data-page-node-id="PgAlertNavItemA1"><span class="ic" data-page-node-id="PgAlertNavItemB1">◍</span>风险事件告警</div>
+    <div class="g" data-page-node-id="BaizeNavGrpIdentity001">身份</div>
+    <div class="mi" data-pg="pg-iduser" data-page-node-id="PgIdUserNavItemA"><span class="ic" data-page-node-id="PgIdUserNavItemB">☺</span>用户管理</div>
+    <div class="mi" data-pg="pg-idterm" data-page-node-id="PgIdTermNavItemA"><span class="ic" data-page-node-id="PgIdTermNavItemB">▭</span>终端管理</div>
+    <div class="mi" data-pg="pg-idcsw" data-page-node-id="PgIdCswNavItemA"><span class="ic" data-page-node-id="PgIdCswNavItemB">◫</span>客户端软件管理</div>
+    <div class="mi" data-pg="pg-idcin" data-page-node-id="PgIdCinNavItemA"><span class="ic" data-page-node-id="PgIdCinNavItemB">▦</span>客户端实例管理</div>
+    <div class="mi" data-pg="pg-idagsw" data-page-node-id="PgIdAgswNavItemA"><span class="ic" data-page-node-id="PgIdAgswNavItemB">◱</span>智能体软件管理</div>
+    <div class="mi" data-pg="pg-idagin" data-page-node-id="PgIdAginNavItemA"><span class="ic" data-page-node-id="PgIdAginNavItemB">◲</span>智能体实例管理</div>
+    <div class="g" data-page-node-id="BaizeNavGrpAuth001">认证</div>
+    <div class="mi" data-pg="pg-audict" data-page-node-id="PgAuDictNavItemA"><span class="ic" data-page-node-id="PgAuDictNavItemB">◆</span>认证方式字典</div>
+    <div class="mi" data-pg="pg-ausrc" data-page-node-id="PgAuSrcNavItemA"><span class="ic" data-page-node-id="PgAuSrcNavItemB">◈</span>认证源</div>
+    <div class="mi on" data-pg="pg-cred" data-page-node-id="PgCredNavItem0000A1"><span class="ic" data-page-node-id="PgCredNavItem0000A2">▣</span>网关凭据托管</div>
+    <div class="mi" data-pg="pg-auusercred" data-page-node-id="PgAuUserCredNavItemA"><span class="ic" data-page-node-id="PgAuUserCredNavItemB">▤</span>用户代填账号托管</div>
+    <div class="mi" data-pg="pg-auissue" data-page-node-id="PgAuIssueNavItemA"><span class="ic" data-page-node-id="PgAuIssueNavItemB">▥</span>签发凭据管理</div>
+    <div class="mi" data-pg="pg-auauthr" data-page-node-id="PgAuAuthrNavItemA"><span class="ic" data-page-node-id="PgAuAuthrNavItemB">▧</span>强认证器绑定管理</div>
   </aside>
 
   <div class="main" data-page-node-id="F3BHXnrKSVMffSdAYEeBsw">
     <div class="crumbs" data-page-node-id="kgTJrYB9yQBWF12r4CAotr">
-      <div id="crumbs" data-page-node-id="IQXCg7hCxqTOGBfs9xzow2"><span class="p">安全设置</span><span class="sep">/</span><span>凭据托管</span></div>
+      <div id="crumbs" data-page-node-id="IQXCg7hCxqTOGBfs9xzow2"><span class="p">认证</span><span class="sep">/</span><span>网关凭据托管</span></div>
     </div>
 
     <div class="wrap" id="wrap" data-page-node-id="FLUo0gdwcQmZPAoUX0qU0B">
 
-      <!-- ============ 安全设置 · 凭据托管（网关托管凭据管理：网关托管凭据 / CA 管理 / mTLS 客户端证书 三分区，由 JS 渲染） ============ -->
+      <!-- ============ 认证 · 网关凭据托管（网关托管凭据 / CA 管理 / mTLS 客户端证书 三分区，由 JS 渲染） ============ -->
       <div class="pg on" id="pg-cred" data-page-node-id="PgCredVaultPage0000A"></div>
 
     </div><!-- /wrap -->
@@ -51,7 +70,7 @@
 </div>
 
 <!-- ================= 弹窗区 ================= -->
-<div class="dlg-bg" id="dlg1" data-page-node-id="2sfHbfSXMtDaZYa6JThbCI">
+<div class="dlg-bg" id="dlg1" role="dialog" aria-modal="true" aria-labelledby="dlg1Title" data-page-node-id="2sfHbfSXMtDaZYa6JThbCI">
   <div class="dlg" data-page-node-id="95Feska6HmuAv1YbBbuP99">
     <h4 id="dlg1Title" data-page-node-id="Zb9nrbG3yOZffKOyBXyvvO">标题</h4>
     <div class="msg" id="dlg1Msg" data-page-node-id="fut4Px6U0KfCUbhHzYTPsH"></div>
@@ -63,10 +82,10 @@
   </div>
 </div>
 
-<div class="toast" id="toast" data-page-node-id="L6dfBqdzJsZRzMPy9iSoeN"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" data-page-node-id="L6dfBqdzJsZRzMPy9iSoeN"></div>
 
 <!-- 通用确认弹窗（二次确认 / 危险操作 · 安全策略模块） -->
-<div class="dlg-bg" id="dlgCfm" data-page-node-id="6adJ0CvQ4tiWvmWJFu5XyS">
+<div class="dlg-bg" id="dlgCfm" role="dialog" aria-modal="true" aria-labelledby="cfmTitle" data-page-node-id="6adJ0CvQ4tiWvmWJFu5XyS">
   <div class="dlg lg" style="width:720px" data-page-node-id="mk1Z3QfcPYWSvctOS9EGaO">
     <h4 id="cfmTitle" data-page-node-id="C2oB0pUuNVyTE1PVzw8TA9">确认</h4>
     <div class="msg" id="cfmMsg" data-page-node-id="d3tiUFpH7q23YxVCfYzFgF"></div>
