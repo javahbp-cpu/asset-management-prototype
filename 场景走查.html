@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>业务流程图与场景走查 — 白泽零信任 · 运维管理平台原型</title>
+<link rel="stylesheet" href="assets/proto.css?v=ab04b092a94a">
+</head>
+<body>
+
+<header class="walk-hero">
+  <div class="wrap">
+    <span class="brand"><span class="logo-mark">白泽</span><strong>白泽</strong>
+      <span class="logo-div"></span><span class="logo-sub">零信任 · 运维管理平台</span></span>
+    <h1>业务流程图与场景走查</h1>
+    <p>
+      上半部分是 <b>3 张关键业务流程图</b>（认证源接入与生效、凭据全生命周期、强认证器绑定与重置），
+      逐步说明执行方、输入产出与分支。<br>
+      下半部分是 <b>16 条关键流程 · 49 幕</b>的可点击串演：每一幕落到具体页面与具体深链，
+      覆盖 8 个场景域、29 个页面（见下方覆盖矩阵）；进入任意一幕后，
+      右下角<b>走查条</b>可逐幕前进 / 后退。
+    </p>
+    <div class="stats" id="walk-stats"></div>
+    <div class="go">
+      <a href="login.html"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> 从 F1 第一幕开始</a>
+      <a class="ghost" href="关键业务说明/FL1-认证源接入与生效全流程.html">FL1 认证源接入全流程</a>
+      <a class="ghost" href="原型索引.html">返回原型索引</a>
+    </div>
+  </div>
+</header>
+
+<main class="content">
+
+  <div class="section-h" id="flows">
+    <div>
+      <div class="kicker blue">FLOW DIAGRAMS</div>
+      <h2>3 张关键业务流程图</h2>
+      <p class="lead">按步骤说明执行方、输入产出、分支与失败码，不画装饰性图形。全部收在「关键业务说明」下；
+        其余模块的关键链路见下方走查逐幕说明。</p>
+    </div>
+  </div>
+  <div class="page-grid"><a class="page-card" href="关键业务说明/FL1-认证源接入与生效全流程.html"><span class="no flow">FL1</span><h3>认证源接入与生效全流程</h3><p>从新增一个外部身份来源，到它真正出现在登录页可用的全过程：连接参数 → 连通性验证 → 字段映射 → 账号同步 → 启用与呈现。</p><div class="map">对应页面 认证源 / 认证方式字典 · 见 F14</div><span class="go">打开流程图 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="关键业务说明/FL2-凭据全生命周期全流程.html"><span class="no flow">FL2</span><h3>凭据全生命周期全流程</h3><p>三类凭据按「持有方 / 签发方」分界的完整生命周期：网关托管、用户代填、平台签发；以及轮换、吊销与过期三类处置的差异（轮换属过渡态，吊销与过期属终态）。</p><div class="map">对应页面 凭据三页 / 资产身份适配 · 见 F15</div><span class="go">打开流程图 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="关键业务说明/FL3-强认证器绑定与重置全流程.html"><span class="no flow">FL3</span><h3>强认证器绑定与重置全流程</h3><p>强认证器从登记到重置的全过程：登记须由已认证会话发起、challenge 一次性消费、吊销按凭据 ID 执行、全不可用时的管理员重置通道。</p><div class="map">对应页面 强认证器绑定管理 · 见 F16</div><span class="go">打开流程图 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a></div>
+
+  <div class="section-h" id="walks" style="margin-top:44px">
+    <div>
+      <div class="kicker blue">WALKTHROUGH</div>
+      <h2>16 条关键流程 · 49 幕</h2>
+      <p class="lead">每一幕标注了它演示的业务口径。点击任意一幕即进入该页面并落到对应深链
+        （未登录时自动回跳登录，登录后回到原目标并保留深链参数）。</p>
+    </div>
+  </div>
+  <div class="sc-list" id="sc-list"></div>
+
+  <div class="sc-legend">
+    <span>幕次编号 <code>F<sub>流程</sub>-<sub>幕</sub></code>；点击即打开该页并落到深链参数</span>
+    <span>进入后右下角走查条可逐幕前进 / 后退，进度点可直接跳幕</span>
+    <span>同一页面内的多幕会标「同页」（本批：F1 / F5 / F6 / F8 / F11）——该页不消费 URL 参数、页面本身不变，按条内说明在页内观察</span>
+    <span>深链形如 <code>asset-detail.html?aid=a1&amp;tab=t6&amp;flow=F4&amp;step=5</code>，可直接分享某一幕</span>
+    <span>登录页演示账号 <b>admin_dev / Aa111111</b></span>
+  </div>
+
+  <section style="margin-top:34px">
+    <div class="section-h">
+      <div>
+        <div class="kicker">覆盖核对</div>
+        <h2>场景域 → 页面 → 说明</h2>
+        <p class="lead">三类资源的分工：<b>页面原型</b>看界面，<b>流程与走查</b>看怎么走通，
+          <b>关键业务说明</b>看规则与参数。</p>
+      </div>
+    </div>
+    <div class="card"><div class="card-b" style="padding:0; overflow:auto">
+      <table>
+        <thead><tr><th style="width:150px">场景域</th><th>覆盖内容</th>
+          <th style="width:300px">涉及页面</th><th style="width:260px">对应业务说明</th></tr></thead>
+        <tbody><tr><td><b>G 接入与登录</b></td><td>登录、演示变体、控制面入口</td><td class="mono">登录页 / 01 资产列表</td><td>—（口径见《原型页面角色权限矩阵与演示方案》）</td></tr><tr><td><b>A 资产管理</b></td><td>资产登记 / 编辑 / 详情 / 身份适配（资产准入）</td><td class="mono">01 资产列表 / 02 资产详情 / 03 登记·编辑</td><td><a href="关键业务说明/FL2-凭据全生命周期全流程.html">FL2 凭据全生命周期</a>（D 档代填部分）</td></tr><tr><td><b>B 访问控制</b></td><td>资产访问控制策略 / 细粒度访问策略 / 设置访问要求</td><td class="mono">04 资产访问控制策略 / 05 资产细粒度访问策略（06 设置访问要求须携带上下文进入，见 ＊）</td><td>—（资产访问控制策略与细粒度访问策略 · 页面深化设计方案）</td></tr><tr><td><b>C Web 安全防护</b></td><td>Web 防护（WAF）/ 集群级限流 / 请求约束 / 规则库管理</td><td class="mono">07 Web 安全防护策略 / 08 集群级限流 / 09 请求约束 / 10 WAF 规则库管理</td><td>—（Web 安全防护策略 · 页面规划方案）</td></tr><tr><td><b>D 动态防护</b></td><td>防护总览 / 防护策略 / 行为基线 / 对抗能力</td><td class="mono">11 防护总览 / 12 防护策略 / 13 行为基线 / 14 对抗能力</td><td>—（动态防护控制台 · 页面规划方案）</td></tr><tr><td><b>E 风险事件告警</b></td><td>各防护域事件汇入统一规则、通知渠道配置（5 类）与批量确认</td><td class="mono">15 风险事件告警 / 28 通知渠道配置</td><td>—（风险事件告警 · 公共页；渠道参数在系统配置维护）</td></tr><tr><td><b>F 身份治理</b></td><td>用户与角色归属 / 终端 / 客户端软件与实例 / 智能体软件与实例</td><td class="mono">16 用户管理 / 17 终端管理 / 18 客户端软件管理 / 19 客户端实例管理 / 20 智能体软件管理 / 21 智能体实例管理</td><td>—（身份与认证 · 模块页面规划方案）</td></tr><tr><td><b>H 认证与凭据</b></td><td>认证方式字典 / 认证源 / 三类凭据 / 强认证器</td><td class="mono">22 认证源 / 23 网关凭据托管 / 24 用户代填账号托管 / 25 签发凭据管理 / 26 强认证器绑定管理 · 27 认证方式字典 / 28 通知渠道配置</td><td><a href="关键业务说明/FL1-认证源接入与生效全流程.html">FL1 认证源接入</a> · <a href="关键业务说明/FL2-凭据全生命周期全流程.html">FL2 凭据全生命周期</a> · <a href="关键业务说明/FL3-强认证器绑定与重置全流程.html">FL3 强认证器绑定与重置</a></td></tr></tbody>
+      </table>
+    </div></div>
+  </section>
+
+  <section style="margin-top:34px">
+    <div class="section-h">
+      <div>
+        <div class="kicker">COVERAGE MATRIX</div>
+        <h2>页面 × 场景域 覆盖矩阵</h2>
+        <p class="lead">29 个页面中 <b>28 个</b>被走查触达；单元格为该页落在哪些幕
+          （<code>F流程-幕</code>），空即为未触达。＊ 标记的是须携带上下文进入、不提供直接深链的页面。</p>
+      </div>
+    </div>
+    <div class="cov-wrap"><table class="cov"><thead><tr><th>页面（编号 · 名称）</th><th class="c" title="G 接入与登录">G</th><th class="c" title="A 资产管理">A</th><th class="c" title="B 访问控制">B</th><th class="c" title="C Web 安全防护">C</th><th class="c" title="D 动态防护">D</th><th class="c" title="E 风险事件告警">E</th><th class="c" title="F 身份治理">F</th><th class="c" title="H 认证与凭据">H</th></tr></thead><tbody><tr class="grp"><td colspan="9">入口</td></tr><tr><td class="pg"><span>—</span>登录页</td><td class="c">F1-1</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr class="grp"><td colspan="9">资产管理</td></tr><tr><td class="pg"><span>01</span>资产列表</td><td class="c">F1-2 F1-3</td><td class="c">F2-1 F2-3</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr><td class="pg"><span>02</span>资产详情</td><td class="c off">—</td><td class="c">F2-4 F3-1 F3-3 F4-1 F4-2 F4-3 F4-4 F4-5</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr><td class="pg"><span>03</span>登记 / 编辑资产</td><td class="c off">—</td><td class="c">F2-2 F3-2</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr class="grp"><td colspan="9">安全策略</td></tr><tr><td class="pg"><span>04</span>资产访问控制策略</td><td class="c off">—</td><td class="c off">—</td><td class="c">F5-1 F5-2 F5-3</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr><td class="pg"><span>05</span>资产细粒度访问策略</td><td class="c off">—</td><td class="c off">—</td><td class="c">F6-1 F6-2 F6-3</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr><td class="pg"><span>06</span>设置访问要求 ＊</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr><td class="pg"><span>07</span>Web 安全防护策略（WAF）</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F7-1</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr><td class="pg"><span>08</span>集群级限流</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F7-2</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr><td class="pg"><span>09</span>请求约束</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F7-3</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr><td class="pg"><span>10</span>WAF 规则库管理</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F8-1 F8-2 F8-3</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr class="grp"><td colspan="9">动态防护</td></tr><tr><td class="pg"><span>11</span>防护总览</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F9-1</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr><td class="pg"><span>12</span>防护策略</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F9-2</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr><td class="pg"><span>13</span>行为基线</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F9-3</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr><td class="pg"><span>14</span>对抗能力</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F9-4</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td></tr><tr class="grp"><td colspan="9">告警</td></tr><tr><td class="pg"><span>15</span>风险事件告警</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F10-1</td><td class="c off">—</td><td class="c off">—</td></tr><tr class="grp"><td colspan="9">身份</td></tr><tr><td class="pg"><span>16</span>用户管理</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F11-1 F11-2</td><td class="c off">—</td></tr><tr><td class="pg"><span>17</span>终端管理</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F12-1</td><td class="c off">—</td></tr><tr><td class="pg"><span>18</span>客户端软件管理</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F12-2</td><td class="c off">—</td></tr><tr><td class="pg"><span>19</span>客户端实例管理</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F12-3</td><td class="c off">—</td></tr><tr><td class="pg"><span>20</span>智能体软件管理</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F13-1</td><td class="c off">—</td></tr><tr><td class="pg"><span>21</span>智能体实例管理</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F13-2</td><td class="c off">—</td></tr><tr class="grp"><td colspan="9">认证</td></tr><tr><td class="pg"><span>22</span>认证源</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F14-2</td></tr><tr><td class="pg"><span>23</span>网关凭据托管</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F15-1</td></tr><tr><td class="pg"><span>24</span>用户代填账号托管</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F15-2</td></tr><tr><td class="pg"><span>25</span>签发凭据管理</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F15-3</td></tr><tr><td class="pg"><span>26</span>强认证器绑定管理</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F16-1</td></tr><tr class="grp"><td colspan="9">系统配置</td></tr><tr><td class="pg"><span>27</span>认证方式字典</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F14-1</td></tr><tr><td class="pg"><span>28</span>通知渠道配置</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c off">—</td><td class="c">F10-2</td><td class="c off">—</td><td class="c off">—</td></tr></tbody></table></div>
+    <div class="sc-legend" style="margin-top:12px">
+      <span>＊ 须携带上下文进入：<ul style="margin:6px 0 0; padding-left:18px"><li><b>access-requirement.html</b>：「设置访问要求」须由「资产细粒度访问策略 → 资源对象行」携带对象上下文进入；无上下文直接打开会回退到上一页（原型刻意防御），故不提供直接深链。</li></ul></span>
+    </div>
+  </section>
+
+  <section style="margin-top:34px">
+    <div class="section-h">
+      <div>
+        <div class="kicker">SCOPE · 覆盖边界</div>
+        <h2>本走查不覆盖什么</h2>
+        <p class="lead">边界写清楚，避免把「没走」误读成「没有」。</p>
+      </div>
+    </div>
+    <div class="card"><div class="card-b">
+      <ol style="margin:0; padding-left:20px; font-size:12.5px; color:var(--muted); line-height:1.9">
+        <li>登录页的四个演示变体（账号或密码错误 / 尝试过于频繁 / 未登录被拦截）：走查只串演默认登录链，
+          变体在登录页内即时切换。</li>
+        <li>已登录状态下进入第 1 幕（登录页）：登录页按既有规则回跳首页，回跳时保留走查参数，
+          走查条随之续上（计数仍指第 1 幕）；要观察登录页本身，请在未登录状态开始。</li>
+        <li>「设置访问要求」页：须携带对象上下文进入，不提供直接深链（见上方 ＊ ）。</li>
+        <li>弹窗层、二次认证口令输入与二次确认：属页面内即时交互，不逐幕串演。</li>
+        <li>失败分支与异常码：见各页「关键业务说明」的分支表，不在走查链路内逐条展开。</li>
+        <li>范围边界：仅控制面（运维管理平台），不含终端侧与网关侧执行面。</li>
+      </ol>
+    </div></div>
+  </section>
+
+</main>
+
+<a class="proto-nav" href="原型索引.html">
+  <svg viewBox="0 0 24 24" fill="none"><path d="M14 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  原型索引
+</a>
+
+<script src="assets/flows.js?v=5c4c351fcc72"></script>
+<script>
+(function () {
+  var flows = window.BZ_AM_FLOWS || [];
+  var host = document.getElementById('sc-list');
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function link(href, fid, n) {
+    return href + (href.indexOf('?') >= 0 ? '&' : '?') + 'flow=' + encodeURIComponent(fid) + '&step=' + n;
+  }
+  var total = flows.reduce(function (a, f) { return a + (f.steps || []).length; }, 0);
+  var pages = {}, docs = {};
+  flows.forEach(function (f) { (f.steps || []).forEach(function (s) {
+    var k = s.href.split('?')[0];
+    (k.indexOf('关键业务说明/') === 0 ? docs : pages)[k] = 1;
+  }); });
+  var diagrams = document.querySelectorAll('.page-card .no.flow').length;
+
+  document.getElementById('walk-stats').innerHTML =
+    '<span><b>' + diagrams + '</b> 张关键业务流程图</span>' +
+    '<span><b>' + flows.length + '</b> 条关键流程</span>' +
+    '<span><b>' + total + '</b> 幕可点击步骤</span>' +
+    '<span><b>' + Object.keys(pages).length + '</b> 个产品页被覆盖</span>' +
+    '<span><b>' + Object.keys(docs).length + '</b> 张流程图并入链路</span>';
+
+  /* 只串演有幕的流程：一条空 steps 会让 f.steps[0] 抛错，整块列表一起白屏 */
+  host.innerHTML = flows.filter(function (f) { return f.steps && f.steps.length; }).map(function (f) {
+    var steps = f.steps.map(function (s, i) {
+      return '<a class="sc-step" href="' + link(s.href, f.id, i + 1) + '">' +
+        '<span class="n">' + (i + 1) + '</span>' +
+        '<span class="m"><b>' + esc(s.t) + '</b>' +
+        '<span>' + esc(s.href) + '</span>' +
+        '<i>' + esc(s.d) + '</i></span></a>';
+    }).join('');
+    return '<article class="sc-flow">' +
+      '<div class="sc-flow-h"><span class="fid">' + esc(f.id) + '</span>' +
+      '<div><strong>' + esc(f.name) + '</strong>' +
+      '<small>' + f.steps.length + ' 幕 · 场景域 ' + esc(f.dom) + '</small></div></div>' +
+      '<p>' + esc(f.desc) + '</p>' +
+      '<div class="sc-steps">' + steps + '</div>' +
+      '<div class="sc-foot">' +
+      '<a class="btn primary sm" href="' + link(f.steps[0].href, f.id, 1) + '" style="text-decoration:none">开始走查</a>' +
+      '</div></article>';
+  }).join('');
+})();
+</script>
+</body>
+</html>

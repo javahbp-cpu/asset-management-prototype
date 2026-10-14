@@ -4,7 +4,7 @@
 <meta charset="UTF-8" data-page-node-id="Ui80ztktmy3WHm80CVrICS">
 <meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="RtRN2UrsPQjgti3i4CHBQH">
 <title>资产列表 · 资产管理原型</title>
-<link rel="stylesheet" href="assets/proto.css?v=faf9926853ee" data-page-node-id="ProtoCssLink00001">
+<link rel="stylesheet" href="assets/proto.css?v=ab04b092a94a" data-page-node-id="ProtoCssLink00001">
 <script data-page-node-id="PreGate00000000001">
 (function(){try{
   if(localStorage.getItem("baize.assetmgmt.session.v1"))return;
@@ -43,12 +43,15 @@
     <div class="mi" data-pg="pg-idagsw" data-page-node-id="PgIdAgswNavItemA"><span class="ic" data-page-node-id="PgIdAgswNavItemB">◱</span>智能体软件管理</div>
     <div class="mi" data-pg="pg-idagin" data-page-node-id="PgIdAginNavItemA"><span class="ic" data-page-node-id="PgIdAginNavItemB">◲</span>智能体实例管理</div>
     <div class="g" data-page-node-id="BaizeNavGrpAuth001">认证</div>
-    <div class="mi" data-pg="pg-audict" data-page-node-id="PgAuDictNavItemA"><span class="ic" data-page-node-id="PgAuDictNavItemB">◆</span>认证方式字典</div>
     <div class="mi" data-pg="pg-ausrc" data-page-node-id="PgAuSrcNavItemA"><span class="ic" data-page-node-id="PgAuSrcNavItemB">◈</span>认证源</div>
     <div class="mi" data-pg="pg-cred" data-page-node-id="PgCredNavItem0000A1"><span class="ic" data-page-node-id="PgCredNavItem0000A2">▣</span>网关凭据托管</div>
     <div class="mi" data-pg="pg-auusercred" data-page-node-id="PgAuUserCredNavItemA"><span class="ic" data-page-node-id="PgAuUserCredNavItemB">▤</span>用户代填账号托管</div>
     <div class="mi" data-pg="pg-auissue" data-page-node-id="PgAuIssueNavItemA"><span class="ic" data-page-node-id="PgAuIssueNavItemB">▥</span>签发凭据管理</div>
     <div class="mi" data-pg="pg-auauthr" data-page-node-id="PgAuAuthrNavItemA"><span class="ic" data-page-node-id="PgAuAuthrNavItemB">▧</span>强认证器绑定管理</div>
+
+    <div class="g" data-page-node-id="BaizeNavGrpSysCfg001">系统配置</div>
+    <div class="mi" data-pg="pg-audict" data-page-node-id="PgSysDictNavItem000A1"><span class="ic" data-page-node-id="PgSysDictNavItem000A2">◆</span>认证方式字典</div>
+    <div class="mi" data-pg="pg-syschan" data-page-node-id="PgSysChanNavItem000A1"><span class="ic" data-page-node-id="PgSysChanNavItem000A2">⚙</span>通知渠道配置</div>
     <div class="g" data-page-node-id="BaizeNavGrpSpecs0001">关键业务说明</div>
     <a class="mi" href="关键业务说明/FL1-认证源接入与生效全流程.html" data-page-node-id="BaizeNavSpecsFL1"><span class="ic" data-page-node-id="BaizeNavSpecsFL1B">▶</span>认证源接入与生效</a>
     <a class="mi" href="关键业务说明/FL2-凭据全生命周期全流程.html" data-page-node-id="BaizeNavSpecsFL2"><span class="ic" data-page-node-id="BaizeNavSpecsFL2B">▶</span>凭据全生命周期</a>
@@ -81,7 +84,7 @@
             <div class="tbl-wrap">
             <table id="assetTbl" data-page-node-id="3nrwvjgIeZzxDVcNyFqMlK">
               <colgroup><col style="width:288px"><col><col><col style="width:80px"><col><col style="width:196px"><col><col style="width:116px"><col style="width:184px"></colgroup>
-              <thead data-page-node-id="v6xk6evCFnIgI7ylHBfJtD"><tr data-page-node-id="vhv225sGdZGXBpuv7qfGs2"><th data-page-node-id="bwJW7ug33EGYmLzlEXDAoz">资产名称</th><th data-page-node-id="lEZ57TIFhZMgbGvx44gWtJ">类型</th><th data-page-node-id="7R1iIrB2jWuF5AMVFh99rg">部门</th><th data-page-node-id="T76bXKieVyZfWTdqqBJuKp">安全等级</th><th data-page-node-id="7MLZ0s33m5SRN1uQnZPlMU">分组</th><th title="两个维度分行展示：无端访问开通状态（未开通 / 开通中 / 已开通 / 撤销中 / 异常）+ 资产启用状态（已启用 / 未启用）；资产未启用时不允许开通无端访问" data-page-node-id="OPcCPxsJeiTDs3DVEthQ0s">状态</th><th data-page-node-id="X9rPfESBjVziYT8CfNXvnM">负责人</th><th data-page-node-id="NuDgfemI6yiDolcHE9nAZk">更新时间</th><th data-page-node-id="zKe7TwEp2iTS087nExJdvH">操作</th></tr></thead>
+              <thead data-page-node-id="v6xk6evCFnIgI7ylHBfJtD"><tr data-page-node-id="vhv225sGdZGXBpuv7qfGs2"><th data-page-node-id="bwJW7ug33EGYmLzlEXDAoz">资产名称</th><th data-page-node-id="lEZ57TIFhZMgbGvx44gWtJ">资产类型</th><th data-page-node-id="7R1iIrB2jWuF5AMVFh99rg">所属部门</th><th data-page-node-id="T76bXKieVyZfWTdqqBJuKp">安全等级</th><th data-page-node-id="7MLZ0s33m5SRN1uQnZPlMU">资产分组</th><th title="两个维度分行展示：无端访问开通状态（未开通 / 开通中 / 已开通 / 撤销中 / 异常）+ 资产启用状态（已启用 / 未启用）；资产未启用时不允许开通无端访问" data-page-node-id="OPcCPxsJeiTDs3DVEthQ0s">状态</th><th data-page-node-id="X9rPfESBjVziYT8CfNXvnM">负责人</th><th data-page-node-id="NuDgfemI6yiDolcHE9nAZk">更新时间</th><th data-page-node-id="zKe7TwEp2iTS087nExJdvH">操作</th></tr></thead>
               <tbody data-page-node-id="2XCUTJkiNDm3wX6jmgM15l"></tbody>
             </table>
             </div>
@@ -126,6 +129,14 @@
   </div>
 </div>
 
-<script src="assets/app.js?v=baeca2ff870c"></script>
+<script src="assets/js/10-asset.js?v=b261252b58ec"></script>
+<script src="assets/js/20-policy.js?v=eb81d230e213"></script>
+<script src="assets/js/30-websec.js?v=ddabf4c42c9b"></script>
+<script src="assets/js/40-identity.js?v=92b75c88aca3"></script>
+<script src="assets/js/50-auth.js?v=1fc7e7a8247e"></script>
+<script src="assets/js/60-misc.js?v=375b2c8598dc"></script>
+<script src="assets/js/70-dp.js?v=786ff488fcc0"></script>
+<script src="assets/js/80-dp-events.js?v=334251326f4e"></script>
+<script src="assets/js/90-tail.js?v=07b9d6f635bd"></script>
 </body>
 </html>

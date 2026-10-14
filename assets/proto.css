@@ -1354,6 +1354,7 @@ body.has-demo .login-page{min-height:calc(100dvh - 46px)}
    ============================================================================ */
 .flow-nav{
   position:fixed; right:20px; bottom:76px; z-index:120; width:min(430px,calc(100vw - 40px));
+  max-height:calc(100vh - 96px); overflow-y:auto;
   background:rgba(255,255,255,.96); border:.8px solid var(--line); border-radius:14px;
   box-shadow:0 14px 34px rgba(23,32,51,.16); padding:11px 13px;
   -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
@@ -1364,7 +1365,7 @@ body.has-demo .login-page{min-height:calc(100dvh - 46px)}
   border-radius:5px; padding:2px 6px; flex:none;
 }
 .flow-nav .fname{font-size:12.5px; font-weight:680; color:var(--text); letter-spacing:-.01em}
-.flow-nav .fcount{font-family:var(--mono); font-size:11px; color:var(--faint); margin-left:auto; flex:none}
+.flow-nav .fcount{font-family:var(--mono); font-size:11px; color:#5f6b7a; margin-left:auto; flex:none}
 .flow-nav .fq{
   font-size:11px; font-weight:600; color:#4338ca; text-decoration:none; flex:none;
   background:#f4f5ff; border:.8px solid #dcdffb; border-radius:var(--r-pill); padding:3px 9px;
@@ -1372,12 +1373,13 @@ body.has-demo .login-page{min-height:calc(100dvh - 46px)}
 .flow-nav .fq:hover{background:#eaecfe}
 .flow-nav .fbody{margin-top:9px; font-size:11.5px; color:var(--text-2); line-height:1.7}
 .flow-nav .fbody b{display:block; font-size:12px; font-weight:650; color:var(--text); margin-bottom:2px}
+.flow-nav .fsame{display:block; margin-top:6px; font-size:11px; line-height:1.55; color:#5f6b7a}
 .flow-nav .fctl{margin-top:10px; padding-top:10px; border-top:1px dashed var(--line)}
 .flow-nav .dots{display:flex; align-items:center; gap:4px; flex:1; flex-wrap:wrap}
 .flow-nav .fdot{
   width:20px; height:20px; border-radius:50%; display:grid; place-items:center; flex:none;
   font-family:var(--mono); font-size:10px; font-weight:700; text-decoration:none;
-  background:var(--bg-sunken); color:var(--muted); border:.8px solid var(--line);
+  background:var(--bg-sunken); color:#5f6b7a; border:.8px solid var(--line);
 }
 .flow-nav .fdot:hover{border-color:#bfc5f7; color:#4338ca}
 .flow-nav .fdot.on{background:#4338ca; border-color:#4338ca; color:#fff}
@@ -1388,7 +1390,7 @@ body.has-demo .login-page{min-height:calc(100dvh - 46px)}
 .flow-nav .fb:hover{border-color:var(--primary-l5); color:var(--primary)}
 .flow-nav .fb.go{color:#fff; background:#4338ca; border-color:#4338ca}
 .flow-nav .fb.go:hover{background:#3730a3; color:#fff}
-.flow-nav .fb.off{opacity:.5; color:var(--faint)}
+.flow-nav .fb.off{color:#5f6b7a; background:var(--bg-sunken); border-color:var(--line-2); cursor:not-allowed}
 body.bare .flow-nav{display:none !important}
 body.has-flow-nav{padding-bottom:0}
 
@@ -1881,6 +1883,23 @@ body:is([data-page="pg-audict"],[data-page="pg-ausrc"],[data-page="pg-cred"],
         [data-page="pg-auusercred"],[data-page="pg-auissue"],[data-page="pg-auauthr"],
         [data-page="pg-rate"]) :is(#dlg1,#dlgCfm) :is(.help,.mini,.msg){color:#5f6b7a}
 
+/* 2026-10-13 评审（R5 对比度收口 · 作用域告警页）：
+   告警页（body[data-page="pg-alert"]）的次级说明文字此前落在 --muted / --txt3 = #7b8495，
+   白底实测 3.77:1，低于 WCAG AA 的 4.5:1（该值即上方 :root 的 --txt3）。
+   本页统一提深至 #5f6b7a（实测 白底 5.42:1 / --bg-page #f7f8fa 5.11:1 / --bg-sunken #f4f4f5 4.94:1，
+   均过 AA），取值与体例沿用 §12（认证六页）既有收口，不另立层级。
+   作用域用 body[data-page]（外壳逐页写入、每页唯一）——页容器与弹窗区是同级兄弟，故不用 #pg-alert 包住。
+   特异性 (0,2,1) 高于 .help/.mini/.muted (0,1,0) 与 .fld .help (0,2,0)；:is() 取最具体实参，
+   不支持 :is() 的渲染器整条忽略（退回原状，不产生副作用）。
+   ⚠ 不动全局 --muted / --txt3：它是「次级文字」层级基准，直接提深会与 --text-2 #667085 倒挂；
+     全站层级重新定档须成对调整，不在本次局部修复范围内。
+   页内 7 处脚注原为**内联**声明（内联压过样式表）⇒ 同轮已改挂 .foot-note / .mini 类，由本规则着色。 */
+/* 2026-10-13（系统配置模块 · R61 轮17）：原作用域仅 pg-alert；「通知渠道」配置面拆出为
+   独立页 pg-syschan（系统配置模块）后，新页退回 --muted #7b8495 = 3.77:1（低于 AA）。
+   同一呈现面（渠道台账 / 投递健康 / 脚注）在两页同源，故作用域按**两页并列**扩写。 */
+body[data-page="pg-alert"] :is(.muted,.mini,.help,.foot-note),
+body[data-page="pg-syschan"] :is(.muted,.mini,.help,.foot-note){color:#5f6b7a}
+
 /* ==========================================================================
    15 · 认证模块 R15 交互配套（2026-10-10）
    ========================================================================== */
@@ -1894,14 +1913,104 @@ body:is([data-page="pg-audict"],[data-page="pg-ausrc"],[data-page="pg-cred"],
    须给可感知的焦点环，否则键盘用户看不出焦点在滚动容器上。 */
 #dlg1Body:focus-visible{outline:2px solid #2563eb;outline-offset:-2px}
 
-/* ==========================================================================
-   16 · 公共页「风险事件告警」暂缓实施标记（2026-10-10 · 交付前）
-   ========================================================================== */
-/* 侧栏菜单项尾角标：由 app.js 运行期注入（bootstrap · markDeferredNav）。
-   绝对定位 + 预留右侧内边距 ⇒ 不参与菜单项 flex 布局，窄侧栏（176px 断点）下
-   也不会把菜单文字挤换行。色值与 .hint-row.warn 同族，与页面顶部提示条呼应。 */
-.side .mi[data-pg="pg-alert"]{position:relative; padding-right:46px}
-.side .mi .defer-tag{position:absolute; right:12px; top:50%; transform:translateY(-50%);
-  height:16px; line-height:15px; padding:0 5px; font-size:10.5px; font-weight:400;
-  white-space:nowrap; border-radius:4px;
-  background:var(--amber-bg); color:var(--amber-deep); border:.8px solid var(--amber-line)}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   原型索引页 / 场景走查页（非产品 UI）
+   ---------------------------------------------------------------------------
+   本目录此前已带 .part-* / .walk-bar / .sc-* / .fx-* 版式（索引与走查的主体），
+   但缺三类通用件：标题行（.section-h / .kicker / .lead）、页面卡（.page-grid /
+   .page-card）、索引 hero（.idx-*）。本次一并补齐 —— 选择器名与取值一律照抄
+   「原型-无端网关-20260917/assets/proto.css」同族，**绝不另立配色或尺寸体系**。
+   作用域：仅被 原型索引.html / 场景走查.html 消费；产品页不使用这些类（已实测）。
+   ═══════════════════════════════════════════════════════════════════════════ */
+.content{max-width:1240px; margin:0 auto; padding:34px 22px 72px}
+.kicker{font-size:11px; font-weight:700; color:var(--faint); letter-spacing:.02em}
+.kicker.blue{color:var(--primary)}
+.dim{color:var(--faint); font-size:11px}
+.content .lead{font-size:12.5px; color:var(--muted); line-height:1.8; margin:7px 0 0; max-width:940px}
+.section-h{display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin:0 0 18px}
+.section-h h2{font-size:19px; font-weight:700; color:var(--text-h); letter-spacing:-.01em; line-height:1.35; margin:0}
+.section-h .lead{font-size:12.5px; color:var(--muted); margin-top:6px; line-height:1.6}
+.section-h .kicker{margin-bottom:5px}
+
+/* ── 索引 hero ─────────────────────────────────────────────────────────── */
+.idx-hero{background:linear-gradient(160deg,#0f2035 0%,#152744 55%,#111e35 100%); color:#e8eef8; padding:52px 0 46px; position:relative; overflow:hidden}
+.idx-hero::after{content:""; position:absolute; width:640px; height:640px; right:-240px; top:-330px; border-radius:50%; border:96px solid rgba(99,102,241,.10)}
+.idx-hero::before{content:""; position:absolute; width:520px; height:520px; left:-240px; bottom:-320px; border-radius:50%; background:rgba(37,99,235,.10)}
+.idx-hero .wrap{position:relative; z-index:1}
+.idx-hero .brand strong,.idx-hero .brand span:last-child{color:#fff}
+.idx-hero .brand span:last-child{color:#9fb6d6}
+.idx-hero h1{font-size:clamp(26px,3.4vw,36px); font-weight:760; letter-spacing:-.035em; margin:22px 0 0; color:#fff}
+.idx-hero p{font-size:14px; color:#9fb6d6; margin-top:13px; max-width:780px; line-height:1.8}
+.idx-meta{display:flex; gap:30px; flex-wrap:wrap; margin-top:26px}
+.idx-meta div small{display:block; font-size:11px; color:#7f95b3; letter-spacing:.06em}
+.idx-meta div b{display:block; font-size:13.5px; font-weight:650; margin-top:5px; color:#dbe7f7}
+.idx-note{margin-top:22px; display:flex; gap:10px; align-items:flex-start; font-size:12.5px; color:#b9cbe3; line-height:1.7; background:rgba(255,255,255,.05); border:.8px solid rgba(255,255,255,.1); border-radius:12px; padding:12px 15px; max-width:860px}
+.idx-note b{color:#fff}
+.idx-note svg{flex:none; margin-top:3px}
+
+/* ── 页面卡 / 页面网格 ─────────────────────────────────────────────────── */
+.page-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px}
+/* 基规则在本块（文件后段），须自带响应式覆盖 —— 前段的同名媒体查询会被它压掉 */
+@media (max-width:1180px){.page-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:860px){.page-grid{grid-template-columns:1fr}}
+.page-card{
+  background:var(--surface); border:.8px solid var(--line); border-radius:var(--r-sec); padding:20px;
+  display:flex; flex-direction:column; gap:12px; transition:.18s; text-decoration:none;
+}
+.page-card:hover{border-color:var(--primary-l5); transform:translateY(-2px); box-shadow:0 9px 24px rgba(36,50,79,.07)}
+.page-card .no{font-family:var(--mono); font-size:11px; font-weight:700; color:var(--primary); background:var(--primary-tint); border:.8px solid var(--primary-tint-line); border-radius:6px; padding:2px 8px; align-self:flex-start}
+.page-card h3{font-size:15px; font-weight:680; letter-spacing:-.015em; color:var(--text); margin:0}
+.page-card p{font-size:12.5px; color:var(--muted); line-height:1.7; flex:1; margin:0}
+.page-card .map{font-size:11px; color:var(--text-2); font-family:var(--mono); background:var(--bg-soft); border:.8px solid var(--line); border-radius:7px; padding:6px 9px; line-height:1.6}
+.page-card .go{display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:650; color:var(--primary)}
+.page-card .go svg{width:14px; height:14px}
+
+/* ── 走查页 hero（与无端侧同名同值，避免两原型观感分叉） ──────────────── */
+.walk-hero{background:linear-gradient(158deg,#101a2e 0%,#1a2543 52%,#131c31 100%); color:#e9eefb; padding:46px 0 40px; position:relative; overflow:hidden}
+.walk-hero::after{content:""; position:absolute; width:620px; height:620px; right:-230px; top:-330px; border-radius:50%; border:92px solid rgba(99,102,241,.10)}
+.walk-hero::before{content:""; position:absolute; width:520px; height:520px; left:-250px; bottom:-330px; border-radius:50%; background:rgba(37,99,235,.11)}
+.walk-hero .wrap{position:relative; z-index:1}
+.walk-hero h1{font-size:clamp(24px,3.2vw,32px); font-weight:760; letter-spacing:-.04em; margin:16px 0 0; color:#fff}
+.walk-hero p{font-size:13.5px; color:#a4b4d2; margin-top:12px; max-width:840px; line-height:1.85}
+.walk-hero p b{color:#e9eefb}
+.walk-hero .stats{display:flex; flex-wrap:wrap; gap:9px; margin-top:20px}
+.walk-hero .stats span{font-size:11.5px; color:#c3d0e6; background:rgba(255,255,255,.07); border:.8px solid rgba(255,255,255,.13); border-radius:999px; padding:5px 12px}
+.walk-hero .stats b{color:#fff}
+.walk-hero .go{display:flex; gap:10px; flex-wrap:wrap; margin-top:22px}
+.walk-hero .go a{display:inline-flex; align-items:center; gap:8px; text-decoration:none; font-size:12.5px; font-weight:640; border-radius:999px; padding:9px 16px; background:#fff; color:#1b2440}
+.walk-hero .go a.ghost{background:rgba(255,255,255,.09); color:#dce4f4; border:.8px solid rgba(255,255,255,.18)}
+.walk-hero .go a:hover{opacity:.9}
+.walk-hero .go svg{width:14px; height:14px}
+.walk-hero .brand strong,.walk-hero .brand span:last-child{color:#fff}
+.walk-hero .brand span:last-child{color:#9fb6d6}
+
+/* 追加补齐（原型索引页用，与无端侧同值） */
+.stack{display:flex; flex-direction:column; gap:14px}
+.spec-link{display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:660; color:#4338ca; background:#eef0fe; border:.8px solid #d7dafb; border-radius:999px; padding:3px 10px; text-decoration:none}
+.spec-link:hover{background:#eaecfe; border-color:#bfc5f7}
+
+/* 右下角返回入口（场景走查页用，与无端侧 .proto-nav 同值） */
+.proto-nav{
+  position:fixed; left:20px; bottom:20px; z-index:120; height:36px; padding:0 15px;
+  display:inline-flex; align-items:center; gap:8px; border-radius:999px;
+  background:rgba(255,255,255,.94); border:.8px solid var(--line); color:var(--text-2);
+  font-size:12.5px; font-weight:600; text-decoration:none; box-shadow:0 10px 26px rgba(23,32,51,.12);
+  -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); transition:.16s;
+}
+.proto-nav:hover{border-color:var(--primary-l5); color:var(--primary)}
+.proto-nav svg{width:13px; height:13px}
+
+/* 覆盖矩阵：页面 × 场景域。单元格只放幕次编号，故用等宽小字并允许横向滚动 */
+.cov-wrap{overflow:auto; border:.8px solid var(--line); border-radius:var(--r-card)}
+.cov{width:100%; border-collapse:collapse; font-size:11.5px; min-width:920px}
+.cov th,.cov td{border-bottom:.8px solid var(--line); padding:6px 9px; text-align:left; vertical-align:middle}
+.cov thead th{background:var(--bg-soft); font-size:11px; font-weight:700; color:var(--muted); white-space:nowrap; position:sticky; top:0}
+.cov thead th.c,.cov td.c{text-align:center; width:78px}
+.cov td.pg{white-space:nowrap; font-weight:620; color:var(--text)}
+.cov td.pg span{font-family:var(--mono); font-size:10.5px; color:var(--faint); margin-right:6px}
+.cov td.c{font-family:var(--mono); font-size:10.5px; color:#4338ca; background:#f7f8ff}
+.cov td.c.off{color:var(--faint); background:transparent}
+.cov tbody tr.grp td{background:var(--bg-soft); font-weight:700; color:var(--muted); font-size:11px}
+.cov tbody tr:hover td{background:#f8faff}
+.cov tbody tr:hover td.c.off{background:transparent}

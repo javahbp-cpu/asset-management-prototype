@@ -18,7 +18,7 @@ test('all pages request the current shared assets instead of a cached previous r
   let references = 0;
   for (const file of htmlFiles(root)) {
     const html = readFileSync(file, 'utf8');
-    for (const match of html.matchAll(/(?:src|href)="((?:\.\.\/)?assets\/(?:app\.js|proto\.css)(?:\?[^" ]*)?)"/g)) {
+    for (const match of html.matchAll(/(?:src|href)="((?:\.\.\/)?assets\/[^" ?]+\.(?:js|css)(?:\?[^" ]*)?)"/g)) {
       references++;
       const [relative, query = ''] = match[1].split('?');
       const bytes = readFileSync(path.resolve(path.dirname(file), relative));

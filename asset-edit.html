@@ -4,7 +4,7 @@
 <meta charset="UTF-8" data-page-node-id="Ui80ztktmy3WHm80CVrICS">
 <meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="RtRN2UrsPQjgti3i4CHBQH">
 <title>登记 / 编辑资产 · 资产管理原型</title>
-<link rel="stylesheet" href="assets/proto.css?v=faf9926853ee" data-page-node-id="ProtoCssLink00001">
+<link rel="stylesheet" href="assets/proto.css?v=ab04b092a94a" data-page-node-id="ProtoCssLink00001">
 <script data-page-node-id="PreGate00000000001">
 (function(){try{
   if(localStorage.getItem("baize.assetmgmt.session.v1"))return;
@@ -43,12 +43,15 @@
     <div class="mi" data-pg="pg-idagsw" data-page-node-id="PgIdAgswNavItemA"><span class="ic" data-page-node-id="PgIdAgswNavItemB">◱</span>智能体软件管理</div>
     <div class="mi" data-pg="pg-idagin" data-page-node-id="PgIdAginNavItemA"><span class="ic" data-page-node-id="PgIdAginNavItemB">◲</span>智能体实例管理</div>
     <div class="g" data-page-node-id="BaizeNavGrpAuth001">认证</div>
-    <div class="mi" data-pg="pg-audict" data-page-node-id="PgAuDictNavItemA"><span class="ic" data-page-node-id="PgAuDictNavItemB">◆</span>认证方式字典</div>
     <div class="mi" data-pg="pg-ausrc" data-page-node-id="PgAuSrcNavItemA"><span class="ic" data-page-node-id="PgAuSrcNavItemB">◈</span>认证源</div>
     <div class="mi" data-pg="pg-cred" data-page-node-id="PgCredNavItem0000A1"><span class="ic" data-page-node-id="PgCredNavItem0000A2">▣</span>网关凭据托管</div>
     <div class="mi" data-pg="pg-auusercred" data-page-node-id="PgAuUserCredNavItemA"><span class="ic" data-page-node-id="PgAuUserCredNavItemB">▤</span>用户代填账号托管</div>
     <div class="mi" data-pg="pg-auissue" data-page-node-id="PgAuIssueNavItemA"><span class="ic" data-page-node-id="PgAuIssueNavItemB">▥</span>签发凭据管理</div>
     <div class="mi" data-pg="pg-auauthr" data-page-node-id="PgAuAuthrNavItemA"><span class="ic" data-page-node-id="PgAuAuthrNavItemB">▧</span>强认证器绑定管理</div>
+
+    <div class="g" data-page-node-id="BaizeNavGrpSysCfg001">系统配置</div>
+    <div class="mi" data-pg="pg-audict" data-page-node-id="PgSysDictNavItem000A1"><span class="ic" data-page-node-id="PgSysDictNavItem000A2">◆</span>认证方式字典</div>
+    <div class="mi" data-pg="pg-syschan" data-page-node-id="PgSysChanNavItem000A1"><span class="ic" data-page-node-id="PgSysChanNavItem000A2">⚙</span>通知渠道配置</div>
   </aside>
 
   <div class="main" data-page-node-id="F3BHXnrKSVMffSdAYEeBsw">
@@ -81,12 +84,12 @@
             <div class="form-grid" style="max-width:820px" data-page-node-id="AvKGxlvMuKIm0AlTu2hZiV">
               <div class="fld full" data-page-node-id="DeV9ol3aUGgmdQq7Um3lei"><label data-page-node-id="4mr4kqwNjnSJQcNFJa5J3f">资产名称 <span class="req" data-page-node-id="XimjKSs5CvUJD0wAc8tDql">*</span></label><input type="text" id="eaName2" placeholder="如：对公开户系统" data-page-node-id="W6sdtAbaFZXKNlHqQHIaWR"></div>
               <div class="fld" data-page-node-id="JlbVpveZElAzK904U1LW7M"><label data-page-node-id="roxahjmmCON3M0udJ61uQs">资产类型 <span class="req" data-page-node-id="z3Q1wfuLjlpEz5JYKlzSoM">*</span></label><select id="eaType2" data-page-node-id="ZQYmtKvnBq726IzSR2XDXS"></select></div>
-              <div class="fld" data-page-node-id="tDKnd11XND2LRxr39vbZr3"><label data-page-node-id="HFyw8zBCd66WeHy8kSvIsP">所属部门 <span class="req" data-page-node-id="RVHwtOs9bGa7nM8Bt84MlU">*</span></label><input type="text" id="eaDept2" placeholder="如：电子银行部" data-page-node-id="5MLySQUDG6NIpC60KPhWl5"></div>
+              <div class="fld" data-page-node-id="tDKnd11XND2LRxr39vbZr3"><label data-page-node-id="HFyw8zBCd66WeHy8kSvIsP">所属部门 <span class="req" data-page-node-id="RVHwtOs9bGa7nM8Bt84MlU">*</span></label><select id="eaDept2" data-page-node-id="5MLySQUDG6NIpC60KPhWl5"></select></div>
               <div class="fld" data-page-node-id="j41n6yz0YuLGBcJP1oo3j1"><label data-page-node-id="G3YfuKpHabstLF2IHAxFB1">分组</label><select id="eaGrp2" data-page-node-id="2YreS1rMrpBbFku2DjE7fH"><option data-page-node-id="vNajaTAEYrRbqbVt51RZyH">核心业务</option><option data-page-node-id="Ar4I2RH0BHEz1EJaT8MGRS">办公协同</option><option data-page-node-id="0TE0TVIYvpEDMXmACEX8Cd">数据平台</option><option data-page-node-id="qTtYWhCVZBRnC1AgMvvxJe">开发测试</option><option data-page-node-id="R26fs0SviceOpt1EaGrp2">对外服务</option></select></div>
-              <div class="fld" data-page-node-id="VaLq5wazQUgtxj1VQpw90Q"><label data-page-node-id="Aq26BagLhIIyDJdFtzn2P7">负责人</label><input type="text" id="eaOwner2" placeholder="如：李工" data-page-node-id="CM8iGbDeD4S5o8QFZaw1AJ"></div>
+              <div class="fld" data-page-node-id="VaLq5wazQUgtxj1VQpw90Q"><label data-page-node-id="Aq26BagLhIIyDJdFtzn2P7">负责人</label><input type="text" id="eaOwner2" list="eaOwnerList" placeholder="如：李俊" data-page-node-id="CM8iGbDeD4S5o8QFZaw1AJ"><datalist id="eaOwnerList"></datalist></div>
               <div class="fld" data-page-node-id="UuuMIhC6SSR67gqLxW67WB"><label data-page-node-id="4naJbxO05YP3rJNOeQUUAy">安全等级 <span class="req" data-page-node-id="HrrmxtHZ5tmNezB7xm0ZmF">*</span></label><select id="eaLvSel" data-page-node-id="m1NhaMDlIDezw7bi9b7maS"></select>
                 <div class="help" id="eaLvHint" data-page-node-id="jj6qrwYfQLRmrcVeWY14XX">登记属性：驱动 WAF / 限流 / 越权处置出厂默认（L1～L2 低敏感、L3 一般、L4～L5 高敏感）</div></div>
-              <div class="fld" data-page-node-id="6AxTLmODcxLGX7JReyRKBH"><label data-page-node-id="6CuuUAx0T9K0CVsM8s4P2B">资产状态</label><select id="eaEn2" data-page-node-id="ZEVmXhT7RlOJ3MIoJmqByQ"><option value="1" data-page-node-id="BUf1dV9rFlaEanhN4uxJd1">启用</option><option value="0" data-page-node-id="hZxWX6WABTUmG4hgihbWaR">停用</option></select>
+              <div class="fld" data-page-node-id="6AxTLmODcxLGX7JReyRKBH"><label data-page-node-id="6CuuUAx0T9K0CVsM8s4P2B">资产状态</label><select id="eaEn2" data-page-node-id="ZEVmXhT7RlOJ3MIoJmqByQ"><option value="1" data-page-node-id="BUf1dV9rFlaEanhN4uxJd1">启用</option><option value="0" data-page-node-id="hZxWX6WABTUmG4hgihbWaR">未启用</option></select>
                 <div class="help" id="eaEnHint" data-page-node-id="QMLJgkERFQyXX2DXXiVdHj">停用=资产整体下线（2 秒内全节点停止放行）；登记后仍可在列表「状态」栏 / 详情随时切换</div></div>
             </div>
           </div>
@@ -120,7 +123,7 @@
                 <select id="eaClient2" style="flex:1; max-width:360px" onchange="this.dataset.u='1'" title="打开资产时调用的本机客户端；候选随访问协议（未手动选择时，切换协议将自动跟随新协议的默认客户端）" data-page-node-id="ldbgZwkvK4fmmiTDJQxtgF"></select>
                 <button class="btn sm" id="btnEaClientDetect" onclick="eaClientDetect()" style="display:none" data-page-node-id="eiKVdkQEFI9JCMIgvHeH8j">检索本机安装</button>
               </div>
-              <div class="help" id="eaClientHint2" data-page-node-id="RNQFhwGRFNvMvw6BKhkxJR">未绑定时打开按协议推荐默认客户端；登记后可在资产详情「地址与访问」调整绑定。</div></div>
+              <div class="help" id="eaClientHint2" data-page-node-id="RNQFhwGRFNvMvw6BKhkxJR">未绑定时打开按协议推荐默认客户端；登记后可在资产详情「资源与访问」调整绑定。</div></div>
             <div id="eaWebableHint2" style="margin-top:10px; display:none" data-page-node-id="NhJZ9jI0nDGt5nMUNnFpK3"></div>
             <div id="eaBackMore2" class="muted" style="margin-top:10px; display:none" data-page-node-id="TJdrB0mKN7sYeYkTmGqf2z"></div>
           </div>
@@ -153,7 +156,7 @@
 
         <!-- S5 核对与提交 -->
         <div class="card ef-body" id="efBody5" style="display:none" data-page-node-id="CGqeQDThCiEUkfu18WJSDd">
-          <div class="card-h" data-page-node-id="3CTqeDbMXzp68KPblK0KZ3"><h3 data-page-node-id="83M5ES9BCSU1y6lJcWA7Md">核对与提交<span class="sub" data-page-node-id="9NM1qr8yQXFNQPFf0zhf2M">保存前逐项核对；保存后进入资产详情继续维护（地址与访问 / 细粒度清单 / 代理与上游 / 状态）</span></h3></div>
+          <div class="card-h" data-page-node-id="3CTqeDbMXzp68KPblK0KZ3"><h3 data-page-node-id="83M5ES9BCSU1y6lJcWA7Md">核对与提交<span class="sub" data-page-node-id="9NM1qr8yQXFNQPFf0zhf2M">保存前逐项核对；保存后进入资产详情继续维护（资源与访问 / 细粒度清单 / 代理与上游 / 状态）</span></h3></div>
           <div class="card-b" id="efSummaryWrap" data-page-node-id="8hWn0xTcmhJ9KnDia313R5"></div>
         </div>
 
@@ -203,6 +206,14 @@
   </div>
 </div>
 
-<script src="assets/app.js?v=baeca2ff870c"></script>
+<script src="assets/js/10-asset.js?v=b261252b58ec"></script>
+<script src="assets/js/20-policy.js?v=eb81d230e213"></script>
+<script src="assets/js/30-websec.js?v=ddabf4c42c9b"></script>
+<script src="assets/js/40-identity.js?v=92b75c88aca3"></script>
+<script src="assets/js/50-auth.js?v=1fc7e7a8247e"></script>
+<script src="assets/js/60-misc.js?v=375b2c8598dc"></script>
+<script src="assets/js/70-dp.js?v=786ff488fcc0"></script>
+<script src="assets/js/80-dp-events.js?v=334251326f4e"></script>
+<script src="assets/js/90-tail.js?v=07b9d6f635bd"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FL3 · 强认证器绑定与重置全流程 — 白泽运维管理平台原型</title>
-<link rel="stylesheet" href="../assets/proto.css?v=faf9926853ee">
+<link rel="stylesheet" href="../assets/proto.css?v=ab04b092a94a">
 <script>
 (function(){try{
   if(localStorage.getItem("baize.assetmgmt.session.v1"))return;
@@ -12,6 +12,8 @@
   location.replace("../login.html?back="+encodeURIComponent("关键业务说明/"+b));
 }catch(e){}})();
 </script>
+<!-- 场景走查条：带 ?flow=&step= 进入时在右下角渲染逐幕导航（见 assets/walk.js） -->
+<script src="../assets/walk.js?v=44501df25098" defer></script>
 </head>
 <body>
 <div class="spec-page">
@@ -22,7 +24,7 @@
     <h1>强认证器绑定与重置全流程</h1>
     <p class="sub">强认证器从登记到重置的全过程：登记须由已认证会话发起、challenge 一次性消费、吊销按凭据 ID 执行、全不可用时的管理员重置通道。</p>
     <div class="meta"><span>依据 <b>强认证器绑定管理</b></span><span>对应页面 <b>强认证器绑定管理</b></span><span>登记须<b>已认证会话</b></span></div>
-    <a class="back" href="../index.html">&larr; 返回原型索引</a>
+    <a class="back" href="../原型索引.html">&larr; 返回原型索引</a>
   </div>
 </header>
 

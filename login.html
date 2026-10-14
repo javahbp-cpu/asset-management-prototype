@@ -4,14 +4,16 @@
 <meta charset="UTF-8" data-page-node-id="Ui80ztktmy3WHm80CVrICS">
 <meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="RtRN2UrsPQjgti3i4CHBQH">
 <title>登录 · 白泽零信任运维管理平台</title>
-<link rel="stylesheet" href="assets/proto.css?v=faf9926853ee" data-page-node-id="ProtoCssLink00001">
+<link rel="stylesheet" href="assets/proto.css?v=ab04b092a94a" data-page-node-id="ProtoCssLink00001">
 <script data-page-node-id="PreLogin0000000001">
 (function(){try{
   if(!localStorage.getItem("baize.assetmgmt.session.v1"))return;
-  var OK=["index.html","asset-detail.html","asset-edit.html","cred-hosting.html","auth-workbench.html","auth-source.html","auth-dict.html","auth-scenario.html","bio-binding.html","machine-agent.html","sso-provisioning.html","identity-adapt.html","access-policy.html","fine-grained.html","access-requirement.html","web-security-policy.html","rate-limit-policy.html","request-constraint.html","rule-library.html"];
+  var BACK_OK=["index.html","access-policy.html","access-requirement.html","alert-events.html","asset-detail.html","asset-edit.html","auth-authenticator.html","auth-dict.html","auth-issue.html","auth-source.html","auth-user-cred.html","cred-hosting.html","dp-arms.html","dp-baseline.html","dp-overview.html","dp-policy.html","fine-grained.html","identity-agentinst.html","identity-agentsw.html","identity-clientinst.html","identity-clientsw.html","identity-terminal.html","identity-user.html","rate-limit-policy.html","request-constraint.html","rule-library.html","web-security-policy.html","sys-notify-channel.html","场景走查.html","原型索引.html"];
   var b=new URLSearchParams(location.search).get("back")||"";
   var f=b.split("?")[0].split("#")[0];
-  location.replace(OK.indexOf(f)>=0?b:"index.html");
+  /* 无有效 back 时回退首页，并带上本页走查参数（?flow=&step=），使走查条不因登录回跳而中断 */
+  var k1=/[?&](flow=[^&]*)/.exec(location.search),k2=/[?&](step=[^&]*)/.exec(location.search);
+  location.replace(b&&BACK_OK.indexOf(f)>=0?b:("index.html"+(k1?"?"+k1[1]:"")+(k2?"&"+k2[1]:"")));
 }catch(e){}})();
 </script>
 </head>
@@ -87,7 +89,7 @@
             <span class="tag" id="hvState" data-page-node-id="LoginHvStateTag001">待确认</span>
             <span class="muted" id="hvHint" data-page-node-id="LoginHvHint000001">按住滑块，向右拖动到最右端即通过</span>
           </div>
-          <div class="captcha-note" data-page-node-id="LoginHvNote000001"><b>演示口径</b>：本页按评审要求<b>常驻强制</b>人机校验，形态取无端侧「<b>交互</b>」档（<b>行为式拖动确认</b>）。一期人机校验仅承载「不发起 / 静默」两档、<b>按需加载</b>，静默档<b>无感优先、不依赖图形验证码</b>（「不依赖」≠「不使用」）；<b>交互 / 强化</b>两档的完整承载在<b>二期 F1.2</b>。此常驻形态为演示简化，非一期默认行为。</div>
+          <div class="captcha-note" data-page-node-id="LoginHvNote000001"><b>演示口径</b>：本页按评审要求<b>常驻强制</b>人机校验，形态取无端侧「<b>交互</b>」档（<b>行为式拖动确认</b>）。一期人机校验仅承载「不发起 / 静默」两档、<b>按需加载</b>，静默档<b>无感优先、不依赖图形验证码</b>（「不依赖」≠「不使用」）；<b>交互 / 强化</b>两档的完整承载在<b>二期</b>。此常驻形态为演示简化，非一期默认行为。</div>
         </div>
 
         <div class="form-error" id="lgErr" hidden data-page-node-id="LoginFormError0001">
@@ -141,28 +143,49 @@
   </div>
 </div>
 
-<script src="assets/app.js?v=baeca2ff870c"></script>
+<script src="assets/js/10-asset.js?v=b261252b58ec"></script>
+<script src="assets/js/20-policy.js?v=eb81d230e213"></script>
+<script src="assets/js/30-websec.js?v=ddabf4c42c9b"></script>
+<script src="assets/js/40-identity.js?v=92b75c88aca3"></script>
+<script src="assets/js/50-auth.js?v=1fc7e7a8247e"></script>
+<script src="assets/js/60-misc.js?v=375b2c8598dc"></script>
+<script src="assets/js/70-dp.js?v=786ff488fcc0"></script>
+<script src="assets/js/80-dp-events.js?v=334251326f4e"></script>
+<script src="assets/js/90-tail.js?v=07b9d6f635bd"></script>
 <script>
 
 (function loginPage(){
   var q = new URLSearchParams(location.search);
   var back = q.get("back") || "";
-  /* back 白名单（防开放重定向）：非白名单一律回退 index.html（白名单见 build.js 的 BACK_OK）。 */
-  var BACK_OK = ["index.html","asset-detail.html","asset-edit.html","cred-hosting.html","auth-workbench.html","auth-source.html","auth-dict.html","auth-scenario.html","bio-binding.html","machine-agent.html","sso-provisioning.html","identity-adapt.html","access-policy.html","fine-grained.html","access-requirement.html","web-security-policy.html","rate-limit-policy.html","request-constraint.html","rule-library.html"];
-  var safeBack = (function(){ var f = back.split("?")[0].split("#")[0]; return BACK_OK.indexOf(f) >= 0 ? back : "index.html"; })();
+  /* back 白名单（防开放重定向）：非白名单一律回退 index.html。
+     ★ R55（交互-5）：白名单须与目录实际页清单**同源** —— 原表缺 14 个真实页、含 6 个已删除页，
+     致使这些页登录后回跳落到 index.html。由常驻门禁断言其与 *.html 同集（见 _gate_pages.py）。 */
+  var BACK_OK = ["index.html","access-policy.html","access-requirement.html","alert-events.html","asset-detail.html","asset-edit.html","auth-authenticator.html","auth-dict.html","auth-issue.html","auth-source.html","auth-user-cred.html","cred-hosting.html","dp-arms.html","dp-baseline.html","dp-overview.html","dp-policy.html","fine-grained.html","identity-agentinst.html","identity-agentsw.html","identity-clientinst.html","identity-clientsw.html","identity-terminal.html","identity-user.html","rate-limit-policy.html","request-constraint.html","rule-library.html","web-security-policy.html","sys-notify-channel.html","场景走查.html","原型索引.html"];
+  var safeBack = (function(){
+    var f = back.split("?")[0].split("#")[0];
+    if (back && BACK_OK.indexOf(f) >= 0) return back;
+    /* 无有效 back：回退首页并带上本页走查参数（?flow=&step=），使走查条不因登录回跳而中断 */
+    var k1 = /[?&](flow=[^&]*)/.exec(location.search), k2 = /[?&](step=[^&]*)/.exec(location.search);
+    return "index.html" + (k1 ? "?" + k1[1] : "") + (k2 ? "&" + k2[1] : "");
+  })();
   /* 已登录态：登录页立即回跳（与 <head> 的 PRELOGIN 双保险——localStorage 不可用时 PRELOGIN 静默放过，
      这里再用内存兜底的 getSession() 判一次；否则已登录用户会看到登录页，误以为掉登录态）。 */
   if (typeof getSession === "function" && getSession()) { location.replace(safeBack); return; }
   var $ = function(s){ return document.querySelector(s); };
   var NAME = { "index.html":"资产列表", "asset-detail.html":"资产详情", "asset-edit.html":"登记 / 编辑资产",
-               "cred-hosting.html":"凭据托管", "access-policy.html":"资产访问控制策略",
+               "cred-hosting.html":"网关凭据托管", "access-policy.html":"资产访问控制策略",
                "fine-grained.html":"资产细粒度访问策略", "access-requirement.html":"设置访问要求",
                "web-security-policy.html":"Web 防护（WAF）", "rate-limit-policy.html":"集群级限流",
                "request-constraint.html":"请求约束", "rule-library.html":"WAF 规则库管理",
-               "auth-workbench.html":"认证场景工作台", "auth-source.html":"认证源",
-               "auth-dict.html":"认证能力字典", "auth-scenario.html":"认证策略与场景",
-               "bio-binding.html":"生物识别绑定", "machine-agent.html":"机器与智能体身份",
-               "sso-provisioning.html":"免认证访问", "identity-adapt.html":"身份适配" };
+               "identity-user.html":"用户管理", "identity-terminal.html":"终端管理",
+               "identity-clientsw.html":"客户端软件管理", "identity-clientinst.html":"客户端实例管理",
+               "identity-agentsw.html":"智能体软件管理", "identity-agentinst.html":"智能体实例管理",
+               "auth-dict.html":"认证方式字典", "auth-source.html":"认证源",
+               "auth-user-cred.html":"用户代填账号托管", "auth-issue.html":"签发凭据管理",
+               "auth-authenticator.html":"强认证器绑定管理",
+               "dp-overview.html":"防护总览", "dp-policy.html":"防护策略",
+               "dp-baseline.html":"行为基线", "dp-arms.html":"对抗能力",
+               "alert-events.html":"风险事件告警", "sys-notify-channel.html":"通知渠道配置", "原型索引.html":"原型索引", "场景走查.html":"业务流程图与场景走查" };
   function setAlert(kind, title, msg){
     var box = $("#lgAlert");
     if (!kind) { box.hidden = true; box.innerHTML = ""; return; }
@@ -293,7 +316,10 @@
        真实协议见《零信任无端接入网关-登录认证与SM2-challenge协议-技术设计》；本原型不实现加密与校验。 */
     window._lgPayload = { user: u, pass: p, passCipher: "SM2(" + p.length + " 字符)" };
     setTimeout(function(){
-      setSession({ user: u, name: "安全管理员 张伟", at: new Date().toISOString(), sm2: true });
+      /* ★ R61（轮6）：只记账号、不写死显示名 —— 顶栏显示名由基座按**身份台账**推导
+         （原写死「安全管理员 张伟」：登录任意账号都自称同一人，且与台账
+          「张伟 = 系统管理员、王芳 = 安全管理员」自相矛盾）。 */
+      setSession({ user: u, at: new Date().toISOString(), sm2: true });
       location.replace(safeBack);
     }, 320);
   }

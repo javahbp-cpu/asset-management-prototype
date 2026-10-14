@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>原型索引 — 白泽零信任 · 运维管理平台原型</title>
+<link rel="stylesheet" href="assets/proto.css?v=ab04b092a94a">
+</head>
+<body>
+
+<section class="idx-hero">
+  <div class="wrap">
+    <span class="brand"><span class="logo-mark">白泽</span><strong>白泽</strong>
+      <span class="logo-div"></span><span class="logo-sub">零信任 · 运维管理平台</span></span>
+    <h1>运维管理平台 · 原型索引</h1>
+    <p>
+      本索引是这套原型的<b>统一入口</b>：向下是 <b>29 个页面</b>（资产管理 / 安全策略 / 动态防护 /
+      告警 / 身份 / 认证 / 系统配置 七个模块 + 登录页），向外是<b>关键业务说明</b>与<b>流程与走查</b>两类非页面资源。
+    </p>
+    <div class="idx-meta">
+      <div><small>资源结构</small><b>页面原型 + 关键业务说明 + 流程与走查</b></div>
+      <div><small>页面数</small><b>29 页 · 7 模块</b></div>
+      <div><small>关键流程</small><b>16 条 · 49 幕</b></div>
+      <div><small>运行方式</small><b>纯静态 HTML，双击即开</b></div>
+    </div>
+    <div class="idx-note">
+      <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 11v5.2M12 7.8v.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <div>
+        资源分三部分：<b>页面原型</b>是可点击的界面交付，<b>关键业务说明</b>是规则、参数与边界口径，
+        <b>流程与走查</b>是独立的演练入口（不属于页面清单）。页面之间的跳转、弹层、倒计时与走查串演均为真实交互。
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="content">
+
+  <div class="part-grid" style="margin-top:-42px">
+    <a class="part-card pages" href="#pages">
+      <div class="ph"><span class="pi"><svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 9.5h17M8 14h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+        <h3>页面原型</h3></div>
+      <p>可点击的界面交付：<b>29 个页面</b>，按模块分组 —— 资产列表 / 详情 / 登记向导，安全策略七页，
+        动态防护四页，风险事件告警，身份六页，认证五页，系统配置两页，以及登录页。</p>
+      <div class="tags"><span>29 页</span><span>深链支持 ?pg= / ?tab= / ?aid=</span><span>真实交互</span></div>
+      <span class="go">进入页面清单 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    </a>
+    <a class="part-card specs" href="#specs">
+      <div class="ph"><span class="pi"><svg viewBox="0 0 24 24" fill="none"><path d="M6.5 3.8h7.4l3.6 3.6v12.8H6.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M13.6 4.1v3.6h3.7" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.4 12.6h5.2M9.4 15.8h3.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+        <h3>关键业务说明</h3></div>
+      <p>规则、参数与边界口径：<b>3 张关键业务流程图</b>（认证源接入与生效、凭据全生命周期、
+        强认证器绑定与重置），面向开发，逐步说明执行方、输入产出与分支。</p>
+      <div class="tags"><span>FL1~FL3</span><span>步骤 · 参数 · 失败码</span></div>
+      <span class="go">进入关键业务说明 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    </a>
+  </div>
+
+  <a class="walk-bar" href="场景走查.html">
+    <span class="wi"><svg viewBox="0 0 24 24" fill="none"><path d="M4.5 6.5h6.2M4.5 12h15M4.5 17.5h9.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="17.6" cy="6.5" r="2.1" stroke="currentColor" stroke-width="1.7"/></svg></span>
+    <div class="wt">
+      <b>业务流程图与场景走查</b>
+      <p>3 张关键业务流程图逐步说明执行方、输入产出与分支；16 条关键流程共 49 幕按业务场景端到端串演，
+        覆盖 8 个场景域，每一幕落到具体页面与具体深链。</p>
+      <div class="tags"><span>3 张流程图</span><span>16 条关键流程</span><span>49 幕可点击</span></div>
+    </div>
+    <span class="wb">进入流程与走查 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+  </a>
+
+  <div class="section-h" id="pages" style="margin-top:44px">
+    <div>
+      <div class="kicker blue">PAGES · 页面原型</div>
+      <h2>页面清单</h2>
+      <p class="lead">按模块分组列示全部 29 个页面。每页标注了它的资源归属与关键交互；
+        点击卡片即打开该页（未登录时自动回跳登录，登录后回到原目标）。</p>
+    </div>
+  </div>
+  <div class="section-h" style="margin:34px 0 16px"><div><div class="kicker blue">入口</div><h2>入口</h2></div></div><div class="page-grid"><a class="page-card" href="login.html"><span class="no">—</span><h3>登录页</h3><p>控制面登录入口。含四个演示变体：默认登录 / 账号或密码错误 / 尝试过于频繁 / 未登录被拦截；演示账号 admin_dev / Aa111111。</p><div class="map">入口 · 演示变体可切换</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a></div><div class="section-h" style="margin:34px 0 16px"><div><div class="kicker blue">资产管理</div><h2>资产管理</h2></div></div><div class="page-grid"><a class="page-card" href="index.html"><span class="no">01</span><h3>资产列表</h3><p>资产台账总表：资产名称 / 资产类型 / 所属部门 / 安全等级 / 资产分组 / 状态（无端开通 + 启用两维）/ 负责人 / 更新时间。含搜索与四维筛选、登记入口与分页。</p><div class="map">资产管理 · 列表主视图</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="asset-detail.html?aid=a1"><span class="no">02</span><h3>资产详情</h3><p>五页签：基础信息 / 资源与访问 / 细粒度资源清单 / 代理与上游 / 身份适配；含响应地址改写与目标网段安全校验（防 SSRF / DNS rebinding）。</p><div class="map">资产管理 · 深链 ?aid=&tab=</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="asset-edit.html"><span class="no">03</span><h3>登记 / 编辑资产</h3><p>分步向导：登记或编辑资产，录入基本信息、接入方式、资源与节点。</p><div class="map">资产管理 · 深链 ?mode=&aid=</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a></div><div class="section-h" style="margin:34px 0 16px"><div><div class="kicker blue">安全策略</div><h2>安全策略</h2></div></div><div class="page-grid"><a class="page-card" href="access-policy.html"><span class="no">04</span><h3>资产访问控制策略</h3><p>按主体 / 资产 / 条件编排允许与拒绝规则；提交按下发面分档 —— 改变生效面的动作走二次认证，只改配置内容的「保存并下发」走普通确认。</p><div class="map">安全策略 · 安全管理员维护</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="fine-grained.html"><span class="no">05</span><h3>资产细粒度访问策略</h3><p>资源级（路径 / 命令 / 数据对象）细粒度访问控制，随族切换列组与档位链。</p><div class="map">安全策略 · 与访问控制策略同族</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="access-requirement.html"><span class="no">06</span><h3>设置访问要求</h3><p>按路径设置准入要求（认证强度 / 来源限制 / 时间窗）；须由「资产细粒度访问策略 → 资源对象行」携带对象上下文进入。</p><div class="map">安全策略 · 受控深链（无直接入口）</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="web-security-policy.html"><span class="no">07</span><h3>Web 安全防护策略（WAF）</h3><p>Web 防护族首子页；三子页共用同一菜单入口（Web 防护 / 集群级限流 / 请求约束）。</p><div class="map">安全策略 · 三子页共用入口</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="rate-limit-policy.html"><span class="no">08</span><h3>集群级限流</h3><p>集群级限流：令牌桶、并发连接数等，按等级出厂默认生效。</p><div class="map">安全策略 · Web 防护族子页</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="request-constraint.html"><span class="no">09</span><h3>请求约束</h3><p>请求约束：方法白名单、请求体大小等。</p><div class="map">安全策略 · Web 防护族子页</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="rule-library.html"><span class="no">10</span><h3>WAF 规则库管理</h3><p>规则导入 / 签名校验 / 灰度下发 / 回滚；回滚触发源仅保留可自证一类（验签失败 / 下发失败 / 节点确认超时）。</p><div class="map">安全策略 · 独立成页</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a></div><div class="section-h" style="margin:34px 0 16px"><div><div class="kicker blue">动态防护</div><h2>动态防护</h2></div></div><div class="page-grid"><a class="page-card" href="dp-overview.html"><span class="no">11</span><h3>防护总览</h3><p>实时事件流、访问主体、风险请求评分分级分布、处置档位计数、审计 Dashboard。</p><div class="map">动态防护 · 总览</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="dp-policy.html"><span class="no">12</span><h3>防护策略</h3><p>防护对象 / 资产分组 / 检测项 / 评分档位分段；处置序「准入拒绝 > 动态防护处置 > 准入放行」。</p><div class="map">动态防护 · 深链 ?obj=&tab=</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="dp-baseline.html"><span class="no">13</span><h3>行为基线</h3><p>四页签：主体基线 / 客体基线 / 学习与判定 / 白名单；24h 窗口、最大偏离。</p><div class="map">动态防护 · 深链 ?sub=&tab=</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="dp-arms.html"><span class="no">14</span><h3>对抗能力</h3><p>五页签：动态令牌与防重放 / JS 注入与动态封装 / 真实浏览器验证 / 动态挑战与人机验证 / 场景化模板。</p><div class="map">动态防护 · 深链 ?tab=</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a></div><div class="section-h" style="margin:34px 0 16px"><div><div class="kicker blue">告警</div><h2>告警</h2></div></div><div class="page-grid"><a class="page-card" href="alert-events.html"><span class="no">15</span><h3>风险事件告警</h3><p>四页签：告警规则 / 通知渠道 / 告警统计 / 告警记录。各防护域（动态防护 / 限流与熔断 / Web 安全防护）事件汇入统一告警规则；「通知渠道」页签为只读引用态（摘要 + 去配置跳转），5 类渠道（站内信 / 邮箱 / 钉钉 / 企业微信 / Webhook）的连接参数在「系统配置 · 通知渠道配置」统一维护，含窗口内命中、通知送达状态与批量确认（未处理 / 已确认 / 已忽略）。</p><div class="map">告警 · 公共页（4 页签 · 渠道配置在系统配置）</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a></div><div class="section-h" style="margin:34px 0 16px"><div><div class="kicker blue">身份</div><h2>身份</h2></div></div><div class="page-grid"><a class="page-card" href="identity-user.html"><span class="no">16</span><h3>用户管理</h3><p>用户台账与角色归属。</p><div class="map">身份 · 受控候选由组织树派生</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="identity-terminal.html"><span class="no">17</span><h3>终端管理</h3><p>终端三层下钻：终端 → 服务 / 进程 → 使用记录。</p><div class="map">身份 · 长详情已分页签</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="identity-clientsw.html"><span class="no">18</span><h3>客户端软件管理</h3><p>软件级登记（软件 + 版本列表）；「可访问资产」候选 = 资产台账全集的只读子集勾选。</p><div class="map">身份 · 软件级（4 页签）</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="identity-clientinst.html"><span class="no">19</span><h3>客户端实例管理</h3><p>实例级注册（终端 + License 证书）；引用认证模块「签发凭据」，不反向引用。</p><div class="map">身份 · 实例级（3 页签）</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="identity-agentsw.html"><span class="no">20</span><h3>智能体软件管理</h3><p>智能体软件登记（独立平行线，不与客户端软件混列）。</p><div class="map">身份 · 智能体线</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="identity-agentinst.html"><span class="no">21</span><h3>智能体实例管理</h3><p>智能体实例注册；宿主客户端实例序列号是短时凭据的绑定主体标识。</p><div class="map">身份 · 智能体线</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a></div><div class="section-h" style="margin:34px 0 16px"><div><div class="kicker blue">认证</div><h2>认证</h2></div></div><div class="page-grid"><a class="page-card" href="auth-source.html"><span class="no">22</span><h3>认证源</h3><p>认证源接入三段：连接参数 / 同步与字段映射 / 认证方式；连接参数与同步两段可独立回退。</p><div class="map">认证 · 对应 FL1</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="cred-hosting.html"><span class="no">23</span><h3>网关凭据托管</h3><p>网关 → 上游系统的连接级凭据（Basic / API-Key / OAuth2 Client / mTLS 证书）；明文不回读。</p><div class="map">认证 · 对应 FL2 主线一</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="auth-user-cred.html"><span class="no">24</span><h3>用户代填账号托管</h3><p>资产账号密码代填的凭据本体（用户自管 / 管理员托管）；登录契约归资产侧「身份适配 · D 档」。</p><div class="map">认证 · 对应 FL2 主线二</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="auth-issue.html"><span class="no">25</span><h3>签发凭据管理</h3><p>平台签发的客户端 License 证书与智能体短时凭据；仅存元数据与公钥。</p><div class="map">认证 · 对应 FL2 主线三</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="auth-authenticator.html"><span class="no">26</span><h3>强认证器绑定管理</h3><p>强认证器登记 / 吊销 / 重置；登记须由已认证会话发起，challenge 一次性消费。</p><div class="map">认证 · 对应 FL3</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a></div><div class="section-h" style="margin:34px 0 16px"><div><div class="kicker blue">系统配置</div><h2>系统配置</h2></div></div><div class="page-grid"><a class="page-card" href="auth-dict.html"><span class="no">27</span><h3>认证方式字典</h3><p>认证方式的唯一取值域；档位固定 L1~L5 且序不变，实际级别挂在「认证源 × 认证方式」上。</p><div class="map">系统配置 · 平台内唯一取值域</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="sys-notify-channel.html"><span class="no">28</span><h3>通知渠道配置</h3><p>告警通知的送达通道台账：5 类渠道（站内信 / 邮箱 / 钉钉 / 企业微信 / Webhook）连接参数统一维护，含启停开关（改变生效面走二次认证）、配置弹窗与测试发送、渠道投递健康（近 7 日派生）。与告警页「通知渠道」页签同源同数据，告警侧只引用渠道名。</p><div class="map">系统配置 · 与告警页同源</div><span class="go">打开页面 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a></div>
+
+  <div class="section-h" id="specs" style="margin-top:44px">
+    <div>
+      <div class="kicker" style="color:#4338ca">FLOW DIAGRAMS · 关键业务说明</div>
+      <h2>关键业务流程图 FL1~FL3</h2>
+      <p class="lead">按步骤说明执行方、输入产出、分支与失败码。面向开发，不画装饰性图形。</p>
+    </div>
+    <a class="spec-link" href="场景走查.html" style="align-self:flex-start; margin-top:2px; font-size:12.5px; font-weight:640; color:#4338ca; text-decoration:none">→ 到走查里串演</a>
+  </div>
+  <div class="page-grid"><a class="page-card" href="关键业务说明/FL1-认证源接入与生效全流程.html"><span class="no spec">FL1</span><h3>认证源接入与生效全流程</h3><p>从新增一个外部身份来源，到它真正出现在登录页可用的全过程：连接参数 → 连通性验证 → 字段映射 → 账号同步 → 启用与呈现。</p><div class="map">对应页面 认证源 / 认证方式字典 · 见 F14</div><span class="go">打开说明 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="关键业务说明/FL2-凭据全生命周期全流程.html"><span class="no spec">FL2</span><h3>凭据全生命周期全流程</h3><p>三类凭据按「持有方 / 签发方」分界的完整生命周期：网关托管、用户代填、平台签发；以及轮换、吊销与过期三类处置的差异（轮换属过渡态，吊销与过期属终态）。</p><div class="map">对应页面 凭据三页 / 资产身份适配 · 见 F15</div><span class="go">打开说明 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a><a class="page-card" href="关键业务说明/FL3-强认证器绑定与重置全流程.html"><span class="no spec">FL3</span><h3>强认证器绑定与重置全流程</h3><p>强认证器从登记到重置的全过程：登记须由已认证会话发起、challenge 一次性消费、吊销按凭据 ID 执行、全不可用时的管理员重置通道。</p><div class="map">对应页面 强认证器绑定管理 · 见 F16</div><span class="go">打开说明 <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a></div>
+
+  <div class="section-h" style="margin-top:44px">
+    <div>
+      <div class="kicker blue">HOW TO USE</div>
+      <h2>三种读法</h2>
+      <p class="lead">按评审目的选路径，不必从头翻到尾。</p>
+    </div>
+  </div>
+  <div class="stack">
+    <div class="card"><div class="card-b"><b>要串演业务 → 走 <a href="场景走查.html">场景走查</a></b>
+      <div class="dim" style="margin-top:6px">16 条流程逐幕点击，覆盖 8 个场景域；每幕可直接分享深链 URL。</div></div></div>
+    <div class="card"><div class="card-b"><b>要看界面 → 从 <a href="login.html">登录页</a>进入，按模块顺序浏览</b>
+      <div class="dim" style="margin-top:6px">侧栏分组即模块；页面右下角与页脚提供重置演示数据、返回入口。</div></div></div>
+    <div class="card"><div class="card-b"><b>要对口径 → 读 <a href="关键业务说明/FL1-认证源接入与生效全流程.html">FL1 认证源接入</a> 与 <a href="关键业务说明/FL2-凭据全生命周期全流程.html">FL2 凭据全生命周期</a></b>
+      <div class="dim" style="margin-top:6px">三篇流程图逐步给出执行方、输入产出、分支与失败码。</div></div></div>
+  </div>
+
+  <div class="note" style="margin-top:26px">
+    <b>实现说明：</b>本原型为纯静态 HTML + 共享 CSS/JS（<span class="mono">assets/js/</span> 下 9 个脚本模块
+    按序加载 + <span class="mono">assets/proto.css</span>），无构建依赖，双击任意页面即可在浏览器打开。
+    深链支持 <span class="mono">?pg=&lt;页名&gt;</span>（在 index.html 上重定向到目标页）、
+    <span class="mono">?tab=&lt;页签&gt;</span>、<span class="mono">?aid=&lt;资产&gt;</span>、
+    <span class="mono">?mode=&amp;aid=&amp;from=</span>（编辑向导）、
+    <span class="mono">?flow=&amp;step=</span>（场景走查逐幕，进入后右下角出走查条）。
+  </div>
+
+</div>
+</body>
+</html>
